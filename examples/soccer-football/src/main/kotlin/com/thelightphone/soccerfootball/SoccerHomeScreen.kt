@@ -310,21 +310,18 @@ private fun ScoresContent(
                     onClick = onOpenSettings,
                     contentDescription = "Settings",
                 ),
-                LightBarButton.LightIcon(
-                    icon = SoccerIcons.MY_TEAM,
+                LightBarButton.Custom(
                     onClick = onOpenMyTeam,
                     contentDescription = "My Team",
-                ),
-                LightBarButton.LightIcon(
-                    icon = SoccerIcons.STANDINGS,
+                ) { SoccerBarIcon(R.drawable.ic_jersey_white, "My Team") },
+                LightBarButton.Custom(
                     onClick = onOpenStandings,
                     contentDescription = "Standings",
-                ),
-                LightBarButton.LightIcon(
-                    icon = SoccerIcons.FIXTURES,
+                ) { SoccerBarIcon(R.drawable.ic_table_white, "Standings") },
+                LightBarButton.Custom(
                     onClick = onOpenFixtures,
                     contentDescription = "Fixtures",
-                ),
+                ) { SoccerBarIcon(R.drawable.ic_calendar_dot_white, "Fixtures") },
             ),
         )
     }
