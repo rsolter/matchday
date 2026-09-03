@@ -311,17 +311,17 @@ private fun ScoresContent(
                     contentDescription = "Settings",
                 ),
                 LightBarButton.LightIcon(
-                    icon = LightIcons.STAR,
+                    icon = SoccerIcons.MY_TEAM,
                     onClick = onOpenMyTeam,
                     contentDescription = "My Team",
                 ),
                 LightBarButton.LightIcon(
-                    icon = LightIcons.NUMBERED_LIST,
+                    icon = SoccerIcons.STANDINGS,
                     onClick = onOpenStandings,
                     contentDescription = "Standings",
                 ),
                 LightBarButton.LightIcon(
-                    icon = LightIcons.CALENDAR,
+                    icon = SoccerIcons.FIXTURES,
                     onClick = onOpenFixtures,
                     contentDescription = "Fixtures",
                 ),
