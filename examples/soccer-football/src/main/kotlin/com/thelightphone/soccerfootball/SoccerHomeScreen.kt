@@ -1088,9 +1088,13 @@ private fun MatchDetailHeader(
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(top = 0.5f.gridUnitsAsDp(), bottom = 0.25f.gridUnitsAsDp())) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            // Detail (20sp), not Copy (30sp): the API doesn't give us a short/abbreviated team
+            // name (see the doc comment above this composable), so the only lever we have to stop
+            // long names ("Manchester City", "FC Copenhagen") from wrapping mid-word is a smaller
+            // font. maxLines/Ellipsis stays as a safety net for names this still doesn't fit.
             LightText(
                 text = homeTeamName,
-                variant = LightTextVariant.Copy,
+                variant = LightTextVariant.Detail,
                 align = TextAlign.End,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -1104,7 +1108,7 @@ private fun MatchDetailHeader(
             )
             LightText(
                 text = awayTeamName,
-                variant = LightTextVariant.Copy,
+                variant = LightTextVariant.Detail,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -1350,7 +1354,17 @@ private fun LineupSection(teamName: String, lineup: TeamLineup?, mirrored: Boole
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().padding(bottom = 0.6f.gridUnitsAsDp()),
         ) {
-            LightText(text = teamName, variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(1f))
+            // This row already shares its width with the formation label, so even Detail-size
+            // team names ("Manchester City") can still be too wide to fit on one line — maxLines=1
+            // + Ellipsis trades a truncated name ("Mancheste…") for avoiding an ugly mid-word wrap.
+            LightText(
+                text = teamName,
+                variant = LightTextVariant.Detail,
+                lighten = true,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
             lineup.formation?.let { LightText(text = it, variant = LightTextVariant.Detail, lighten = true) }
         }
 
