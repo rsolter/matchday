@@ -1361,6 +1361,11 @@ private fun LineupSection(teamName: String, lineup: TeamLineup?, mirrored: Boole
                 .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f))
                 .padding(vertical = 1f.gridUnitsAsDp(), horizontal = 0.3f.gridUnitsAsDp()),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.3f.gridUnitsAsDp()),
+            // Columns hold different player counts (1 for GK/lone-forward lines, up to 4-5 for a
+            // back line or midfield) and each stacks from its own top by default, which is what
+            // made the GK/forward columns look pinned to the top instead of spread across the
+            // pitch's height. Centering the whole Row vertically fixes that in one line.
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             columns.forEach { column ->
                 Column(
