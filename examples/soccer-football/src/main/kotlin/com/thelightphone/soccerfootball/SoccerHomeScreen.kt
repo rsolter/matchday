@@ -1009,6 +1009,7 @@ private fun MatchDetailContent(mode: ScoreScreenMode.MatchDetailScreen, onBack: 
                 scoreLabel = mode.scoreLabel,
                 statusLabel = mode.statusLabel,
                 isLive = mode.isLive,
+                goalEvents = mode.detail?.events?.filter { it.type == MatchEventType.GOAL } ?: emptyList(),
             )
 
             val detail = mode.detail
@@ -1057,11 +1058,13 @@ private fun MatchDetailContent(mode: ScoreScreenMode.MatchDetailScreen, onBack: 
                         DetailTab.HOME_LINEUP -> LineupSection(
                             teamName = mode.homeTeamName,
                             lineup = detail.lineups.home,
+                            mirrored = false,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
                         DetailTab.AWAY_LINEUP -> LineupSection(
                             teamName = mode.awayTeamName,
                             lineup = detail.lineups.away,
+                            mirrored = true,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
                     }
@@ -1081,6 +1084,7 @@ private fun MatchDetailHeader(
     scoreLabel: String,
     statusLabel: String,
     isLive: Boolean,
+    goalEvents: List<MatchEvent> = emptyList(),
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(top = 0.5f.gridUnitsAsDp(), bottom = 0.25f.gridUnitsAsDp())) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -1127,7 +1131,65 @@ private fun MatchDetailHeader(
                 modifier = Modifier.fillMaxWidth().padding(top = 0.4f.gridUnitsAsDp()),
             )
         }
+
+        if (goalEvents.isNotEmpty()) {
+            GoalScorersRow(
+                homeScorers = goalEvents.filter { it.teamName == homeTeamName },
+                awayScorers = goalEvents.filter { it.teamName == awayTeamName },
+                modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()),
+            )
+        }
     }
+}
+
+/** A compact, persistent goalscorer line shown under the score/status in [MatchDetailHeader],
+ * regardless of which detail tab (Stats/Timeline/Lineups) is selected below — mirrors the
+ * goalscorer summary most match-center UIs show under the box score. Home scorers align under
+ * the home team name, away scorers under the away team name, matching the score row's layout. */
+@Composable
+private fun GoalScorersRow(
+    homeScorers: List<MatchEvent>,
+    awayScorers: List<MatchEvent>,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier = modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.weight(1f)) {
+            homeScorers.forEach { event ->
+                LightText(
+                    text = event.goalScorerLabel(),
+                    variant = LightTextVariant.Detail,
+                    lighten = true,
+                    align = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        Box(modifier = Modifier.width(1.5f.gridUnitsAsDp()))
+        Column(modifier = Modifier.weight(1f)) {
+            awayScorers.forEach { event ->
+                LightText(
+                    text = event.goalScorerLabel(),
+                    variant = LightTextVariant.Detail,
+                    lighten = true,
+                    align = TextAlign.Start,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+/** "Danilo 24'", or "Danilo (Penalty) 24'" when [MatchEvent.scorerQualifier] is set to something
+ * other than a plain goal (see the doc comment on the "Goal" branch of
+ * [ApiFootballEventDto.toMatchEvent] in SoccerModels.kt for what qualifier values are and aren't
+ * verified against a real response). */
+private fun MatchEvent.goalScorerLabel(): String {
+    val name = scorer ?: "Goal"
+    return if (scorerQualifier != null) "$name ($scorerQualifier) $minuteLabel" else "$name $minuteLabel"
 }
 
 @Composable
@@ -1256,19 +1318,32 @@ private fun NoDataForTab(text: String) {
 }
 
 /**
- * One team's starting XI laid out by real pitch row (goalkeeper at the bottom, forwards at the
- * top), using API-Football's own `grid` field directly — unlike the ESPN variant of this tool,
- * there's no client-side formation *inference* here, since API-Football sends both a `formation`
- * label and a real per-player pitch position. See [groupedByPitchRow] in SoccerModels.kt.
+ * One team's starting XI laid out by real pitch row, using API-Football's own `grid` field
+ * directly — unlike the ESPN variant of this tool, there's no client-side formation *inference*
+ * here, since API-Football sends both a `formation` label and a real per-player pitch position.
+ * See [groupedByPitchRow] in SoccerModels.kt.
+ *
+ * Laid out left-to-right (goalkeeper's column on the left, forwards' column on the right) for the
+ * home team, and mirrored right-to-left for the away team ([mirrored] = true) — as if the two
+ * teams are attacking each other from opposite sides, same convention a real match-graphic pitch
+ * view uses. Each pitch line is a *column* with its players stacked vertically rather than a row
+ * with players side-by-side: on a narrow phone screen a line of 4-5 players sharing one row left
+ * almost no width per name (hence names truncating to "Walukiew…", "McKen…"); stacked in a column,
+ * each name gets the column's full width instead of splitting it with row-mates.
  */
 @Composable
-private fun LineupSection(teamName: String, lineup: TeamLineup?, modifier: Modifier = Modifier) {
+private fun LineupSection(teamName: String, lineup: TeamLineup?, mirrored: Boolean, modifier: Modifier = Modifier) {
     if (lineup == null || lineup.startXI.isEmpty()) {
         NoDataForTab(text = "No lineup available for $teamName yet.")
         return
     }
 
-    val rows = remember(lineup) { lineup.startXI.groupedByPitchRow().asReversed() }
+    // groupedByPitchRow() already returns goalkeeper-first; that's the left-to-right column order
+    // we want for the home team as-is, and reversed (forwards-first) for the mirrored away team.
+    val columns = remember(lineup, mirrored) {
+        val gkFirst = lineup.startXI.groupedByPitchRow()
+        if (mirrored) gkFirst.asReversed() else gkFirst
+    }
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -1279,17 +1354,20 @@ private fun LineupSection(teamName: String, lineup: TeamLineup?, modifier: Modif
             lineup.formation?.let { LightText(text = it, variant = LightTextVariant.Detail, lighten = true) }
         }
 
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(1.2f.gridUnitsAsDp()))
                 .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f))
-                .padding(vertical = 1f.gridUnitsAsDp(), horizontal = 0.2f.gridUnitsAsDp()),
-            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(1.1f.gridUnitsAsDp()),
+                .padding(vertical = 1f.gridUnitsAsDp(), horizontal = 0.3f.gridUnitsAsDp()),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.3f.gridUnitsAsDp()),
         ) {
-            rows.forEach { row ->
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    row.forEach { player -> PitchPlayerChip(player, modifier = Modifier.weight(1f)) }
+            columns.forEach { column ->
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.7f.gridUnitsAsDp()),
+                ) {
+                    column.forEach { player -> PitchPlayerChip(player, modifier = Modifier.fillMaxWidth()) }
                 }
             }
         }
@@ -1313,7 +1391,7 @@ private fun LineupSection(teamName: String, lineup: TeamLineup?, modifier: Modif
 private fun PitchPlayerChip(player: LineupPlayer, modifier: Modifier = Modifier) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier.fillMaxWidth().padding(horizontal = 0.1f.gridUnitsAsDp()),
+        modifier = modifier.padding(vertical = 0.1f.gridUnitsAsDp()),
     ) {
         Box(
             contentAlignment = Alignment.Center,

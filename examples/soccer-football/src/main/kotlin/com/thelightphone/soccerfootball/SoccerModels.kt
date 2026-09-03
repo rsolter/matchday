@@ -177,13 +177,28 @@ internal fun ApiFootballEventDto.toMatchEvent(): MatchEvent {
     val playerName = player?.name?.takeIf { it.isNotBlank() }
     val assistName = assist?.name?.takeIf { it.isNotBlank() }
     return when (type) {
-        "Goal" -> MatchEvent(
-            minuteLabel = minuteLabel,
-            type = MatchEventType.GOAL,
-            teamName = team.name,
-            headline = playerName ?: (detail ?: "Goal"),
-            subtext = assistName?.let { "Assist: $it" },
-        )
+        // Unlike the "Card" case below, a real "Goal" event's `headline` was never actually
+        // prefixed with "Goal" — it just showed the bare scorer name, which reads fine in
+        // isolation but doesn't scan as a distinct event type next to "Yellow Card — X" rows in
+        // the Timeline. Fixed to match the Card row's "<label> — <player>" shape.
+        "Goal" -> {
+            val scorer = playerName ?: detail?.takeIf { it.isNotBlank() } ?: "Goal"
+            // API-Football's documented `detail` values for Goal events include "Penalty" and
+            // "Own Goal" alongside the common "Normal Goal" — only "Normal Goal"-shaped events
+            // were seen in this session's real curl responses, so treating anything other than
+            // "Normal Goal" as a qualifier is a defensive mapping, not one independently verified
+            // against a real penalty/own-goal response.
+            val qualifier = detail?.takeIf { it.isNotBlank() && !it.equals("Normal Goal", ignoreCase = true) }
+            MatchEvent(
+                minuteLabel = minuteLabel,
+                type = MatchEventType.GOAL,
+                teamName = team.name,
+                headline = if (qualifier != null) "Goal ($qualifier) — $scorer" else "Goal — $scorer",
+                subtext = assistName?.let { "Assist: $it" },
+                scorer = scorer,
+                scorerQualifier = qualifier,
+            )
+        }
         // player = player going OFF, assist = player coming ON — a real inversion of the "Goal"
         // case's field meanings, confirmed against real events (not documentation).
         "subst" -> MatchEvent(
@@ -545,13 +560,18 @@ data class StandingsRow(
 enum class MatchEventType { GOAL, SUBSTITUTION, CARD, VAR, OTHER }
 
 /** One row of the match detail screen's Event Timeline tab — see [ApiFootballEventDto.toMatchEvent]
- * for how each raw event `type` maps to [headline]/[subtext]. */
+ * for how each raw event `type` maps to [headline]/[subtext]. [scorer]/[scorerQualifier] are set
+ * only for [MatchEventType.GOAL] events, for the compact goalscorer strip shown under the score
+ * (see [MatchDetailHeader]) — kept separate from [headline] since that strip wants just the
+ * player's name, not the fuller "Goal — Name" text the Timeline tab shows. */
 data class MatchEvent(
     val minuteLabel: String,
     val type: MatchEventType,
     val teamName: String,
     val headline: String,
     val subtext: String?,
+    val scorer: String? = null,
+    val scorerQualifier: String? = null,
 )
 
 data class MatchStatRow(val label: String, val homeValue: String, val awayValue: String)
