@@ -27,9 +27,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.thelightphone.sdk.InitialScreen
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.SealedLightActivity
@@ -865,14 +867,34 @@ private fun MyTeamContent(
                 )
             }
         } else {
+            if (summary.teamLogoUrl != null) {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    AsyncImage(
+                        model = summary.teamLogoUrl,
+                        contentDescription = "${summary.teamName} crest",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .padding(bottom = 0.5f.gridUnitsAsDp())
+                            .size(6f.gridUnitsAsDp()),
+                    )
+                }
+            }
             LightScrollView(
                 modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
             ) {
                 summary.standingsRow?.let { row ->
                     MyTeamStandingBlock(leagueName = summary.leagueName, row = row)
                 }
-                if (summary.unavailable.isNotEmpty()) {
-                    UnavailableBlock(summary.unavailable, modifier = Modifier.padding(top = 1f.gridUnitsAsDp()))
+                // Order below is deliberate: recent results, then next results, then who's out —
+                // injuries/suspensions dropped to the bottom of the scroll instead of leading it.
+                if (summary.recentFixtures.isNotEmpty()) {
+                    MatchGroupCard(
+                        title = "RECENT RESULTS",
+                        matches = summary.recentFixtures,
+                        modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
+                        showFinishedStatus = false,
+                        onMatchClick = onMatchClick,
+                    )
                 }
                 if (summary.upcomingFixtures.isNotEmpty()) {
                     MatchGroupCard(
@@ -882,13 +904,10 @@ private fun MyTeamContent(
                         onMatchClick = onMatchClick,
                     )
                 }
-                if (summary.recentFixtures.isNotEmpty()) {
-                    MatchGroupCard(
-                        title = "RECENT RESULTS",
-                        matches = summary.recentFixtures,
+                if (summary.unavailable.isNotEmpty()) {
+                    UnavailableBlock(
+                        summary.unavailable,
                         modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
-                        showFinishedStatus = false,
-                        onMatchClick = onMatchClick,
                     )
                 }
                 if (summary.standingsRow == null && summary.unavailable.isEmpty() &&

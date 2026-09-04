@@ -236,6 +236,17 @@ internal class ApiFootballApi {
             ?.let { fetchUnavailableForFixture(apiKey, it).getOrElse { emptyList() } }
             ?: emptyList()
 
+        // No standalone "team" endpoint call for this — the crest URL rides along on every fixture's
+        // team object (see ApiFootballFixtureTeamDto.logo), so the first fixture that actually
+        // mentions teamId (home or away side) is enough; costs zero extra requests.
+        val teamLogoUrl = fixtures.firstNotNullOfOrNull { f ->
+            when (teamId) {
+                f.homeTeamId -> f.homeTeamLogo.takeIf { it.isNotBlank() }
+                f.awayTeamId -> f.awayTeamLogo.takeIf { it.isNotBlank() }
+                else -> null
+            }
+        }
+
         MyTeamSummary(
             teamId = teamId,
             teamName = teamName,
@@ -245,6 +256,7 @@ internal class ApiFootballApi {
             upcomingFixtures = upcoming.take(MY_TEAM_FIXTURE_LIMIT),
             recentFixtures = recent.take(MY_TEAM_FIXTURE_LIMIT),
             unavailable = unavailable,
+            teamLogoUrl = teamLogoUrl,
         )
     }
 

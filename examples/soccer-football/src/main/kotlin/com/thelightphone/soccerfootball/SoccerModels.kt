@@ -112,6 +112,11 @@ internal data class ApiFootballFixtureTeamDto(
     val id: Int,
     val name: String = "",
     val winner: Boolean? = null,
+    /** Hosted PNG crest URL — confirmed present on a real `/fixtures` team object this session
+     * (curl-verified, not assumed from API-Football's docs). Not modeled on [ApiFootballEventTeamDto]
+     * (standings/statistics/injuries' shared team stub) since only the fixtures response was
+     * actually checked for it. */
+    val logo: String = "",
 )
 
 @Serializable
@@ -132,8 +137,10 @@ internal fun ApiFootballFixtureDto.toFixture(): Fixture = Fixture(
     round = league.round,
     homeTeamId = teams.home.id,
     homeTeamName = teams.home.name,
+    homeTeamLogo = teams.home.logo,
     awayTeamId = teams.away.id,
     awayTeamName = teams.away.name,
+    awayTeamLogo = teams.away.logo,
     homeGoals = goals.home,
     awayGoals = goals.away,
 )
@@ -500,8 +507,10 @@ data class Fixture(
     val round: String,
     val homeTeamId: Int,
     val homeTeamName: String,
+    val homeTeamLogo: String = "",
     val awayTeamId: Int,
     val awayTeamName: String,
+    val awayTeamLogo: String = "",
     val homeGoals: Int? = null,
     val awayGoals: Int? = null,
 ) {
@@ -645,4 +654,9 @@ data class MyTeamSummary(
     val upcomingFixtures: List<Fixture>,
     val recentFixtures: List<Fixture>,
     val unavailable: List<UnavailablePlayer>,
+    /** Hosted crest URL for [teamId], read off whichever of [upcomingFixtures]/[recentFixtures]
+     * mentions it first (there's no dedicated "team" endpoint call here — see
+     * [ApiFootballApi.fetchMyTeamSummary]). Null if neither fixture list yielded one, e.g. a team
+     * with no fixtures in the fetch window. */
+    val teamLogoUrl: String?,
 )
