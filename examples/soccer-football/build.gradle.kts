@@ -57,11 +57,5 @@ kotlin {
 dependencies {
     implementation(project(":sdk:client"))
     implementation(libs.kotlinx.datetime)
-    // Team crest images (My Team header) — API-Football serves these as plain hosted PNGs, this is
-    // just an HTTP-fetching AsyncImage. Coil3 split networking out of coil-compose's core artifact,
-    // so both modules are needed; okhttp here is unrelated to the ktor-client-okhttp already used by
-    // ApiFootballApi (Coil manages its own client/cache).
-    implementation(libs.coil.compose)
-    implementation(libs.coil.network.okhttp)
     testImplementation(libs.kotlin.test)
 }

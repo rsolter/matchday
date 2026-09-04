@@ -1,5 +1,7 @@
 package com.thelightphone.soccerfootball
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,11 +29,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.thelightphone.sdk.InitialScreen
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.SealedLightActivity
@@ -867,10 +869,19 @@ private fun MyTeamContent(
                 )
             }
         } else {
-            if (summary.teamLogoUrl != null) {
+            // No AsyncImage here: the Light SDK's dependency allow-list rejects every third-party
+            // image loader (confirmed against a real build failure for Coil), so this decodes the
+            // bytes MyTeamSummary already fetched (see ApiFootballApi.fetchMyTeamSummary) by hand.
+            // remember(bytes) keys on the byte array's identity, not its content — cheap enough
+            // here since a new MyTeamSummary (and therefore a new array) only shows up once per
+            // fetch, never once per frame.
+            val teamLogoBitmap = summary.teamLogoBytes?.let { bytes ->
+                remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+            }
+            if (teamLogoBitmap != null) {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    AsyncImage(
-                        model = summary.teamLogoUrl,
+                    Image(
+                        bitmap = teamLogoBitmap,
                         contentDescription = "${summary.teamName} crest",
                         contentScale = ContentScale.Fit,
                         modifier = Modifier

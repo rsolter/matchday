@@ -654,9 +654,12 @@ data class MyTeamSummary(
     val upcomingFixtures: List<Fixture>,
     val recentFixtures: List<Fixture>,
     val unavailable: List<UnavailablePlayer>,
-    /** Hosted crest URL for [teamId], read off whichever of [upcomingFixtures]/[recentFixtures]
-     * mentions it first (there's no dedicated "team" endpoint call here — see
-     * [ApiFootballApi.fetchMyTeamSummary]). Null if neither fixture list yielded one, e.g. a team
-     * with no fixtures in the fetch window. */
-    val teamLogoUrl: String?,
+    /** Raw crest image bytes for [teamId], already fetched — the Light SDK's dependency allow-list
+     * blocks every third-party image-loading library (confirmed against a real build failure:
+     * `LightSdkPlugin` rejected `io.coil-kt.coil3:*` outright), so there's no `AsyncImage`-style
+     * lazy loader available here. The crest URL itself comes from whichever of
+     * [upcomingFixtures]/[recentFixtures] mentions [teamId] first (no dedicated "team" endpoint call
+     * — see [ApiFootballApi.fetchMyTeamSummary]), fetched eagerly with the same Ktor client
+     * everything else in this file uses. Null if no logo URL was found, or the fetch failed. */
+    val teamLogoBytes: ByteArray?,
 )

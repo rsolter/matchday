@@ -9,6 +9,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -238,7 +239,9 @@ internal class ApiFootballApi {
 
         // No standalone "team" endpoint call for this — the crest URL rides along on every fixture's
         // team object (see ApiFootballFixtureTeamDto.logo), so the first fixture that actually
-        // mentions teamId (home or away side) is enough; costs zero extra requests.
+        // mentions teamId (home or away side) is enough; costs zero extra requests against
+        // API-Football itself (the crest fetch below hits a separate image host, not API-Football,
+        // so it doesn't touch that quota either).
         val teamLogoUrl = fixtures.firstNotNullOfOrNull { f ->
             when (teamId) {
                 f.homeTeamId -> f.homeTeamLogo.takeIf { it.isNotBlank() }
@@ -246,6 +249,7 @@ internal class ApiFootballApi {
                 else -> null
             }
         }
+        val teamLogoBytes = teamLogoUrl?.let { fetchImageBytes(it).getOrNull() }
 
         MyTeamSummary(
             teamId = teamId,
@@ -256,8 +260,29 @@ internal class ApiFootballApi {
             upcomingFixtures = upcoming.take(MY_TEAM_FIXTURE_LIMIT),
             recentFixtures = recent.take(MY_TEAM_FIXTURE_LIMIT),
             unavailable = unavailable,
-            teamLogoUrl = teamLogoUrl,
+            teamLogoBytes = teamLogoBytes,
         )
+    }
+
+    /** Fetches a hosted image as raw bytes — used for team crest URLs off [ApiFootballFixtureTeamDto.logo].
+     * Deliberately bypasses [get]/[getChecked] below: those add the `x-apisports-key` header, which
+     * belongs to API-Football's own API host, not whatever CDN actually serves crest images (sending
+     * it there would be harmless but meaningless) — and there's no JSON body here to run through
+     * [apiFootballErrorMessage]'s success/failure check. Reuses this class's [client] (same
+     * timeouts) rather than standing up a second HTTP client just for images. */
+    private suspend fun fetchImageBytes(url: String): Result<ByteArray> = runCatching {
+        val response = try {
+            client.get(url)
+        } catch (e: Exception) {
+            throw ApiFootballApiException(e.message ?: "Image fetch failed.", ApiFootballApiException.Kind.NETWORK)
+        }
+        if (response.status.value !in 200..299) {
+            throw ApiFootballApiException(
+                "Image fetch returned HTTP ${response.status.value}",
+                ApiFootballApiException.Kind.NETWORK,
+            )
+        }
+        response.bodyAsBytes()
     }
 
     // --- HTTP plumbing -------------------------------------------------------------
