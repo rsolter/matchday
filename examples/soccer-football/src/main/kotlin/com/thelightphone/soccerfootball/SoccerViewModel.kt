@@ -314,6 +314,12 @@ class SoccerViewModel(
 
     private fun followedLeagues(): List<Competition> = TRACKED_COMPETITIONS.filter { it.id in selectedIds }
 
+    /** [followedLeagues] narrowed to competitions with an actual league table — knockout cups
+     * (FA Cup, Copa del Rey, etc.) have no `/standings` response to show, so they're left out of
+     * the Standings and My Team league pickers rather than opening onto a permanently-empty
+     * "not available" screen. They still show up normally in Scores/Fixtures. */
+    private fun followedTableCompetitions(): List<Competition> = followedLeagues().filter { it.hasStandings }
+
     // --- League selection --------------------------------------------------------
 
     fun openLeagueSelection() {
@@ -351,7 +357,7 @@ class SoccerViewModel(
     // --- Standings -----------------------------------------------------------------
 
     fun openStandingsPicker() {
-        updateState { it.copy(mode = ScoreScreenMode.StandingsPicker(followedLeagues()), errorModal = null) }
+        updateState { it.copy(mode = ScoreScreenMode.StandingsPicker(followedTableCompetitions()), errorModal = null) }
     }
 
     fun backFromStandingsPicker() {
@@ -396,7 +402,7 @@ class SoccerViewModel(
     }
 
     fun backFromStandingsTable() {
-        updateState { it.copy(mode = ScoreScreenMode.StandingsPicker(followedLeagues()), errorModal = null) }
+        updateState { it.copy(mode = ScoreScreenMode.StandingsPicker(followedTableCompetitions()), errorModal = null) }
     }
 
     // --- Fixtures ------------------------------------------------------------------
@@ -475,7 +481,7 @@ class SoccerViewModel(
 
     fun openMyTeamSetup() {
         modeBeforeMyTeamSetup = _uiState.value.mode
-        updateState { it.copy(mode = ScoreScreenMode.MyTeamLeaguePicker(followedLeagues()), errorModal = null) }
+        updateState { it.copy(mode = ScoreScreenMode.MyTeamLeaguePicker(followedTableCompetitions()), errorModal = null) }
     }
 
     fun backFromMyTeamLeaguePicker() {
@@ -530,7 +536,7 @@ class SoccerViewModel(
     }
 
     fun backFromMyTeamTeamPicker() {
-        updateState { it.copy(mode = ScoreScreenMode.MyTeamLeaguePicker(followedLeagues()), errorModal = null) }
+        updateState { it.copy(mode = ScoreScreenMode.MyTeamLeaguePicker(followedTableCompetitions()), errorModal = null) }
     }
 
     fun selectMyTeamTeam(teamId: Int, teamName: String, leagueId: Int) {

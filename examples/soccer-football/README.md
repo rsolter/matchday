@@ -1,9 +1,11 @@
 # Soccer Pro
 
 A Light Phone III tool sourced from [API-Football](https://www.api-football.com) (api-football.com,
-`v3.football.api-sports.io`) — Premier League, Serie A, UEFA Champions League, and UEFA Europa
-League, with Settings, Scores, Fixtures, Standings, and a "My Team" screen (league position,
-upcoming/recent fixtures, and who's unavailable for the next match).
+`v3.football.api-sports.io`) — 15 competitions across England (Premier League, Championship, FA Cup,
+EFL Cup), Italy (Serie A, Coppa Italia), Spain (La Liga, Copa del Rey), Germany (Bundesliga,
+DFB-Pokal), France (Ligue 1, Coupe de France), Europe (UEFA Champions League, UEFA Europa League),
+and the US (MLS) — with Settings, Scores, Fixtures, Standings, and a "My Team" screen (league
+position, upcoming/recent fixtures, and who's unavailable for the next match).
 
 This module landed on API-Football after evaluating a few other free/unofficial data sources
 (football-data.org, ESPN's unofficial site API, FotMob's unofficial API) that either had tighter
@@ -56,7 +58,12 @@ per-endpoint doc comments for the full shape and gotchas found in each):
   inference needed here, unlike the ESPN variant of this tool.
 - `GET /standings` — flat table for domestic leagues (confirmed: Premier League, 20 teams in one
   array), split into multiple group arrays for UEFA competitions (confirmed: Champions League,
-  8 groups of 4 in `standings: [[...], [...], ...]`).
+  8 groups of 4 in `standings: [[...], [...], ...]`); MLS is assumed to split into Eastern/Western
+  Conference tables the same way, not independently confirmed. The six knockout cups tracked by
+  this build (FA Cup, EFL Cup, Coppa Italia, Copa del Rey, DFB-Pokal, Coupe de France) have no
+  standings response at all — no code change needed for that, since `Competition.hasStandings`
+  keeps them out of the Standings and My Team league pickers in the first place (see "What it
+  does" below).
 - `GET /injuries` (by `fixture`, or by `league`+`season`+`team`) — My Team's "Unavailable" section.
   Two gotchas: it's a season-long log (one row per fixture a player missed), not a "current state"
   snapshot, so this build calls the fixture-scoped variant against one specific reference fixture
@@ -64,11 +71,29 @@ per-endpoint doc comments for the full shape and gotchas found in each):
   real injuries and suspension causes ("Red Card", "Yellow Cards") — split into Injured/Suspended
   buckets rather than shown as one undifferentiated "injuries" list.
 
-**Not independently verified — worth a quick real check before relying on them:**
+**League IDs — three verification tiers** (see `SoccerModels.kt`'s doc comment on
+`TRACKED_COMPETITIONS` for the same breakdown in code, and `soccer-pro-proxy`'s `app/config.py` for
+the whitelist that has to match it):
 
-- League IDs 135 (Serie A) and 3 (UEFA Europa League) — 39 (Premier League) and 2 (Champions
-  League) were confirmed, 135 and 3 are API-Football's commonly published IDs but weren't
-  curl-tested this session.
+- **Curl-confirmed against a real response, this project's own history**: 39 (Premier League),
+  2 (UEFA Champions League).
+- **Corroborated by two independent sources** (general knowledge plus a public GitHub reference
+  listing API-Football's commonly-used IDs) but not curl-tested against a live response: 140
+  (La Liga), 135 (Serie A), 78 (Bundesliga), 61 (Ligue 1), 3 (UEFA Europa League), 45 (FA Cup),
+  143 (Copa del Rey), 137 (Coppa Italia), 81 (DFB-Pokal), 66 (Coupe de France).
+- **Recalled from general knowledge only, no independent source found** — the riskiest three,
+  worth checking first: 40 (Championship), 48 (EFL Cup), 253 (MLS). A search for a public
+  ID-to-name table covering these three specifically came up empty this session (API-Football's
+  own such page requires dashboard login).
+
+A wrong ID isn't silently dangerous: the proxy's whitelist has to list the same ID before any
+request for it succeeds at all, and the first real request against a wrong one either errors or
+comes back as an obviously different competition's real teams — worth a quick look at each new
+competition's Scores/Fixtures/Standings once this is deployed, especially the three unconfirmed
+ones.
+
+**Also not independently verified — worth a quick real check before relying on them:**
+
 - The `team`+`season`+`from`/`to` fixtures query (My Team's fixture list) — only the
   `league`-scoped equivalent was tested.
 - Every `MatchStatus` mapping other than `"FT"` — the free tier's 2022-2024 window made it hard to
@@ -109,19 +134,26 @@ follow-up rather than an oversight — just not part of the Phase 3 migration it
 
 ## What it does
 
-- **Scores** (default view): today's matches (real device date), grouped by competition. No
-  auto-refresh (see above) — pull-to-date is via Settings' "Refresh now".
-- **Settings**: which of the four leagues you follow, your My Team pick (changeable, clearable),
-  and the manual refresh action.
-- **Fixtures**: pick a followed league, see its matches ±10/+21 days around today, grouped by date,
-  auto-scrolled to today.
-- **Standings**: pick a followed league, see its table — grouped by "Group A"/"Group B"/etc.
-  automatically for UEFA competitions, one flat table otherwise (see the Data source section).
+- **Scores** (default view): today's matches (real device date) across every followed competition,
+  grouped by competition. No auto-refresh (see above) — pull-to-date is via Settings' "Refresh now".
+  Fans out one request per followed competition, concurrently — with all 15 followed by default
+  that's up to 15 concurrent requests per refresh (up from 4 pre-expansion), all cached 5 minutes
+  server-side by the proxy; worth keeping in mind against the proxy's shared daily budget even
+  though the proxy is exactly what makes this cheap in the first place.
+- **Settings**: which of the 15 tracked competitions you follow, your My Team pick (changeable,
+  clearable), and the manual refresh action.
+- **Fixtures**: pick a followed competition (leagues and cups both), see its matches ±10/+21 days
+  around today, grouped by date, auto-scrolled to today.
+- **Standings**: pick a followed *league* (knockout cups are excluded here — see `Competition
+  .hasStandings` in `SoccerModels.kt` — since they have no table to show), see its table — grouped
+  by "Group A"/"Group B"/etc. automatically for UEFA competitions and assumed for MLS's conferences,
+  one flat table otherwise (see the Data source section).
 - **My Team**: reachable via the star icon in the bottom bar. First use walks through a two-step
-  setup (pick a followed league, then a team from that league's standings — there's no team-search
-  endpoint verified for this build, so the team list comes from data already on screen). Once set,
-  shows league position, a handful of upcoming and recent fixtures, and who's unavailable
-  (injured/suspended, split) for the team's next match.
+  setup (pick a followed *league* — same cup exclusion as Standings, since "league position" needs
+  a table — then a team from that league's standings; there's no team-search endpoint verified for
+  this build, so the team list comes from data already on screen). Once set, shows league position,
+  a handful of upcoming and recent fixtures, and who's unavailable (injured/suspended, split) for
+  the team's next match.
 - **Match detail**: tap any match row from Scores, Fixtures, or My Team. Four tabs — **Stats**,
   **Timeline**, **Home Lineup**, **Away Lineup**:
   - Stats: raw API-Football stat types, lightly reformatted (underscores → spaces, title case) but
@@ -165,11 +197,29 @@ migration was compiled locally before being handed off. A careful manual read-th
 types, sealed-class exhaustiveness, brace/paren balance) stood in for a real build both times.
 Treat your first `./gradlew :examples:soccer-football:installDebug` after pulling these changes as
 the actual first test — please report back anything that doesn't compile, along with the
-"not independently verified" items above (Serie A/Europa League IDs, the team-scoped fixtures
-query, every `MatchStatus` code besides `FT`, and now also `currentSeason()`'s July cutover
-assumption) if you hit any of them.
+"not independently verified" items above (the 13 new-to-this-round league IDs at two different
+confidence tiers, the team-scoped fixtures query, every `MatchStatus` code besides `FT`, MLS's
+assumed conference-grouped standings, and `currentSeason()`'s July cutover assumption) if you hit
+any of them.
 
-The proxy itself (`https://soccer-proxy.ravisolter.com`) was verified live and reachable this
-session — `/health`, `/status`, and a real `/standings?league=39&season=2026` call all returned
-correct, current data — so the Phase 3 migration's assumption that the proxy is up and working is
-solid; what's unverified is only whether this Kotlin change compiles against it.
+The proxy itself (`https://soccer-proxy.ravisolter.com`) was verified live and reachable earlier
+this session — `/health`, `/status`, and a real `/standings?league=39&season=2026` call all
+returned correct, current data — so the assumption that the proxy is up and working is solid;
+what's unverified is only whether this Kotlin change compiles against it, and whether each of the
+13 newly-added league IDs is actually correct.
+
+**On the 13 new competitions specifically**: real curl/API verification wasn't possible this round
+— the proxy exposes no league-ID-lookup endpoint, and API-Football's own such page
+(`dashboard.api-football.com/soccer/ids`) sits behind a login this session has no access to (tried
+via the built-in browser; blocked by Cloudflare's bot check before even reaching a login prompt,
+and login wasn't attempted regardless — that's the user's account, not something to sign into on
+their behalf). What stands in for verification instead: general knowledge, cross-checked against
+one public GitHub repo (`zxkane/agentcore-football-api`) that independently lists the same 10 IDs
+for La Liga/Bundesliga/Ligue 1/Europa League/the five domestic cups — two independent sources
+agreeing is meaningfully better than one, but it's still not the same as a real response. The
+Championship, EFL Cup, and MLS IDs have neither corroboration — no second source turned up for
+those three despite several searches — so they're the ones most likely to be wrong if any are.
+Since the proxy's whitelist gates every request by exact ID, a wrong one fails loudly (an error) or
+obviously (a different competition's real teams show up) rather than silently — so the fix, once
+you have dashboard access or hit a wrong result, is a one-line change in two places:
+`TRACKED_COMPETITIONS` here and `LEAGUE_WHITELIST` in `soccer-pro-proxy`'s `app/config.py`.

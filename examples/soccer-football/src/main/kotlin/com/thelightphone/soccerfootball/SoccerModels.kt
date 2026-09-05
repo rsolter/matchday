@@ -9,33 +9,66 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * The competitions this tool tracks. IDs are API-Football's own numeric league IDs (a documented,
  * stable API — unlike the ESPN/FotMob variants of this tool, so these aren't reverse-engineered).
+ * [hasStandings] is false for single-elimination domestic cups, which have no league table —
+ * API-Football's `/standings` legitimately returns nothing for them, so they're excluded from the
+ * Standings and My Team league pickers (see `SoccerViewModel.followedTableCompetitions`) while
+ * still showing up normally in Scores/Fixtures.
  *
- * 39 (Premier League) and 2 (UEFA Champions League) were confirmed this session against real
- * `/leagues` and `/standings` responses. 135 (Serie A) and 3 (UEFA Europa League) are
- * API-Football's commonly published IDs for those competitions but were **not** independently
- * curl-verified against a real response in this session — worth a quick
- * `GET /leagues?id=135` / `GET /leagues?id=3` check before relying on them, same way 39 and 2 were
- * confirmed (see the module README's "Data source" section for the verification trail).
+ * Verification status, three tiers (see the module README's "Data source" section for the full
+ * writeup) — a wrong ID here isn't silently dangerous either way: the proxy's own league whitelist
+ * (`soccer-pro-proxy`'s `app/config.py`) has to list the same ID before any request for it
+ * succeeds at all, and the first real request against a wrong ID either errors or comes back as
+ * an obviously different competition's real teams:
+ *
+ * - **Curl-confirmed against a real response**, this project's own history: 39 (Premier League),
+ *   2 (UEFA Champions League).
+ * - **Corroborated by two independent sources** (general knowledge plus a public GitHub reference
+ *   listing API-Football's commonly-used IDs) but not curl-tested against a live response: 140
+ *   (La Liga), 135 (Serie A), 78 (Bundesliga), 61 (Ligue 1), 3 (UEFA Europa League), 45 (FA Cup),
+ *   143 (Copa del Rey), 137 (Coppa Italia), 81 (DFB-Pokal), 66 (Coupe de France).
+ * - **Recalled from general knowledge only, no independent source found** — the riskiest three,
+ *   worth checking first once live: 40 (Championship), 48 (EFL Cup), 253 (MLS).
  */
-data class Competition(val id: Int, val name: String)
+data class Competition(val id: Int, val name: String, val hasStandings: Boolean = true)
 
 val TRACKED_COMPETITIONS: List<Competition> = listOf(
+    // England
     Competition(id = 39, name = "Premier League"),
+    Competition(id = 40, name = "Championship"),
+    Competition(id = 45, name = "FA Cup", hasStandings = false),
+    Competition(id = 48, name = "EFL Cup", hasStandings = false),
+    // Italy
     Competition(id = 135, name = "Serie A"),
+    Competition(id = 137, name = "Coppa Italia", hasStandings = false),
+    // Spain
+    Competition(id = 140, name = "La Liga"),
+    Competition(id = 143, name = "Copa del Rey", hasStandings = false),
+    // Germany
+    Competition(id = 78, name = "Bundesliga"),
+    Competition(id = 81, name = "DFB-Pokal", hasStandings = false),
+    // France
+    Competition(id = 61, name = "Ligue 1"),
+    Competition(id = 66, name = "Coupe de France", hasStandings = false),
+    // Europe
     Competition(id = 2, name = "UEFA Champions League"),
     Competition(id = 3, name = "UEFA Europa League"),
+    // USA
+    Competition(id = 253, name = "MLS"),
 )
 
 /**
  * Competitions whose `/standings` response splits into multiple group arrays instead of one flat
  * table (confirmed for id 2 / UEFA Champions League this session — 8 groups of 4 — see
  * [ApiFootballStandingsLeagueDto.standings]'s doc comment). Id 3 / Europa League is assumed to
- * share UEFA's group-stage format but wasn't independently confirmed — [toStandingsRows] doesn't
- * actually need this set (it detects grouping directly from the response shape, i.e.
- * `standings.size > 1`), so a wrong assumption here costs nothing; this is just documentation of
- * what's expected going in.
+ * share UEFA's group-stage format; id 253 / MLS is assumed to split into Eastern/Western
+ * Conference tables the same way. Neither assumption is independently confirmed —
+ * [toStandingsRows] doesn't actually need this set (it detects grouping directly from the response
+ * shape, i.e. `standings.size > 1`), so a wrong assumption here costs nothing; this is just
+ * documentation of what's expected going in. The knockout cups in [TRACKED_COMPETITIONS] aren't
+ * here at all — they have no standings response to be grouped or flat in the first place (see
+ * [Competition.hasStandings]).
  */
-val GROUP_STAGE_COMPETITION_IDS: Set<Int> = setOf(2, 3)
+val GROUP_STAGE_COMPETITION_IDS: Set<Int> = setOf(2, 3, 253)
 
 private val COMPETITION_DISPLAY_ORDER: Map<Int, Int> =
     TRACKED_COMPETITIONS.mapIndexed { index, c -> c.id to index }.toMap()
