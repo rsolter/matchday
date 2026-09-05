@@ -5,10 +5,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 
 internal object SoccerPreferences {
-    /** API-Football key, sent as the `x-apisports-key` header on every request. Unlike the ESPN
-     * variant of this tool, API-Football needs one — see SoccerApi.kt. */
-    val API_KEY = stringPreferencesKey("api_key")
-
     val CACHED_MATCHES_JSON = stringPreferencesKey("cached_matches_json")
     val CACHED_MATCHES_DATE = stringPreferencesKey("cached_matches_date")
 

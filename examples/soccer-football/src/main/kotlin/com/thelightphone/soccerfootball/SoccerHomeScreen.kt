@@ -17,7 +17,6 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,7 +36,6 @@ import androidx.compose.ui.unit.dp
 import com.thelightphone.sdk.InitialScreen
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.SealedLightActivity
-import com.thelightphone.sdk.rememberKeyboardOptions
 import com.thelightphone.sdk.ui.LightBarButton
 import com.thelightphone.sdk.ui.LightBottomBar
 import com.thelightphone.sdk.ui.LightFullscreenModal
@@ -46,7 +44,6 @@ import com.thelightphone.sdk.ui.LightIcons
 import com.thelightphone.sdk.ui.LightScrollBarPosition
 import com.thelightphone.sdk.ui.LightScrollView
 import com.thelightphone.sdk.ui.LightText
-import com.thelightphone.sdk.ui.LightTextInputEditor
 import com.thelightphone.sdk.ui.LightTextVariant
 import com.thelightphone.sdk.ui.LightTheme
 import com.thelightphone.sdk.ui.LightThemeController
@@ -71,8 +68,6 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
     override fun Content() {
         val themeColors by LightThemeController.colors.collectAsState()
         val state by viewModel.uiState.collectAsState()
-        val textFieldState = rememberTextFieldState("")
-        val keyboardOptionsFlow = rememberKeyboardOptions()
 
         LightTheme(colors = themeColors) {
             Box(
@@ -81,21 +76,6 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                     .background(LightThemeTokens.colors.background),
             ) {
                 when (val mode = state.mode) {
-                    is ScoreScreenMode.ApiKeyInput -> {
-                        LightTextInputEditor(
-                            title = "API-Football Key",
-                            editorKey = state.apiKeyInputSession,
-                            keyboardOptionsFlow = keyboardOptionsFlow,
-                            state = textFieldState,
-                            onSubmit = viewModel::submitApiKey,
-                            onBack = viewModel::onApiKeyInputBack,
-                            submitLabel = "SAVE",
-                            showBackButton = true,
-                            singleLine = true,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-
                     is ScoreScreenMode.Loading -> {
                         LoadingContent(title = "Soccer Pro", message = mode.message)
                     }
@@ -115,12 +95,9 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
 
                     is ScoreScreenMode.Settings -> {
                         SettingsContent(
-                            maskedApiKey = mode.maskedApiKey,
                             selectedLeagueNames = mode.selectedLeagueNames,
                             myTeamName = mode.myTeamName,
                             onBack = viewModel::closeSettings,
-                            onChangeKey = viewModel::openApiKeyInputFromSettings,
-                            onClearKey = viewModel::clearApiKey,
                             onOpenAttribution = viewModel::openAttribution,
                             onOpenLeagueSelection = viewModel::openLeagueSelection,
                             onOpenMyTeamSetup = viewModel::openMyTeamSetup,
@@ -419,12 +396,9 @@ private fun MatchRow(match: Fixture, showFinishedStatus: Boolean = true, onClick
 
 @Composable
 private fun SettingsContent(
-    maskedApiKey: String,
     selectedLeagueNames: List<String>,
     myTeamName: String?,
     onBack: () -> Unit,
-    onChangeKey: () -> Unit,
-    onClearKey: () -> Unit,
     onOpenAttribution: () -> Unit,
     onOpenLeagueSelection: () -> Unit,
     onOpenMyTeamSetup: () -> Unit,
@@ -457,15 +431,6 @@ private fun SettingsContent(
                         .padding(top = 0.25f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
                 )
             }
-            SettingRow(label = "API Key", value = maskedApiKey, onClick = onChangeKey)
-            LightText(
-                text = "Forget API Key",
-                variant = LightTextVariant.Copy,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .lightClickable(onClick = onClearKey)
-                    .padding(top = 0.25f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
-            )
             // This build's only manual-refresh surface — see SoccerViewModel's class doc comment
             // for why there's no bottom-bar refresh icon.
             LightText(
@@ -534,7 +499,7 @@ private fun AttributionContent(onBack: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize()) {
         LightTopBar(
             leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = onBack),
-            center = LightTopBarCenter.Text("Get an API Key"),
+            center = LightTopBarCenter.Text("About"),
             modifier = Modifier.padding(bottom = 1f.gridUnitsAsDp()),
         )
 
@@ -547,17 +512,12 @@ private fun AttributionContent(onBack: () -> Unit) {
         ) {
             LightText(
                 text = "Scores are provided by API-Football (api-football.com), a paid football " +
-                    "data API with a limited free tier. This tool covers the Premier League, " +
-                    "Serie A, and the UEFA Champions League and Europa League.\n\n" +
-                    "To use it:\n\n" +
-                    "1. On any browser, visit api-football.com and create an account.\n\n" +
-                    "2. Copy the API key shown on your dashboard.\n\n" +
-                    "3. Paste it into this tool.\n\n" +
-                    "This build (Phase 1) is scoped to the free tier, which caps requests at " +
-                    "100/day and only covers the 2022-2024 seasons — not live, current-season " +
-                    "data. Scores, fixtures, and standings shown here are from a fixed point in " +
-                    "the 2023/24 season rather than today's real matches; see the module README " +
-                    "for the plan to move to live data on a paid tier.",
+                    "data API. This tool covers the Premier League, Serie A, and the UEFA " +
+                    "Champions League and Europa League.\n\n" +
+                    "Requests go through a caching proxy this app's developer runs, which holds " +
+                    "the API-Football key and absorbs the request load — there's nothing to set " +
+                    "up or configure here. Scores, fixtures, and standings are live, " +
+                    "current-season data.",
                 variant = LightTextVariant.Paragraph,
             )
         }
@@ -774,7 +734,7 @@ private fun FixturesContent(
                 )
             }
         } else {
-            val today = phase1Today()
+            val today = todayLocalDate()
             val targetIndex = remember(groups, today) {
                 groups.indexOfFirst { it.date >= today }.takeIf { it >= 0 } ?: groups.lastIndex
             }

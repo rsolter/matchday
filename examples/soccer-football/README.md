@@ -8,21 +8,23 @@ upcoming/recent fixtures, and who's unavailable for the next match).
 This module landed on API-Football after evaluating a few other free/unofficial data sources
 (football-data.org, ESPN's unofficial site API, FotMob's unofficial API) that either had tighter
 restrictions or weren't worth the ongoing maintenance cost of an undocumented API. Unlike those,
-API-Football is a documented, official, stable REST API — but it has real free-tier restrictions
-of its own, described below.
+API-Football is a documented, official, stable REST API.
 
-This is meant to be a tool the broader LightOS community can install and use for free — see
-"Phase 1 vs. production" below for the plan to get it off free-tier historical data and onto a
-shared caching proxy so a paid plan's request budget is spent once, server-side, rather than per
-installed phone.
+This is a tool the broader LightOS community can install and use for free: the app talks to a
+caching proxy (`soccer-proxy`, deployed separately — see "Phase 1 vs. production" below) that holds
+a real, paid API-Football key server-side, so a single request budget is shared across every
+installed phone instead of each one needing its own key.
 
 ## Data source
 
-Base URL `https://v3.football.api-sports.io`, authenticated via an `x-apisports-key` header (get a
-key at api-football.com; a free tier exists, see below). Every endpoint and field this tool relies
-on was verified against real responses from a real key rather than assumed from documentation —
-API-Football's docs are accurate as far as they go, but the free-tier restrictions below are not
-documented anywhere and were only found by testing.
+The app itself talks only to that proxy — see "Phase 1 vs. production" below for the base URL and
+why there's no client-side auth. This section documents API-Football itself, which the proxy talks
+to server-side. Base URL `https://v3.football.api-sports.io`, authenticated via an
+`x-apisports-key` header. Every endpoint and field this tool relies on was verified against real
+responses from a real key rather than assumed from documentation — API-Football's docs are accurate
+as far as they go, but the free-tier restrictions below (encountered and worked around during
+Phase 1, before this build had a paid plan) are not documented anywhere and were only found by
+testing.
 
 **Free-tier restrictions, confirmed empirically:**
 
@@ -75,40 +77,44 @@ per-endpoint doc comments for the full shape and gotchas found in each):
 
 ## Phase 1 vs. production
 
-This build is **Phase 1** of a 3-phase plan agreed on before writing any code: (1) build the full
+This build went through a 3-phase plan agreed on before writing any code: (1) build the full
 visual/UI/data-flow shape against the free tier's historical 2022-2024 data, (2) design a
 lazy/TTL-based caching proxy server so a paid plan's request budget is shared server-side instead
 of spent per-installed-phone, (3) point this app at that proxy with a paid plan for real
-current-season, live data.
+current-season, live data. **All three phases are done** — this app now talks to
+`https://soccer-proxy.ravisolter.com` (`ApiFootballApi.API_BASE` in `SoccerApi.kt`), a FastAPI +
+SQLite proxy deployed separately (its own repo, `soccer-pro-proxy`), running via launchd behind a
+Cloudflare Tunnel.
 
-Two deliberate Phase-1-only compromises, both called out inline in code:
+The proxy holds the real API-Football key server-side and requires no client-side auth of its own
+— confirmed by reading its source: none of its routes check for a client credential, only an
+IP-based rate limiter and a league allow-list. This app sends no API key, header, or credential of
+any kind; there's no Settings row for one anymore. Season/date logic now uses the real device clock
+throughout: `currentSeason()` (`SoccerFormatting.kt`) computes the current API-Football season
+number from `todayLocalDate()` (assuming a July season-cutover — see its doc comment for the
+caveat), replacing Phase 1's frozen `PHASE1_SEASON`/`phase1Today()` scaffolding, which is gone.
 
-- **`PHASE1_SEASON`** (`SoccerModels.kt`) pins every request to the 2023/24 season, since the free
-  tier can't see anything newer.
-- **`phase1Today()`** (`SoccerFormatting.kt`) stands in for "today" everywhere fixture/season logic
-  needs it — August 19, 2023, a real confirmed Premier League matchday — since the device's real
-  current date has no matches on this tier. `todayLocalDate()` still reads the real clock for
-  things that are genuinely about *now* (e.g. "last updated 2 minutes ago").
+One thing Phase 3 does **not** change: `ApiFootballApi.fetchImageBytes` (team crest images) talks
+directly to whatever CDN serves the image, not through the proxy — so crest fetches bypass the
+proxy's caching, its request budget, and its rate limiter entirely. That's fine for cost (crest
+fetches don't touch API-Football's quota either way) but worth knowing if the proxy's protections
+are ever assumed to cover *all* outbound requests from this app.
 
-Grep for `PHASE1_SEASON` and `phase1Today` when doing the Phase 3 swap.
-
-**There is deliberately no auto-refresh/poll loop in this build**, unlike the ESPN/football-data.org
-variants of this tool. The free tier is capped at 100 requests/day total — a 60-second poll across
-even 2-3 followed leagues would blow through that in well under an hour. Phase 1's data is also a
-frozen historical season, so polling for "updates" would be spending quota on data that literally
-cannot change. Refresh here is on-demand only: once on first load, and via a "Refresh now" row in
-Settings — which also happens to be this build's answer to the requested "no visible refresh
-button" feature (see below). Phase 3, with the request cost absorbed by the caching proxy instead
-of each phone, is where a real poll loop belongs.
+**There is still no auto-refresh/poll loop in this build.** Refresh is on-demand only: once on
+first load, and via a "Refresh now" row in Settings — which also happens to be this build's answer
+to the requested "no visible refresh button" feature (see below). The proxy is exactly the kind of
+shared, budget-absorbing intermediary that would make a poll loop cheap across every installed
+phone (each phone would poll the proxy, not API-Football directly), so this is a real, deliberate
+follow-up rather than an oversight — just not part of the Phase 3 migration itself.
 
 ## What it does
 
-- **Scores** (default view): [`phase1Today()`](#phase-1-vs-production)'s matches, grouped by
-  competition. No auto-refresh (see above) — pull-to-date is via Settings' "Refresh now".
-- **Settings**: which of the four leagues you follow, your API key (masked, changeable, clearable),
-  your My Team pick (changeable, clearable), and the manual refresh action.
-- **Fixtures**: pick a followed league, see its matches ±10/+21 days around `phase1Today()`,
-  grouped by date, auto-scrolled to today.
+- **Scores** (default view): today's matches (real device date), grouped by competition. No
+  auto-refresh (see above) — pull-to-date is via Settings' "Refresh now".
+- **Settings**: which of the four leagues you follow, your My Team pick (changeable, clearable),
+  and the manual refresh action.
+- **Fixtures**: pick a followed league, see its matches ±10/+21 days around today, grouped by date,
+  auto-scrolled to today.
 - **Standings**: pick a followed league, see its table — grouped by "Group A"/"Group B"/etc.
   automatically for UEFA competitions, one flat table otherwise (see the Data source section).
 - **My Team**: reachable via the star icon in the bottom bar. First use walks through a two-step
@@ -143,14 +149,10 @@ adb shell am start -n com.thelightphone.soccerfootball/com.thelightphone.sdk.Lig
 — see [`docs/system_app`](../../docs/system_app) for setting that up in Android Studio. Switch it
 to `com.lightos` before sideloading to a real Light Phone III.
 
-You'll need a real API-Football key to get past the first screen — see Settings' "learn more" link
-(or the Attribution screen) for how to get a free one.
-
-**A word on that key**: don't paste it in plaintext anywhere it might get logged or shared (this
-one included earlier in this build's own development — it should be rotated from the API-Football
-dashboard if it hasn't been already). If you're testing via `curl` from a terminal, `export
-API_KEY=...` once and reference `$API_KEY` in commands rather than typing the literal key each
-time.
+No API key or setup is needed to run this — the app talks straight to the deployed proxy
+(`https://soccer-proxy.ravisolter.com`) and shows real data on first launch. The proxy itself needs
+its own API-Football key configured server-side (see the `soccer-pro-proxy` repo), but that's
+outside this module.
 
 ## Honesty check
 
@@ -158,10 +160,16 @@ This was built by adapting the ESPN/football-data.org variants' already-tested s
 structure to a new, independently-verified API-Football data layer — every DTO shape in
 `SoccerModels.kt` traces back to a real `curl` response gathered and reviewed before any Kotlin was
 written, not assumed from API-Football's documentation. That said, this is still, like the rest of
-this repo, a sandbox build with no Android SDK: it wasn't compiled locally before being handed off.
-A careful manual read-through (imports, types, sealed-class exhaustiveness, brace/paren balance —
-checked programmatically across all six source files, all balanced) stood in for a real build.
-Treat your first `./gradlew :examples:soccer-football:installDebug` as the actual first test —
-please report back anything that doesn't compile, along with the three specific "not independently
-verified" items above (Serie A/Europa League IDs, the team-scoped fixtures query, and every
-`MatchStatus` code besides `FT`) if you hit any of them.
+this repo, a sandbox build with no Android SDK: neither Phase 1 nor the later Phase 3 proxy
+migration was compiled locally before being handed off. A careful manual read-through (imports,
+types, sealed-class exhaustiveness, brace/paren balance) stood in for a real build both times.
+Treat your first `./gradlew :examples:soccer-football:installDebug` after pulling these changes as
+the actual first test — please report back anything that doesn't compile, along with the
+"not independently verified" items above (Serie A/Europa League IDs, the team-scoped fixtures
+query, every `MatchStatus` code besides `FT`, and now also `currentSeason()`'s July cutover
+assumption) if you hit any of them.
+
+The proxy itself (`https://soccer-proxy.ravisolter.com`) was verified live and reachable this
+session — `/health`, `/status`, and a real `/standings?league=39&season=2026` call all returned
+correct, current data — so the Phase 3 migration's assumption that the proxy is up and working is
+solid; what's unverified is only whether this Kotlin change compiles against it.

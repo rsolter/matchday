@@ -8,23 +8,6 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
- * Phase 1's stand-in for "today" — see [PHASE1_SEASON]'s doc comment in SoccerModels.kt for why
- * this build can't use the device's real current date. August 19, 2023 was picked because it's a
- * real Premier League matchday confirmed against a real response this session (fixture 1035052,
- * Man City vs. Sheffield United among others), not an arbitrary guess.
- *
- * Every place in this module that means "today" for fixture/season purposes — the Scores screen's
- * default view, the Fixtures window's center — reads [phase1Today] instead of [todayLocalDate].
- * [todayLocalDate] itself stays wired to the real device clock, since it's still correct for
- * things that are genuinely about *now* rather than season data (e.g. "last updated 2 minutes
- * ago"). Phase 3 deletes [phase1Today] and switches every one of its call sites back to
- * [todayLocalDate] — grep for `phase1Today` when doing that swap.
- */
-private val PHASE1_REFERENCE_DATE = LocalDate(2023, 8, 19)
-
-fun phase1Today(): LocalDate = PHASE1_REFERENCE_DATE
-
-/**
  * Short status/score text shown next to a match, e.g. "2 - 1 · 37'", "HT", "FT", "7:30 PM".
  * [Fixture.elapsed]/[Fixture.extraMinutes] build the live minute directly (API-Football sends
  * these as plain numbers, not a pre-formatted string the way ESPN's `displayClock` does).
@@ -53,12 +36,28 @@ fun formatKickoffTime(isoDate: String): String =
 fun formatUpdatedAt(instant: Instant): String =
     instant.toLocalDateTime(TimeZone.currentSystemDefault()).toAmPm()
 
-/** Today's date in the device's local timezone — used for "how fresh is this fetch" purposes only,
- * not for anything season/fixture-related (see [phase1Today]'s doc comment). */
+/** Today's date in the device's local timezone. Phase 3 onward, this is used for fixture/season
+ * purposes too (see [currentSeason]) — Phase 1's separate frozen-date stand-in (`phase1Today`) is
+ * gone now that the proxy backing this app has real current-season access. */
 fun todayLocalDate(): LocalDate =
     Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
 
 fun todayLocalDateString(): String = todayLocalDate().toString()
+
+/**
+ * API-Football's `season` query parameter is the year the (northern-hemisphere) season *starts*,
+ * not the calendar year — confirmed empirically twice in this project: Phase 1's frozen
+ * `season=2023` paired with an Aug 19, 2023 reference date returned real fixtures, and this
+ * session's live proxy check (`GET /standings?league=39&season=2026` on Sept 5, 2026) returned
+ * real, in-progress 2026/27 Premier League standings.
+ *
+ * The July cutover below (season flips over on July 1st) is a reasonable assumption based on when
+ * European domestic leagues actually kick off preseason/transfer business, but it hasn't been
+ * independently verified against a real response near that boundary — worth a real check next
+ * time this code runs in June/July.
+ */
+fun currentSeason(referenceDate: LocalDate = todayLocalDate()): Int =
+    if (referenceDate.month.number >= 7) referenceDate.year else referenceDate.year - 1
 
 /** The calendar date (device-local timezone) a fixture's kickoff falls on, or null if
  * [Fixture.utcDate] couldn't be parsed. API-Football sends full ISO-8601 with an explicit offset
@@ -68,9 +67,9 @@ fun Fixture.localDate(): LocalDate? =
     parseIso(utcDate)?.toLocalDateTime(TimeZone.currentSystemDefault())?.date
 
 /** Short, uppercase date header for grouping fixtures by day, e.g. "SAT, AUG 19" — or "TODAY" for
- * [phase1Today] specifically (not the real device date, in this Phase 1 build). */
+ * the real device-local date ([todayLocalDate]). */
 fun formatFixtureDateHeader(date: LocalDate): String =
-    if (date == phase1Today()) {
+    if (date == todayLocalDate()) {
         "TODAY"
     } else {
         "${date.dayOfWeek.name.take(3)}, ${date.month.name.take(3)} ${date.dayOfMonth}"

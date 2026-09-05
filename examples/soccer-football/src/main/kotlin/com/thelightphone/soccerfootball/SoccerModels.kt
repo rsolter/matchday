@@ -43,28 +43,13 @@ private val COMPETITION_NAMES: Map<Int, String> = TRACKED_COMPETITIONS.associate
 
 fun competitionName(id: Int): String = COMPETITION_NAMES[id] ?: "League $id"
 
-/**
- * Phase 1 (this build) targets API-Football's free tier, whose season coverage is hard-capped to
- * 2022-2024 — confirmed empirically: `GET /leagues?id=39&season=2026` returned
- * `{"errors":{"plan":"Free plans do not have access to this season, try from 2022 to 2024."}}`.
- * There's no way to show genuinely live "today" data on this tier, so every request this build
- * makes is pinned to the 2023/24 season rather than the device's real current date.
- *
- * Phase 3 (pointed at the caching proxy + a paid plan with current-season access) replaces every
- * use of this constant with the real season/date — see the README's "Phase 1 vs. production"
- * section. Grep for `PHASE1_SEASON` when doing that swap; it's deliberately not buried inside
- * formatting helpers so it's easy to find and remove in one pass.
- */
-const val PHASE1_SEASON: Int = 2023
-
 // --- Wire format (API-Football /fixtures response) ----------------------------
 //
 // Confirmed against a real `GET /fixtures?league=39&season=2023&from=2023-08-01&to=2023-08-31`
 // response (29 fixtures, all finished) — see the module README for the full verification trail.
 // Only the `FT` status code has actually been seen in a real response this session; the rest of
 // [MatchStatus]'s mapping below comes from API-Football's published status-code table, not
-// independent curl verification (the free tier's 2022-2024 window makes it hard to catch a
-// genuinely live or not-yet-started match) — worth re-checking once Phase 3 has live data.
+// independent curl verification — worth re-checking now that Phase 3 has live data via the proxy.
 
 @Serializable
 internal data class ApiFootballFixturesResponse(

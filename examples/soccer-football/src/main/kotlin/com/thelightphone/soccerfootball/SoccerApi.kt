@@ -6,7 +6,6 @@ import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
-import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsBytes
@@ -23,22 +22,24 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 
-private const val API_BASE = "https://v3.football.api-sports.io"
+private const val API_BASE = "https://soccer-proxy.ravisolter.com"
 private const val REQUEST_TIMEOUT_MS = 15_000L
 
 /**
- * API-Football / API-Sports REST client (`https://v3.football.api-sports.io`), authenticated via
- * the `x-apisports-key` header. Unlike the ESPN variant of this tool, this is a documented,
- * stable, official API — but it has real, undocumented free-tier restrictions found only by
- * testing against a real key this session (see the module README's "Data source" section):
- * seasons are capped to 2022-2024, and the `last` query parameter is Pro-only.
+ * Client for this app's own caching proxy (`https://soccer-proxy.ravisolter.com`), not
+ * API-Football directly — Phase 3 onward, the proxy holds the real API-Football key server-side
+ * and absorbs the request-rate/plan cost, so this class sends no auth header of its own (confirmed
+ * by reading the proxy's own source: none of its routes check for a client credential, only an
+ * IP-based rate limiter and a league allow-list).
  *
- * A subtlety that matters for every method below: API-Football returns real errors (including
- * both restrictions above) as an HTTP 200 with a populated `errors` field, not as a non-2xx status
- * — confirmed against real responses (`{"errors":{"plan":"..."}}`) alongside real *successful*
- * responses that carry `"errors":[]` (an empty array, not absent). [getChecked] handles both
- * shapes so a plan restriction surfaces as a real error message instead of silently decoding into
- * an empty `response` list and looking like "no fixtures found".
+ * A subtlety that mattered when this class talked to API-Football directly, and is left in place
+ * as defense-in-depth even though the proxy now intercepts it server-side: API-Football itself
+ * returns real errors (plan restrictions among them) as an HTTP 200 with a populated `errors`
+ * field, not a non-2xx status. [getChecked] still checks for that shape via
+ * [apiFootballErrorMessage]. What actually reaches this class now, per the proxy's own
+ * `app/main.py`, are real HTTP statuses: 429 (rate limited), 402 (plan restricted), 502 (network
+ * failure talking to API-Football), 403 (league not on the whitelist), 400 (bad params) — [get]'s
+ * status handling below maps these to real [ApiFootballApiException.Kind]s.
  */
 internal class ApiFootballApiException(
     message: String,
@@ -60,15 +61,15 @@ internal class ApiFootballApi {
 
     // --- Fixtures ------------------------------------------------------------
 
-    /** Today's ([phase1Today], not the device's real date — see its doc comment) matches across
-     * [leagueIds]. One request per league, fanned out concurrently and tolerant of partial
-     * failure — mirrors the ESPN variant's [SoccerApi.fetchTodaysMatches] fan-out for the same
-     * reason: one league's request failing shouldn't blank out the others. */
-    suspend fun fetchTodaysMatches(apiKey: String, leagueIds: List<Int>): Result<List<Fixture>> = coroutineScope {
+    /** Today's ([todayLocalDate]) matches across [leagueIds]. One request per league, fanned out
+     * concurrently and tolerant of partial failure — mirrors the ESPN variant's
+     * [SoccerApi.fetchTodaysMatches] fan-out for the same reason: one league's request failing
+     * shouldn't blank out the others. */
+    suspend fun fetchTodaysMatches(leagueIds: List<Int>): Result<List<Fixture>> = coroutineScope {
         if (leagueIds.isEmpty()) return@coroutineScope Result.success(emptyList())
-        val date = phase1Today().toString()
+        val date = todayLocalDate().toString()
         val results = leagueIds.map { id ->
-            async { runCatching { fetchFixturesInternal(apiKey, leagueId = id, dateFrom = date, dateTo = date) } }
+            async { runCatching { fetchFixturesInternal(leagueId = id, dateFrom = date, dateTo = date) } }
         }.map { it.await() }
 
         val succeeded = results.mapNotNull { it.getOrNull() }
@@ -83,14 +84,13 @@ internal class ApiFootballApi {
 
     /** A single competition's matches within [dateFrom]..[dateTo] (both yyyy-MM-dd, inclusive) —
      * the Fixtures mode's by-date list. Uses `from`/`to` rather than API-Football's `last`
-     * parameter, which is Pro-only on the free tier (confirmed: `last=5` returned
+     * parameter, which was Pro-only on the free tier (confirmed: `last=5` returned
      * `{"errors":{"plan":"Free plans do not have access to the Last parameter."}}`). */
     suspend fun fetchFixturesForLeague(
-        apiKey: String,
         leagueId: Int,
         dateFrom: String,
         dateTo: String,
-    ): Result<List<Fixture>> = runCatching { fetchFixturesInternal(apiKey, leagueId = leagueId, dateFrom = dateFrom, dateTo = dateTo) }
+    ): Result<List<Fixture>> = runCatching { fetchFixturesInternal(leagueId = leagueId, dateFrom = dateFrom, dateTo = dateTo) }
 
     /** A single team's matches within [dateFrom]..[dateTo] — My Team's upcoming/recent fixtures.
      * Uses API-Football's `team` filter the same way [fetchFixturesForLeague] uses `league`; this
@@ -99,24 +99,23 @@ internal class ApiFootballApi {
      * worth a quick real-request check before trusting it against a live match, same as the
      * league IDs flagged in SoccerModels.kt. */
     suspend fun fetchFixturesForTeam(
-        apiKey: String,
         teamId: Int,
         dateFrom: String,
         dateTo: String,
     ): Result<List<Fixture>> = runCatching {
-        val body: ApiFootballFixturesResponse = getChecked(apiKey, "$API_BASE/fixtures") {
+        val body: ApiFootballFixturesResponse = getChecked("$API_BASE/fixtures") {
             parameter("team", teamId)
-            parameter("season", PHASE1_SEASON)
+            parameter("season", currentSeason())
             parameter("from", dateFrom)
             parameter("to", dateTo)
         }
         body.response.map { it.toFixture() }
     }
 
-    private suspend fun fetchFixturesInternal(apiKey: String, leagueId: Int, dateFrom: String, dateTo: String): List<Fixture> {
-        val body: ApiFootballFixturesResponse = getChecked(apiKey, "$API_BASE/fixtures") {
+    private suspend fun fetchFixturesInternal(leagueId: Int, dateFrom: String, dateTo: String): List<Fixture> {
+        val body: ApiFootballFixturesResponse = getChecked("$API_BASE/fixtures") {
             parameter("league", leagueId)
-            parameter("season", PHASE1_SEASON)
+            parameter("season", currentSeason())
             parameter("from", dateFrom)
             parameter("to", dateTo)
         }
@@ -125,12 +124,12 @@ internal class ApiFootballApi {
 
     // --- Standings -------------------------------------------------------------
 
-    /** Current-season (i.e. [PHASE1_SEASON]) table for one competition — flattened from
+    /** Current-season (i.e. [currentSeason]) table for one competition — flattened from
      * API-Football's possibly-grouped shape, see [ApiFootballStandingsLeagueDto.toStandingsRows]. */
-    suspend fun fetchStandings(apiKey: String, leagueId: Int): Result<List<StandingsRow>> = runCatching {
-        val body: ApiFootballStandingsResponse = getChecked(apiKey, "$API_BASE/standings") {
+    suspend fun fetchStandings(leagueId: Int): Result<List<StandingsRow>> = runCatching {
+        val body: ApiFootballStandingsResponse = getChecked("$API_BASE/standings") {
             parameter("league", leagueId)
-            parameter("season", PHASE1_SEASON)
+            parameter("season", currentSeason())
         }
         body.response.firstOrNull()?.league?.toStandingsRows() ?: emptyList()
     }
@@ -143,14 +142,13 @@ internal class ApiFootballApi {
      * that shouldn't take down the whole screen the way it would if one failed call threw for all
      * three. */
     suspend fun fetchMatchDetail(
-        apiKey: String,
         fixtureId: Int,
         homeTeamId: Int,
         awayTeamId: Int,
     ): Result<MatchDetail> = coroutineScope {
-        val eventsDeferred = async { runCatching { fetchEventsInternal(apiKey, fixtureId) } }
-        val statsDeferred = async { runCatching { fetchStatisticsInternal(apiKey, fixtureId, homeTeamId, awayTeamId) } }
-        val lineupsDeferred = async { runCatching { fetchLineupsInternal(apiKey, fixtureId, homeTeamId, awayTeamId) } }
+        val eventsDeferred = async { runCatching { fetchEventsInternal(fixtureId) } }
+        val statsDeferred = async { runCatching { fetchStatisticsInternal(fixtureId, homeTeamId, awayTeamId) } }
+        val lineupsDeferred = async { runCatching { fetchLineupsInternal(fixtureId, homeTeamId, awayTeamId) } }
 
         val events = eventsDeferred.await().getOrDefault(emptyList())
         val stats = statsDeferred.await().getOrDefault(emptyList())
@@ -159,32 +157,30 @@ internal class ApiFootballApi {
         Result.success(MatchDetail(stats = stats, events = events, lineups = lineups))
     }
 
-    private suspend fun fetchEventsInternal(apiKey: String, fixtureId: Int): List<MatchEvent> {
-        val body: ApiFootballEventsResponse = getChecked(apiKey, "$API_BASE/fixtures/events") {
+    private suspend fun fetchEventsInternal(fixtureId: Int): List<MatchEvent> {
+        val body: ApiFootballEventsResponse = getChecked("$API_BASE/fixtures/events") {
             parameter("fixture", fixtureId)
         }
         return body.response.map { it.toMatchEvent() }
     }
 
     private suspend fun fetchStatisticsInternal(
-        apiKey: String,
         fixtureId: Int,
         homeTeamId: Int,
         awayTeamId: Int,
     ): List<MatchStatRow> {
-        val body: ApiFootballStatisticsResponse = getChecked(apiKey, "$API_BASE/fixtures/statistics") {
+        val body: ApiFootballStatisticsResponse = getChecked("$API_BASE/fixtures/statistics") {
             parameter("fixture", fixtureId)
         }
         return body.response.toMatchStatRows(homeTeamId, awayTeamId)
     }
 
     private suspend fun fetchLineupsInternal(
-        apiKey: String,
         fixtureId: Int,
         homeTeamId: Int,
         awayTeamId: Int,
     ): MatchLineups {
-        val body: ApiFootballLineupsResponse = getChecked(apiKey, "$API_BASE/fixtures/lineups") {
+        val body: ApiFootballLineupsResponse = getChecked("$API_BASE/fixtures/lineups") {
             parameter("fixture", fixtureId)
         }
         return body.toMatchLineups(homeTeamId, awayTeamId)
@@ -200,8 +196,8 @@ internal class ApiFootballApi {
      * upcoming match, or most recent if none upcoming) and calls this instead of pulling the whole
      * season log and filtering client-side, since the fixture-scoped call already does exactly
      * that filtering server-side. */
-    suspend fun fetchUnavailableForFixture(apiKey: String, fixtureId: Int): Result<List<UnavailablePlayer>> = runCatching {
-        val body: ApiFootballInjuriesResponse = getChecked(apiKey, "$API_BASE/injuries") {
+    suspend fun fetchUnavailableForFixture(fixtureId: Int): Result<List<UnavailablePlayer>> = runCatching {
+        val body: ApiFootballInjuriesResponse = getChecked("$API_BASE/injuries") {
             parameter("fixture", fixtureId)
         }
         body.response.map { it.toUnavailablePlayer() }
@@ -213,19 +209,18 @@ internal class ApiFootballApi {
      * recent fixtures, and who's unavailable for its next match. [standings] is passed in rather
      * than re-fetched — the caller (SoccerViewModel) already has it cached from the Standings
      * screen for any league the user follows, and re-fetching here would just burn another call
-     * against a free tier that's already capped at 100/day. */
+     * against the proxy's shared daily budget. */
     suspend fun fetchMyTeamSummary(
-        apiKey: String,
         teamId: Int,
         teamName: String,
         leagueId: Int,
         leagueName: String,
         standings: List<StandingsRow>,
     ): Result<MyTeamSummary> = runCatching {
-        val today = phase1Today()
+        val today = todayLocalDate()
         val windowStart = today.minus(MY_TEAM_WINDOW_PAST_DAYS, DateTimeUnit.DAY)
         val windowEnd = today.plus(MY_TEAM_WINDOW_FUTURE_DAYS, DateTimeUnit.DAY)
-        val fixtures = fetchFixturesForTeam(apiKey, teamId, windowStart.toString(), windowEnd.toString())
+        val fixtures = fetchFixturesForTeam(teamId, windowStart.toString(), windowEnd.toString())
             .getOrElse { emptyList() }
             .sortedBy { it.utcDate }
 
@@ -234,14 +229,14 @@ internal class ApiFootballApi {
 
         val referenceFixtureId = upcoming.firstOrNull()?.id ?: recent.firstOrNull()?.id
         val unavailable = referenceFixtureId
-            ?.let { fetchUnavailableForFixture(apiKey, it).getOrElse { emptyList() } }
+            ?.let { fetchUnavailableForFixture(it).getOrElse { emptyList() } }
             ?: emptyList()
 
         // No standalone "team" endpoint call for this — the crest URL rides along on every fixture's
         // team object (see ApiFootballFixtureTeamDto.logo), so the first fixture that actually
-        // mentions teamId (home or away side) is enough; costs zero extra requests against
-        // API-Football itself (the crest fetch below hits a separate image host, not API-Football,
-        // so it doesn't touch that quota either).
+        // mentions teamId (home or away side) is enough; costs zero extra requests against the proxy
+        // (the crest fetch below hits a separate image host directly, not the proxy, so it doesn't
+        // touch that budget either — see [fetchImageBytes]'s doc comment).
         val teamLogoUrl = fixtures.firstNotNullOfOrNull { f ->
             when (teamId) {
                 f.homeTeamId -> f.homeTeamLogo.takeIf { it.isNotBlank() }
@@ -265,11 +260,13 @@ internal class ApiFootballApi {
     }
 
     /** Fetches a hosted image as raw bytes — used for team crest URLs off [ApiFootballFixtureTeamDto.logo].
-     * Deliberately bypasses [get]/[getChecked] below: those add the `x-apisports-key` header, which
-     * belongs to API-Football's own API host, not whatever CDN actually serves crest images (sending
-     * it there would be harmless but meaningless) — and there's no JSON body here to run through
-     * [apiFootballErrorMessage]'s success/failure check. Reuses this class's [client] (same
-     * timeouts) rather than standing up a second HTTP client just for images. */
+     * Deliberately bypasses [get]/[getChecked] below: there's no JSON body here to run through
+     * [apiFootballErrorMessage]'s success/failure check, and the crest URL points at whatever CDN
+     * actually serves the image (not this app's proxy), so it's a plain unauthenticated GET either
+     * way. Note this means crest fetches don't go through the proxy at all — they bypass its
+     * caching, its request budget, and its rate limiter, hitting the image CDN directly every time.
+     * Reuses this class's [client] (same timeouts) rather than standing up a second HTTP client
+     * just for images. */
     private suspend fun fetchImageBytes(url: String): Result<ByteArray> = runCatching {
         val response = try {
             client.get(url)
@@ -288,11 +285,10 @@ internal class ApiFootballApi {
     // --- HTTP plumbing -------------------------------------------------------------
 
     private suspend inline fun <reified T> getChecked(
-        apiKey: String,
         url: String,
         noinline block: HttpRequestBuilder.() -> Unit = {},
     ): T {
-        val response = get(apiKey, url, block)
+        val response = get(url, block)
         val text = response.bodyAsText()
         val element = try {
             json.parseToJsonElement(text)
@@ -306,17 +302,15 @@ internal class ApiFootballApi {
     }
 
     private suspend fun get(
-        apiKey: String,
         url: String,
         block: HttpRequestBuilder.() -> Unit,
     ): HttpResponse {
         val response = try {
             client.get(url) {
-                header("x-apisports-key", apiKey)
                 block()
             }
         } catch (e: HttpRequestTimeoutException) {
-            throw ApiFootballApiException("Request to API-Football timed out.", ApiFootballApiException.Kind.NETWORK)
+            throw ApiFootballApiException("Request to the proxy timed out.", ApiFootballApiException.Kind.NETWORK)
         } catch (e: Exception) {
             throw ApiFootballApiException(e.message ?: "Network error.", ApiFootballApiException.Kind.NETWORK)
         }
@@ -326,9 +320,17 @@ internal class ApiFootballApi {
                 "Too many requests — try again in a minute.",
                 ApiFootballApiException.Kind.RATE_LIMITED,
             )
+            402 -> throw ApiFootballApiException(
+                "This data isn't available on the current plan.",
+                ApiFootballApiException.Kind.PLAN_RESTRICTED,
+            )
+            502 -> throw ApiFootballApiException(
+                "The proxy couldn't reach API-Football — try again shortly.",
+                ApiFootballApiException.Kind.NETWORK,
+            )
             in 200..299 -> Unit
             else -> throw ApiFootballApiException(
-                "API-Football returned HTTP ${response.status.value}: ${response.bodyAsText().take(200)}",
+                "The proxy returned HTTP ${response.status.value}: ${response.bodyAsText().take(200)}",
                 ApiFootballApiException.Kind.UNKNOWN,
             )
         }
@@ -342,7 +344,10 @@ internal class ApiFootballApi {
 /** API-Football's `errors` field is `[]` (empty array) on a real success — confirmed against every
  * successful response gathered this session — and a populated *object* (not array) on a real
  * failure, e.g. `{"plan": "Free plans do not have access to this season, try from 2022 to 2024."}`
- * — also confirmed directly. Returns the joined error message(s), or null if there's no error. */
+ * — also confirmed directly. Returns the joined error message(s), or null if there's no error.
+ * Left in place as defense-in-depth: the proxy already intercepts this shape server-side and turns
+ * it into a real HTTP status (see this file's class doc comment), so in practice this should never
+ * fire once behind the proxy — but it costs nothing to keep checking. */
 private fun apiFootballErrorMessage(element: JsonElement): String? {
     val errors = (element as? JsonObject)?.get("errors") ?: return null
     return when (errors) {
@@ -354,7 +359,7 @@ private fun apiFootballErrorMessage(element: JsonElement): String? {
 
 private const val MY_TEAM_FIXTURE_LIMIT = 5
 
-/** How far back/forward of [phase1Today] to search for a followed team's fixtures — wide enough
+/** How far back/forward of [todayLocalDate] to search for a followed team's fixtures — wide enough
  * that a team without a match in the immediate past/future week still turns up something on
  * both sides, without pulling a whole season. */
 private const val MY_TEAM_WINDOW_PAST_DAYS = 30
