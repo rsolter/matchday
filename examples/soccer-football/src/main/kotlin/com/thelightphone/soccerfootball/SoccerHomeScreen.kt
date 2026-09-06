@@ -259,12 +259,11 @@ private fun MatchStatusBadge(text: String, isLive: Boolean, modifier: Modifier =
             .background(LightThemeTokens.colors.content.copy(alpha = 0.12f))
             .padding(horizontal = 0.4f.gridUnitsAsDp(), vertical = 0.05f.gridUnitsAsDp()),
     ) {
-        // Was Superfine (16) before this round's font-size revert — see font-size-audit.md's
-        // Detail→Superfine bucket, this text predates the badge chrome round 12 wrapped it in.
-        // Reverted to Detail (20) along with the rest of the Scores/Fixtures/My Team match rows.
+        // Was Superfine (16), then Detail (20) after round 13's revert — now Fine (25), one size up
+        // again, matched to the rest of MatchRow's text (team names/score) at the same size.
         LightText(
             text = text,
-            variant = LightTextVariant.Detail,
+            variant = LightTextVariant.Fine,
             align = TextAlign.End,
             lighten = !isLive,
             color = if (isLive) LIVE_STATUS_GREEN else null,
@@ -529,22 +528,23 @@ private fun MatchRow(
                 } else {
                     match.statusLabel()
                 }
-                // Was Superfine (16) before this round's font-size revert (see font-size-audit.md's
-                // Detail→Superfine bucket); reverted back to Detail (20).
+                // Was Superfine (16), then Detail (20) after round 13's revert — now Fine (25),
+                // matched to the rest of MatchRow's text.
                 LightText(
                     text = label,
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Fine,
                     lighten = true,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
-        // Was Copy (30) before the global one-step-down pass shifted it to Detail (20); reverted
-        // back to Copy along with the rest of this view's text.
+        // Was Copy (30), then Detail (20) after the global shift, back to Copy (30) after round
+        // 13's revert — now Fine (25): one size down from Copy, on request, matched to the status
+        // badge/kickoff label and score, which moved to Fine at the same time.
         LightText(
             text = "${match.homeTeamName} vs ${match.awayTeamName}",
-            variant = LightTextVariant.Copy,
+            variant = LightTextVariant.Fine,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(start = 0.5f.gridUnitsAsDp()),
@@ -554,10 +554,11 @@ private fun MatchRow(
             contentAlignment = Alignment.CenterEnd,
         ) {
             if (match.hasScore) {
-                // Was Detail (20) post-shift, Copy (30) before it — reverted back to Copy.
+                // Was Detail (20), then Copy (30) after round 13's revert — now Fine (25), matched
+                // to the rest of MatchRow's text.
                 LightText(
                     text = match.scoreLabel(),
-                    variant = LightTextVariant.Copy,
+                    variant = LightTextVariant.Fine,
                     align = TextAlign.End,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

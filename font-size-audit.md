@@ -16,9 +16,10 @@ source plus every call site in the app, cross-referenced.
 one step. §4 records three standardization recommendations made just before that shift (their
 specific sizes are superseded by §3, but the reasoning still holds). §5 records a later request to
 undo that global shift, but only for the Scores/Fixtures/My Team match-row list and for Settings
-(+ its child pages) — everywhere else in the app still reflects §3's global shift. **§2 below is a
-live snapshot of the current (post-§5) state, not a history** — read §3/§5 for how each screen got
-here.
+(+ its child pages) — everywhere else in the app still reflects §3's global shift. §6 adds the My
+Team win/draw/loss color badges. §7 re-sizes the match row's own text (status/kickoff, team names,
+score) again, to `Fine` (25). **§2 below is a live snapshot of the current (post-§5/§7) state, not a
+history** — read §3/§5/§7 for how each screen got here.
 
 ## 1. The real type scale, smallest to largest
 
@@ -26,12 +27,12 @@ here.
 |---|---|---|
 | Micro | 8 | not used anywhere in this app |
 | **Superfine** | **16** | secondary-label size on screens still under the global shift (§3) |
-| Detail | 20 | primary-content size on screens still under the global shift; secondary-label size on the screens reverted in §5 |
+| Detail | 20 | primary-content size on screens still under the global shift; Settings' own labels and its `MatchGroupCard` title/header (reverted in §5, not touched by §7) |
 | Paragraph | 24.5 | About screen's body paragraph, after being reverted in §5 |
-| **Fine** | **25** | see finding below |
+| **Fine** | **25** | Scores/Fixtures/My Team match rows' own text (status/kickoff, team names, score) as of §7; see finding below |
 | ParagraphWide | 25 | not used in this app |
 | Subheading | 30 | not used in this app |
-| Copy | 30 | primary-content size on the screens reverted in §5, plus the two "hero stat" numbers everywhere (match score in Match Detail, My Team's `#{pos} · {pts} pts`) |
+| Copy | 30 | Settings + its child pages (reverted in §5) — match rows moved off `Copy` to `Fine` in §7; plus the two "hero stat" numbers everywhere (match score in Match Detail, My Team's `#{pos} · {pts} pts`) |
 | Button | 30 | not used directly by this app (LightTopBar's own buttons use it) |
 | Heading | 38 | not used anywhere in this app (see §3 — both former uses became `Copy`) |
 | Subtitle | 52 | not used in this app |
@@ -60,14 +61,14 @@ value from the table above, reflecting the **current** state (global shift per �
 Scores/Fixtures/My-Team-match-rows/Settings revert per §5) — this section is a live snapshot, not a
 history.
 
-### Scores (today's matches) — reverted in §5
+### Scores (today's matches) — reverted in §5, match row re-sized again in §7
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | "No matches today..." empty state | Copy | 30 | message |
 | Competition group header (+ league badge) | Detail (lighten) | 20 | section label |
-| Status/kickoff-time (leading slot, left of team names) | Detail | 20 | secondary label |
-| "{home} vs {away}" | Copy | 30 | primary content |
-| Score ("2 - 1", trailing slot) | Copy | 30 | primary content |
+| Status/kickoff-time (leading slot, left of team names) | Fine | 25 | secondary label |
+| "{home} vs {away}" | Fine | 25 | primary content |
+| Score ("2 - 1", trailing slot) | Fine | 25 | primary content |
 
 ### Settings — reverted in §5
 | Element | Variant | Size | Role |
@@ -98,15 +99,15 @@ history.
 | Every data cell in every row | Superfine | 16 | table data |
 
 ### Fixtures
-Same `MatchGroupCard`/`MatchRow` as Scores above (so the match-row list is at §5's larger sizes
-too), plus its own screen-level text, still under §3:
+Same `MatchGroupCard`/`MatchRow` as Scores above (so the match-row list is at §7's `Fine` size too),
+plus its own screen-level text, still under §3:
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | Loading / empty state | Detail | 20 | message |
 
 ### My Team
 Its own labels/messages are still under §3; its shared "RECENT RESULTS"/"UPCOMING" match rows are
-at §5's larger sizes (same `MatchGroupCard`/`MatchRow` as Scores/Fixtures) and "RECENT RESULTS" now
+at §7's `Fine` size (same `MatchGroupCard`/`MatchRow` as Scores/Fixtures) and "RECENT RESULTS" now
 shows a colored win/draw/loss badge per match instead of a blank leading slot (see §6):
 | Element | Variant | Size | Role |
 |---|---|---|---|
@@ -260,3 +261,18 @@ new API call). Two places:
 
 Scores/Fixtures and My Team's "UPCOMING" card don't pass a team to highlight, so they're unaffected
 — this is opt-in per `MatchGroupCard`/`MatchRow` call site via the new `highlightTeamId` parameter.
+
+## 7. Match row re-sized to Fine (25)
+
+Applied on request: `MatchRow`'s three text elements — the status/live-minute/kickoff-time slot,
+"{home} vs {away}", and the score — moved from §5's `Copy`/`Detail` mix to a single size, `Fine`
+(25), across all three: one step down from `Copy`'s 30, and up from `Detail`'s 20. Requested as
+"Copy variant, size 25," which doesn't exist — `Copy` is fixed at 30 in the SDK, and the variant
+that's actually 25 is `Fine` (`ParagraphWide` is also 25, but it's meant for reading text, not
+compact UI labels/scores) — confirmed with the user before applying.
+
+Same shared-composable scope as §5: this is `MatchRow` itself, so it applies identically to Scores,
+Fixtures, and My Team's "RECENT RESULTS"/"UPCOMING" cards — there's no per-screen way to size it
+differently. `MatchGroupCard`'s own title (the competition/date/"RECENT RESULTS" header) wasn't
+named in the request and stays at `Detail` (20), unchanged. The colored result/form badges from §6
+(`ResultBadge`, `FormRow`) also weren't named and stay at `Superfine` (16).
