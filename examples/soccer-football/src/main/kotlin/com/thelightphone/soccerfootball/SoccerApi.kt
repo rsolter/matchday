@@ -225,10 +225,18 @@ internal class ApiFootballApi {
             .getOrElse { emptyList() }
             .sortedBy { it.utcDate }
 
-        val upcoming = fixtures.filter { it.localDate()?.let { d -> d >= today } == true }
+        // Today's fixture (if any) is pulled out separately for the header's "today/next match"
+        // placeholder — it used to fall into `upcoming` below (d >= today), which is exactly what
+        // let a live-in-progress or already-finished-today match show up in the "UPCOMING" card, a
+        // bug flagged from a real screenshot. `upcoming`/`recent` now both deliberately exclude it
+        // (d > today / d < today), on request, so today's match only ever appears in the featured
+        // placeholder, never duplicated into either list.
+        val todaysFixture = fixtures.firstOrNull { it.localDate() == today }
+        val upcoming = fixtures.filter { it.localDate()?.let { d -> d > today } == true }
         val recent = fixtures.filter { it.localDate()?.let { d -> d < today } == true }.reversed()
+        val featuredFixture = todaysFixture ?: upcoming.firstOrNull()
 
-        val referenceFixtureId = upcoming.firstOrNull()?.id ?: recent.firstOrNull()?.id
+        val referenceFixtureId = featuredFixture?.id ?: recent.firstOrNull()?.id
         // distinctBy: a real /injuries response has been observed repeating the same player row
         // (confirmed by a user report of duplicated "Unavailable" entries) — API-Football's own
         // docs don't explain why, so this dedupes defensively by player name rather than assuming
@@ -252,16 +260,30 @@ internal class ApiFootballApi {
         }
         val teamLogoBytes = teamLogoUrl?.let { fetchImageBytes(it).getOrNull() }
 
+        // Same idea, but for the featured fixture's *other* side — the small opponent badge next to
+        // the today/next match placeholder. Same "hits the image CDN directly, not the proxy" cost
+        // profile as teamLogoBytes above.
+        val featuredOpponentLogoUrl = featuredFixture?.let { f ->
+            when (teamId) {
+                f.homeTeamId -> f.awayTeamLogo.takeIf { it.isNotBlank() }
+                f.awayTeamId -> f.homeTeamLogo.takeIf { it.isNotBlank() }
+                else -> null
+            }
+        }
+        val featuredOpponentLogoBytes = featuredOpponentLogoUrl?.let { fetchImageBytes(it).getOrNull() }
+
         MyTeamSummary(
             teamId = teamId,
             teamName = teamName,
             leagueId = leagueId,
             leagueName = leagueName,
             standingsRow = standings.firstOrNull { it.teamId == teamId },
+            featuredFixture = featuredFixture,
             upcomingFixtures = upcoming.take(MY_TEAM_FIXTURE_LIMIT),
             recentFixtures = recent.take(MY_TEAM_FIXTURE_LIMIT),
             unavailable = unavailable,
             teamLogoBytes = teamLogoBytes,
+            featuredOpponentLogoBytes = featuredOpponentLogoBytes,
         )
     }
 

@@ -595,9 +595,9 @@ data class Fixture(
 }
 
 /** Win/draw/loss outcome of a finished [Fixture] relative to a given team — used for My Team's
- * colored result badges (see MyTeamStandingBlock/FormRow in SoccerHomeScreen.kt), mirroring the
- * W/D/L blocks fotmob shows next to a team's recent results and league-table form column. Derived
- * entirely from fields this app already fetches; no new API call needed. */
+ * colored result badges (see ResultBadge in SoccerHomeScreen.kt), mirroring the W/D/L blocks
+ * fotmob shows next to a team's recent results. Derived entirely from fields this app already
+ * fetches; no new API call needed. */
 enum class MatchResult { WIN, DRAW, LOSS }
 
 /** Null when the match has no final score yet, or [teamId] isn't one of the two sides — callers
@@ -749,13 +749,23 @@ data class UnavailablePlayer(
 /** My Team's screen content for one followed team: its league position, its next few and most
  * recent fixtures, and who's unavailable for its next match. [standingsRow] is null if the
  * followed league's standings haven't loaded or the team isn't in this competition's table (a
- * team followed from a non-domestic-league context, or a standings fetch failure). */
+ * team followed from a non-domestic-league context, or a standings fetch failure). No longer
+ * rendered directly (the standings block under the crest was dropped on request), but kept on the
+ * model since it's already fetched for free (see [ApiFootballApi.fetchMyTeamSummary]'s doc
+ * comment) and may be surfaced again later. */
 data class MyTeamSummary(
     val teamId: Int,
     val teamName: String,
     val leagueId: Int,
     val leagueName: String,
     val standingsRow: StandingsRow?,
+    /** The team's match for today, if one exists among [upcomingFixtures]/[recentFixtures]'s
+     * unfiltered source list; otherwise its next upcoming fixture, or null if neither exists (e.g.
+     * the season's already over for this team). Shown in the header row's "today/next match"
+     * placeholder next to the crest — see [ApiFootballApi.fetchMyTeamSummary] for exactly how
+     * "today" is resolved and why [upcomingFixtures]/[recentFixtures] deliberately exclude whatever
+     * this ends up pointing at. */
+    val featuredFixture: Fixture?,
     val upcomingFixtures: List<Fixture>,
     val recentFixtures: List<Fixture>,
     val unavailable: List<UnavailablePlayer>,
@@ -767,4 +777,8 @@ data class MyTeamSummary(
      * — see [ApiFootballApi.fetchMyTeamSummary]), fetched eagerly with the same Ktor client
      * everything else in this file uses. Null if no logo URL was found, or the fetch failed. */
     val teamLogoBytes: ByteArray?,
+    /** Same idea as [teamLogoBytes], but for [featuredFixture]'s *other* side — the small opponent
+     * badge shown next to the today/next match placeholder. Null if there's no [featuredFixture],
+     * its logo URL was blank, or the fetch failed. */
+    val featuredOpponentLogoBytes: ByteArray?,
 )

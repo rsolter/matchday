@@ -349,3 +349,42 @@ except where noted:
   each colored circle on the pitch diagram, which was deliberately left at `Superfine` per the
   request ("Except for the numbers behind the circles"). The roster list's own number column is
   plain text, not inside a circle, so it *was* bumped along with the names beside it.
+
+## 12. My Team header reworked: crest + today/next-match placeholder, standings block dropped
+
+Mostly a structural change, not a font-size one, but the one font bump in this round belongs here
+with the rest of the audit.
+
+**Layout.** The crest used to sit alone, centered, in its own row *above* `LightScrollView` (so it
+stayed pinned while the rest of the screen scrolled underneath it), immediately followed inside the
+scroll view by `MyTeamStandingBlock` (league position, W/D/L, goal difference, form badges). Both
+changed on request:
+
+- The crest moved to the left of a new row, sharing it with a new today/next-match placeholder on
+  the right (`MyTeamHeaderRow`/`FeaturedMatchPlaceholder`) — opponent badge + name, and either a
+  kickoff time (match hasn't started) or the live/current box score (it has), clickable through to
+  Match Detail like any other match row on this screen. The crest itself shrank from `6f` to `4f`
+  (design/grid units) to make room beside it — not asked for explicitly, flagged here since it's a
+  real visual change, not just a move.
+- `MyTeamStandingBlock` (and the `FormRow` composable it was the only caller of) was deleted
+  outright, not just unrendered — dropped entirely, per the request. `MyTeamSummary.standingsRow`
+  itself is kept on the model (it's already fetched for free, no separate call), just no longer
+  displayed anywhere on this screen.
+- This whole header row moved *inside* `LightScrollView`, so on request it now scrolls away with
+  the rest of the content instead of staying pinned at the top.
+
+**Data.** `MyTeamSummary` gained `featuredFixture` (today's match if the team has one, else its
+next upcoming fixture, else null) and `featuredOpponentLogoBytes` (that fixture's other side's
+crest bytes, fetched the same way `teamLogoBytes` already was). `ApiFootballApi.fetchMyTeamSummary`
+computes `featuredFixture` by pulling today's fixture out of the full fetched list *before*
+splitting it into `upcomingFixtures`/`recentFixtures` — and on request, those two now exclude
+today's fixture entirely (`upcoming` changed from `d >= today` to `d > today`; `recent` was already
+`d < today`, unchanged). This is a genuine bugfix as a side effect: a live-in-progress or
+already-finished-today match used to land in the "UPCOMING" card (flagged from a real screenshot
+back in round 15/§8's notes) purely because the old filter's `>=` included it — that's no longer
+possible, since today's fixture is now routed to the featured placeholder instead of either list.
+
+**Font size.** `UNAVAILABLE FOR NEXT MATCH`'s whole section bumped one step on request: the section
+header and `UnavailableGroup`'s "Injured"/"Suspended" label and "Out"/"Doubtful" text and reason
+line all `Superfine (16) → Detail (20)`; `player.playerName` `Detail (20) → Fine (25)` — same
+relative-sizing pattern as §11's Stats tab, preserved rather than flattened to one size.

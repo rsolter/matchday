@@ -288,9 +288,10 @@ private val RESULT_DRAW_COLOR = Color(0xFF9E9E9E)
 private val RESULT_LOSS_COLOR = Color(0xFFD32F2F)
 
 /** Small colored block badge for one match's result relative to My Team's followed team — mirrors
- * the fotmob reference screenshot's Form-column blocks. Used two ways: inline per match in
- * [MatchRow]'s left slot (My Team's "RECENT RESULTS" card only — see [Fixture.resultFor]), and
- * repeated in [FormRow] for the league-form summary string on My Team's own header. */
+ * the fotmob reference screenshot's Form-column blocks. Used inline per match in [MatchRow]'s left
+ * slot, My Team's "RECENT RESULTS" card only — see [Fixture.resultFor]. (Previously also repeated
+ * for a league-form summary string on My Team's own standings header via a `FormRow` composable;
+ * that header block was dropped entirely on request, and `FormRow` removed with it.) */
 @Composable
 private fun ResultBadge(result: MatchResult, modifier: Modifier = Modifier) {
     val (background, label) = when (result) {
@@ -306,30 +307,6 @@ private fun ResultBadge(result: MatchResult, modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         LightText(text = label, variant = LightTextVariant.Superfine, color = Color.White)
-    }
-}
-
-/** Row of [ResultBadge]s parsed from [StandingsRow.form] (e.g. "WWDLW", most recent result last
- * per API-Football's own ordering) — the "block W, L, D icons along the top of the view" the
- * fotmob reference shows next to a team's position/points line. Unrecognized characters are
- * skipped rather than crashing; API-Football hasn't been observed sending anything but W/D/L here. */
-@Composable
-private fun FormRow(form: String, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.3f.gridUnitsAsDp()),
-    ) {
-        form.forEach { char ->
-            val result = when (char) {
-                'W' -> MatchResult.WIN
-                'D' -> MatchResult.DRAW
-                'L' -> MatchResult.LOSS
-                else -> null
-            }
-            if (result != null) {
-                ResultBadge(result)
-            }
-        }
     }
 }
 
@@ -1085,33 +1062,15 @@ private fun MyTeamContent(
                 )
             }
         } else {
-            // No AsyncImage here: the Light SDK's dependency allow-list rejects every third-party
-            // image loader (confirmed against a real build failure for Coil), so this decodes the
-            // bytes MyTeamSummary already fetched (see ApiFootballApi.fetchMyTeamSummary) by hand.
-            // remember(bytes) keys on the byte array's identity, not its content — cheap enough
-            // here since a new MyTeamSummary (and therefore a new array) only shows up once per
-            // fetch, never once per frame.
-            val teamLogoBitmap = summary.teamLogoBytes?.let { bytes ->
-                remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
-            }
-            if (teamLogoBitmap != null) {
-                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Image(
-                        bitmap = teamLogoBitmap,
-                        contentDescription = "${summary.teamName} crest",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .padding(bottom = 0.5f.gridUnitsAsDp())
-                            .size(6f.gridUnitsAsDp()),
-                    )
-                }
-            }
             LightScrollView(
                 modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
             ) {
-                summary.standingsRow?.let { row ->
-                    MyTeamStandingBlock(leagueName = summary.leagueName, row = row)
-                }
+                // Crest + today/next-match placeholder, moved inside the scroll view on request so
+                // this row scrolls away with the rest of the content instead of staying pinned at
+                // the top. The standings block that used to sit under a centered crest here was
+                // dropped entirely (see MyTeamSummary.standingsRow's doc comment for why the field
+                // itself is still fetched).
+                MyTeamHeaderRow(summary = summary, onMatchClick = onMatchClick, modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()))
                 // Order below is deliberate: recent results, then next results, then who's out —
                 // injuries/suspensions dropped to the bottom of the scroll instead of leading it.
                 if (summary.recentFixtures.isNotEmpty()) {
@@ -1140,7 +1099,7 @@ private fun MyTeamContent(
                         modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                     )
                 }
-                if (summary.standingsRow == null && summary.unavailable.isEmpty() &&
+                if (summary.featuredFixture == null && summary.unavailable.isEmpty() &&
                     summary.upcomingFixtures.isEmpty() && summary.recentFixtures.isEmpty()
                 ) {
                     LightText(
@@ -1156,26 +1115,100 @@ private fun MyTeamContent(
     }
 }
 
+/** The crest + today/next-match placeholder row at the top of My Team's scroll content. Crest on
+ * the left (was centered full-width above the standings block this replaced); the featured
+ * match — [MyTeamSummary.featuredFixture] — on the right, clickable the same as any other match
+ * row on this screen. */
 @Composable
-private fun MyTeamStandingBlock(leagueName: String, row: StandingsRow, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.fillMaxWidth().padding(top = 0.5f.gridUnitsAsDp(), bottom = 0.25f.gridUnitsAsDp())) {
-        LightText(text = leagueName.uppercase(), variant = LightTextVariant.Superfine, lighten = true)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.6f.gridUnitsAsDp()),
-            modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()),
-        ) {
-            LightText(text = "#${row.position} · ${row.points} pts", variant = LightTextVariant.Copy)
-            // The "block W, L, D icons along the top of the view" from the fotmob reference —
-            // replaces the old plain "· form WWDLW" text tail below with the same colored badges
-            // ResultBadge draws per match in RECENT RESULTS, so the two reinforce each other.
-            row.form?.let { FormRow(it) }
+private fun MyTeamHeaderRow(summary: MyTeamSummary, onMatchClick: (Fixture) -> Unit, modifier: Modifier = Modifier) {
+    // remember(bytes) keys on the byte array's identity, not its content — cheap enough here since
+    // a new MyTeamSummary (and therefore a new array) only shows up once per fetch, never once per
+    // frame. No AsyncImage here: the Light SDK's dependency allow-list rejects every third-party
+    // image loader (confirmed against a real build failure for Coil), so this decodes bytes
+    // MyTeamSummary already fetched (see ApiFootballApi.fetchMyTeamSummary) by hand, same as every
+    // other image in this screen.
+    val teamLogoBitmap = summary.teamLogoBytes?.let { bytes ->
+        remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.fillMaxWidth()) {
+        if (teamLogoBitmap != null) {
+            Image(
+                bitmap = teamLogoBitmap,
+                contentDescription = "${summary.teamName} crest",
+                contentScale = ContentScale.Fit,
+                // Shrunk from the old centered crest's 6f down to 4f to leave room for the featured
+                // match placeholder beside it — the user only asked to move this to the left, not
+                // resize it, so flagging this size change explicitly rather than burying it.
+                modifier = Modifier.size(4f.gridUnitsAsDp()).padding(end = 0.75f.gridUnitsAsDp()),
+            )
         }
+        FeaturedMatchPlaceholder(
+            summary = summary,
+            onMatchClick = onMatchClick,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/** The today/next match placeholder beside the crest: opponent badge + name, and either a kickoff
+ * time (match hasn't started) or the live/final box score (match has). [MyTeamSummary.featuredFixture]
+ * is today's match if the team has one, otherwise its next upcoming fixture — see that field's doc
+ * comment and [ApiFootballApi.fetchMyTeamSummary] for exactly how it's picked. */
+@Composable
+private fun FeaturedMatchPlaceholder(summary: MyTeamSummary, onMatchClick: (Fixture) -> Unit, modifier: Modifier = Modifier) {
+    val fixture = summary.featuredFixture
+    if (fixture == null) {
         LightText(
-            text = "${row.win}W ${row.draw}D ${row.lose}L · ${row.goalDifferenceLabel()} GD",
+            text = "No upcoming match scheduled.",
             variant = LightTextVariant.Superfine,
             lighten = true,
-            modifier = Modifier.padding(top = 0.15f.gridUnitsAsDp()),
+            modifier = modifier,
+        )
+        return
+    }
+
+    val isHome = fixture.homeTeamId == summary.teamId
+    val opponentName = if (isHome) fixture.awayTeamName else fixture.homeTeamName
+    // formatFixtureDateHeader already returns "TODAY" for the real device-local date and a short
+    // "SAT, SEP 12"-style header otherwise, so this reuses it directly rather than re-deriving the
+    // same "is this today?" check a second time.
+    val dateLabel = fixture.localDate()?.let { formatFixtureDateHeader(it) } ?: "NEXT MATCH"
+    val opponentLogoBitmap = summary.featuredOpponentLogoBytes?.let { bytes ->
+        remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    }
+
+    Column(modifier = modifier.lightClickable(onClick = { onMatchClick(fixture) })) {
+        LightText(text = dateLabel, variant = LightTextVariant.Superfine, lighten = true)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()),
+        ) {
+            if (opponentLogoBitmap != null) {
+                Image(
+                    bitmap = opponentLogoBitmap,
+                    contentDescription = "$opponentName crest",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(1.4f.gridUnitsAsDp()).padding(end = 0.35f.gridUnitsAsDp()),
+                )
+            }
+            LightText(
+                text = "vs $opponentName",
+                variant = LightTextVariant.Detail,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        // hasScore is true from kickoff onward (live, halftime, finished — see Fixture.hasScore),
+        // not just once a match is over, so a live match's running score shows here too, not just
+        // the final one. statusLabel() already resolves to a bare kickoff time for a still-scheduled
+        // match (see its doc comment in SoccerFormatting.kt) — exactly the "what time the game is"
+        // case the user asked for, with no separate branch needed here.
+        LightText(
+            text = if (fixture.hasScore) "${fixture.scoreLabel()} · ${fixture.statusLabel()}" else fixture.statusLabel(),
+            variant = LightTextVariant.Detail,
+            lighten = true,
+            modifier = Modifier.padding(top = 0.1f.gridUnitsAsDp()),
         )
     }
 }
@@ -1191,7 +1224,9 @@ private fun UnavailableBlock(players: List<UnavailablePlayer>, modifier: Modifie
             .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f))
             .padding(horizontal = 1f.gridUnitsAsDp(), vertical = 0.75f.gridUnitsAsDp()),
     ) {
-        LightText(text = "UNAVAILABLE FOR NEXT MATCH", variant = LightTextVariant.Superfine, lighten = true)
+        // Whole section bumped one size on request: Superfine (16) -> Detail (20), Detail -> Fine
+        // (25) for player.playerName, so the relative sizing within this block is preserved.
+        LightText(text = "UNAVAILABLE FOR NEXT MATCH", variant = LightTextVariant.Detail, lighten = true)
         if (injured.isNotEmpty()) {
             UnavailableGroup(label = "Injured", players = injured, modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()))
         }
@@ -1204,19 +1239,19 @@ private fun UnavailableBlock(players: List<UnavailablePlayer>, modifier: Modifie
 @Composable
 private fun UnavailableGroup(label: String, players: List<UnavailablePlayer>, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth()) {
-        LightText(text = label, variant = LightTextVariant.Superfine, lighten = true)
+        LightText(text = label, variant = LightTextVariant.Detail, lighten = true)
         players.forEach { player ->
             Row(modifier = Modifier.fillMaxWidth().padding(top = 0.2f.gridUnitsAsDp())) {
                 LightText(
                     text = player.playerName,
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Fine,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 LightText(
                     text = if (player.isOut) "Out" else "Doubtful",
-                    variant = LightTextVariant.Superfine,
+                    variant = LightTextVariant.Detail,
                     lighten = true,
                     align = TextAlign.End,
                 )
@@ -1225,10 +1260,11 @@ private fun UnavailableGroup(label: String, players: List<UnavailablePlayer>, mo
             // than Detail (20) in this SDK's real type scale — see the font-size audit doc — so
             // Fine was actually making this secondary reason text bigger than the "Out"/"Doubtful"
             // label above it, the opposite of the intended caption-sized, de-emphasized treatment.
-            // Now Superfine (16) after a later global one-step-down pass.
+            // Shrunk to Superfine (16) by a later global one-step-down pass, now bumped back to
+            // Detail on request, along with the rest of this section.
             LightText(
                 text = player.reason,
-                variant = LightTextVariant.Superfine,
+                variant = LightTextVariant.Detail,
                 lighten = true,
                 modifier = Modifier.padding(top = 0.05f.gridUnitsAsDp()),
             )
