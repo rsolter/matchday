@@ -17,7 +17,7 @@ source plus every call site in the app, cross-referenced.
 | Variant | Design size | Where else it lands |
 |---|---|---|
 | Micro | 8 | not used anywhere in this app |
-| Superfine | 16 | now used for lineup player surnames (this pass) |
+| Superfine | 16 | not used in this app as of the lineup redesign (see §2) |
 | Detail | 20 | the app's default "label / secondary" size |
 | Paragraph | 24.5 | About screen body text only |
 | **Fine** | **25** | see finding below |
@@ -41,11 +41,14 @@ rendering *larger* than the label or number next to them instead:
 - Each lineup player's surname under their jersey-number circle, sized bigger than the number
   itself (`Detail`) and nearly as large as full `Copy` body text.
 
-I've already fixed these three (reason text and coach name → `Detail`; player surname →
-`Superfine`, since that one already truncates on longer names — see the code comment at its call
-site) as part of this pass, since they were a clear case of the variant not doing what the code
-around it was written assuming it did, not a subjective design call. Everything below this point is
-**analysis and recommendations only** — nothing else has been changed.
+I fixed the reason text and coach name → `Detail` as part of that pass, since they were a clear
+case of the variant not doing what the code around it was written assuming it did, not a subjective
+design call. The third — the player surname under each circle — briefly went to `Superfine` in that
+same pass, but the lineup tab was redesigned in the very next round (a vertical pitch with
+number-only dots plus a separate roster list — see §2's lineup tab section) and that element no
+longer exists at all; its replacement (the roster list) uses `Copy`, matching the rest of the app's
+"primary content" convention rather than needing a caption-sized variant. Everything below this
+point is **analysis and recommendations only** — nothing else has been changed.
 
 Also worth knowing, though it's in the vendored SDK and not this app's code to change:
 `LightTopBar`'s screen title and header buttons both use `Fine` (25) — every screen's title
@@ -132,12 +135,18 @@ Same `MatchGroupCard`/`MatchRow` as Scores above, plus:
 | Team + subtext line | Detail (lighten) | 20 | secondary content |
 
 ### Match detail — Home/Away lineup tab
+The lineup was redesigned in the same session this audit was fixed for — it's now a vertical pitch
+(number-only dots, keeper at the bottom) beside a numbered name list, rather than named dots in
+horizontal columns. That redesign changed what's below; the row for "player surname under the
+circle" this table used to have is gone along with the element itself, not just relabeled.
+
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | Team name + formation | Detail (lighten) | 20 | label |
-| Jersey number (in circle) | Detail | 20 | primary content (small, by design — it's inside a 2.3-grid-unit circle) |
-| Player surname (under circle) | ~~Fine~~ → **Superfine** *(fixed this pass)* | 16 | caption |
-| "Coach: {name}" | ~~Fine~~ → **Detail** *(fixed this pass)* | 20 | caption |
+| Jersey number (in circle, on the pitch) | Detail | 20 | primary content (small, by design — it's inside a 2.3-grid-unit circle) |
+| Roster list: number | Copy (lighten) | 30 | label, beside the matching name |
+| Roster list: player name | Copy | 30 | primary content |
+| "Coach: {name}" | ~~Fine~~ → **Detail** *(fixed the prior pass)* | 20 | caption |
 | "SUBSTITUTES" header | Detail (lighten) | 20 | section label |
 | Substitute number / name | Copy | 30 | primary content |
 | Substitute position | Detail (lighten) | 20 | label |

@@ -1091,14 +1091,12 @@ private fun MatchDetailContent(mode: ScoreScreenMode.MatchDetailScreen, onBack: 
                         DetailTab.HOME_LINEUP -> LineupSection(
                             teamName = mode.homeTeamName,
                             lineup = detail.lineups.home,
-                            mirrored = false,
                             teamColor = homeTeamColor,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
                         DetailTab.AWAY_LINEUP -> LineupSection(
                             teamName = mode.awayTeamName,
                             lineup = detail.lineups.away,
-                            mirrored = true,
                             teamColor = awayTeamColor,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
@@ -1297,7 +1295,7 @@ private fun extractCrestAccentColor(bitmap: Bitmap): Color? {
 }
 
 /** Black or white, whichever contrasts better against [background] — used for text drawn on top of
- * a per-team accent color (see [PitchPlayerChip]), since that color is arbitrary (whatever a real
+ * a per-team accent color (see [PitchNumberDot]), since that color is arbitrary (whatever a real
  * crest's dominant hue turns out to be) and the theme's default text color can't be assumed to
  * read against it the way it does against the app's own neutral surfaces. */
 private fun legibleTextColorOn(background: Color): Color {
@@ -1346,12 +1344,15 @@ private fun GoalScorersRow(
     }
 }
 
-/** "Danilo 24'", or "Danilo (Penalty) 24'" when [MatchEvent.scorerQualifier] is set to something
+/** "Haaland 24'", or "Haaland (Penalty) 24'" when [MatchEvent.scorerQualifier] is set to something
  * other than a plain goal (see the doc comment on the "Goal" branch of
  * [ApiFootballEventDto.toMatchEvent] in SoccerModels.kt for what qualifier values are and aren't
- * verified against a real response). */
+ * verified against a real response). Last name only — [scorer] is API-Football's full player name
+ * (e.g. "Erling Haaland"), which this compact header strip doesn't have room for two of side by
+ * side; the full name still appears in the Events tab's own timeline row, which isn't
+ * space-constrained the same way. */
 private fun MatchEvent.goalScorerLabel(): String {
-    val name = scorer ?: "Goal"
+    val name = scorer?.substringAfterLast(' ') ?: "Goal"
     return if (scorerQualifier != null) "$name ($scorerQualifier) $minuteLabel" else "$name $minuteLabel"
 }
 
@@ -1526,19 +1527,21 @@ private fun NoDataForTab(text: String) {
  * here, since API-Football sends both a `formation` label and a real per-player pitch position.
  * See [groupedByPitchRow] in SoccerModels.kt.
  *
- * Laid out left-to-right (goalkeeper's column on the left, forwards' column on the right) for the
- * home team, and mirrored right-to-left for the away team ([mirrored] = true) — as if the two
- * teams are attacking each other from opposite sides, same convention a real match-graphic pitch
- * view uses. Each pitch line is a *column* with its players stacked vertically rather than a row
- * with players side-by-side: on a narrow phone screen a line of 4-5 players sharing one row left
- * almost no width per name (hence names truncating to "Walukiew…", "McKen…"); stacked in a column,
- * each name gets the column's full width instead of splitting it with row-mates.
+ * Laid out as a vertical pitch: each pitch line (GK, defense, midfield, attack) is a horizontal
+ * band of number-only dots, and the bands stack bottom-to-top with the goalkeeper's band at the
+ * very bottom — [groupedByPitchRow] returns rows goalkeeper-first, so this reverses that list
+ * before rendering, per that function's own doc comment in SoccerModels.kt. Both home and away
+ * render the same way; there's no more mirroring one team's pitch left-to-right against the
+ * other's the way the old horizontal layout did, since a shared "keeper at the bottom" orientation
+ * doesn't need it. Player names moved out of the pitch itself (a name per dot didn't leave enough
+ * width when the same players were laid out as up-to-5-wide columns before this rewrite — see the
+ * git history if you want that version) and into [LineupRosterList] alongside it, in the same
+ * top-to-bottom order as the pitch bands so the two stay easy to cross-reference by number.
  */
 @Composable
 private fun LineupSection(
     teamName: String,
     lineup: TeamLineup?,
-    mirrored: Boolean,
     teamColor: Color?,
     modifier: Modifier = Modifier,
 ) {
@@ -1547,12 +1550,9 @@ private fun LineupSection(
         return
     }
 
-    // groupedByPitchRow() already returns goalkeeper-first; that's the left-to-right column order
-    // we want for the home team as-is, and reversed (forwards-first) for the mirrored away team.
-    val columns = remember(lineup, mirrored) {
-        val gkFirst = lineup.startXI.groupedByPitchRow()
-        if (mirrored) gkFirst.asReversed() else gkFirst
-    }
+    // Reversed so the most advanced line renders first (topmost) and the goalkeeper's line last
+    // (bottommost) — see this function's own doc comment above.
+    val pitchRows = remember(lineup) { lineup.startXI.groupedByPitchRow().asReversed() }
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -1573,25 +1573,32 @@ private fun LineupSection(
             lineup.formation?.let { LightText(text = it, variant = LightTextVariant.Detail, lighten = true) }
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(1.2f.gridUnitsAsDp()))
-                .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f))
-                .padding(vertical = 1f.gridUnitsAsDp(), horizontal = 0.3f.gridUnitsAsDp()),
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.3f.gridUnitsAsDp()),
-            // Columns hold different player counts (1 for GK/lone-forward lines, up to 4-5 for a
-            // back line or midfield) and each stacks from its own top by default, which is what
-            // made the GK/forward columns look pinned to the top instead of spread across the
-            // pitch's height. Centering the whole Row vertically fixes that in one line.
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            columns.forEach { column ->
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.7f.gridUnitsAsDp()),
-                ) {
-                    column.forEach { player -> PitchPlayerChip(player, dotColor = teamColor, modifier = Modifier.fillMaxWidth()) }
+        Row(modifier = Modifier.fillMaxWidth()) {
+            // Same top-to-bottom order as the pitch bands to the right of it, so a number on the
+            // pitch and its name in this list line up roughly at a glance without needing a legend.
+            LineupRosterList(
+                pitchRows = pitchRows,
+                modifier = Modifier.weight(0.44f).padding(end = 0.6f.gridUnitsAsDp()),
+            )
+
+            Column(
+                modifier = Modifier
+                    .weight(0.56f)
+                    .clip(RoundedCornerShape(1.2f.gridUnitsAsDp()))
+                    .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f))
+                    .padding(vertical = 0.8f.gridUnitsAsDp(), horizontal = 0.3f.gridUnitsAsDp()),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.9f.gridUnitsAsDp()),
+            ) {
+                pitchRows.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(
+                            0.3f.gridUnitsAsDp(),
+                            Alignment.CenterHorizontally,
+                        ),
+                    ) {
+                        row.forEach { player -> PitchNumberDot(player, dotColor = teamColor) }
+                    }
                 }
             }
         }
@@ -1614,39 +1621,61 @@ private fun LineupSection(
     }
 }
 
+/** The starting XI's names, in the same top-to-bottom (most-advanced-line-first) order as
+ * [LineupSection]'s pitch bands — same visual role the old per-dot name label used to serve,
+ * before there was enough width per player to keep names legible once dots stopped stretching
+ * across up to 5 side-by-side columns. Same row shape [SubstitutesBlock] already uses (a
+ * fixed-width number column beside a name that can truncate) for a consistent look across the
+ * lineup tab. A little extra top padding between each pitch-line group (skipped for the very
+ * first) gives a rough visual seam lining this list up with the row bands beside it, without
+ * needing an explicit divider or label for every line. */
 @Composable
-private fun PitchPlayerChip(player: LineupPlayer, dotColor: Color?, modifier: Modifier = Modifier) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier.padding(vertical = 0.1f.gridUnitsAsDp()),
-    ) {
-        // A saturated dotColor needs its own text color to stay legible — the theme's default
-        // content color assumes the neutral, low-alpha background this dot had before team colors
-        // existed, and can end up light-on-light or dark-on-dark against a real team hue.
-        val numberColor = dotColor?.let { legibleTextColorOn(it) }
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(2.3f.gridUnitsAsDp())
-                .clip(CircleShape)
-                .background(dotColor?.copy(alpha = 0.55f) ?: LightThemeTokens.colors.contentSecondary.copy(alpha = 0.22f)),
-        ) {
-            LightText(text = player.number?.toString() ?: "-", variant = LightTextVariant.Detail, color = numberColor)
+private fun LineupRosterList(pitchRows: List<List<LineupPlayer>>, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        pitchRows.forEachIndexed { rowIndex, row ->
+            row.forEachIndexed { playerIndex, player ->
+                // Only the first player of each new group (not the very first group) gets the
+                // extra gap above it — this marks the seam between pitch-line groups without
+                // spacing every player within a group apart from their line-mates too.
+                val topPadding = if (rowIndex > 0 && playerIndex == 0) 0.3f.gridUnitsAsDp() else 0.dp
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = topPadding, bottom = 0.15f.gridUnitsAsDp()),
+                ) {
+                    LightText(
+                        text = player.number?.toString() ?: "-",
+                        variant = LightTextVariant.Copy,
+                        lighten = true,
+                        modifier = Modifier.width(1.8f.gridUnitsAsDp()),
+                    )
+                    LightText(
+                        text = player.name,
+                        variant = LightTextVariant.Copy,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
-        // Superfine, not Fine — see the font-size audit doc: Fine (25sp) is bigger than Detail
-        // (20sp), which sits right above this in the jersey-number circle, so this surname caption
-        // was rendering nearly Copy-sized under a smaller number. Superfine (16sp) also buys a
-        // little more room before the truncation this doc comment on LineupSection already
-        // expects ("Walukiew…", "McKen…") kicks in.
-        LightText(
-            text = player.name.substringAfterLast(' '),
-            variant = LightTextVariant.Superfine,
-            lighten = true,
-            align = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 0.15f.gridUnitsAsDp()).fillMaxWidth(),
-        )
+    }
+}
+
+@Composable
+private fun PitchNumberDot(player: LineupPlayer, dotColor: Color?, modifier: Modifier = Modifier) {
+    // A saturated dotColor needs its own text color to stay legible — the theme's default content
+    // color assumes the neutral, low-alpha background this dot had before team colors existed, and
+    // can end up light-on-light or dark-on-dark against a real team hue.
+    val numberColor = dotColor?.let { legibleTextColorOn(it) }
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(2.3f.gridUnitsAsDp())
+            .clip(CircleShape)
+            .background(dotColor?.copy(alpha = 0.55f) ?: LightThemeTokens.colors.contentSecondary.copy(alpha = 0.22f)),
+    ) {
+        LightText(text = player.number?.toString() ?: "-", variant = LightTextVariant.Detail, color = numberColor)
     }
 }
 
