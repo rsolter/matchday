@@ -276,3 +276,14 @@ Fixtures, and My Team's "RECENT RESULTS"/"UPCOMING" cards — there's no per-scr
 differently. `MatchGroupCard`'s own title (the competition/date/"RECENT RESULTS" header) wasn't
 named in the request and stays at `Detail` (20), unchanged. The colored result/form badges from §6
 (`ResultBadge`, `FormRow`) also weren't named and stay at `Superfine` (16).
+
+## 8. MatchRow's leading slot narrowed
+
+Not a font-size change, but tracked here because it's the same width constant §7 depends on:
+`LEFT_SLOT_WIDTH` (the fixed-width box before team names, holding the status badge/kickoff label)
+was `6.5f`, sized for the widest case — My Team's "UPCOMING" card's dated kickoff format ("9/25
+3:45 PM"). Every other row (a short "FT"/live-minute pill, or a same-day kickoff time like "3:45
+PM") only used a fraction of that width, leaving visible dead space before team names. Narrowed to
+`4.2f` for the common case; a new `LEFT_SLOT_WIDTH_DATED` (`6.5f`, the old value) is used only when
+`MatchRow` is actually rendering the dated format — i.e. only ever on My Team's "UPCOMING" card,
+so every other card's own rows stay internally consistent at the narrower width.

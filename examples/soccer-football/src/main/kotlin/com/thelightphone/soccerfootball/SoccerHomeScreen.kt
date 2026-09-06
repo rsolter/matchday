@@ -55,7 +55,6 @@ import com.thelightphone.sdk.ui.LightTopBarCenter
 import com.thelightphone.sdk.ui.gridUnitsAsDp
 import com.thelightphone.sdk.ui.lightClickable
 import com.thelightphone.sdk.ui.scrollBarGutterUnits
-import kotlin.time.Instant
 
 @InitialScreen
 class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
@@ -86,8 +85,6 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                         ScoresContent(
                             groups = mode.groups,
                             leagueLogos = mode.leagueLogos,
-                            lastUpdated = mode.lastUpdated,
-                            isRefreshing = mode.isRefreshing,
                             onOpenSettings = viewModel::openSettings,
                             onOpenMyTeam = viewModel::openMyTeam,
                             onOpenStandings = viewModel::openStandingsPicker,
@@ -229,11 +226,21 @@ private fun LoadingContent(title: String, message: String) {
 
 // --- Scores ------------------------------------------------------------------
 
-// Fixed width for MatchRow's leading slot (status badge, live minute, kickoff time, or a My Team
-// result badge) — sized to comfortably fit the widest common case, My Team's "9/25 3:45 PM"
-// kickoff date+time. Keeping this constant, rather than letting the slot's content size itself, is
-// what keeps every row's team names starting at the same x position regardless of what leads them.
-private val LEFT_SLOT_WIDTH = 6.5f
+// Fixed width for MatchRow's leading slot in the common case — a status badge (FT/live-minute), a
+// same-day kickoff time ("3:45 PM", already grouped under a date header so no date prefix needed),
+// or a My Team result badge. Narrowed on request: at 6.5f (sized for the much longer dated kickoff
+// format below) this left a lot of dead space in front of team names for every row that wasn't
+// using the longest case. Keeping this as a fixed width at all, rather than letting the slot's
+// content size itself, is what keeps every row's team names starting at the same x position
+// regardless of what leads them.
+private val LEFT_SLOT_WIDTH = 4.2f
+
+// Wider leading-slot width for the one case that doesn't fit LEFT_SLOT_WIDTH: My Team's "UPCOMING"
+// card, whose kickoff label includes a date prefix ("9/25 3:45 PM") since — unlike Scores/Fixtures —
+// it isn't already grouped under a per-day header (see formatKickoffDateAndTime's doc comment in
+// SoccerFormatting.kt). Only ever used for that one card, so it doesn't affect row alignment
+// anywhere else — every other card's rows are internally consistent using LEFT_SLOT_WIDTH.
+private val LEFT_SLOT_WIDTH_DATED = 6.5f
 
 // Fixed width for MatchRow's trailing score slot — the badge/kickoff-time content that used to
 // live here moved to the left slot above (see MatchRow's doc comment), so this only ever holds a
@@ -330,8 +337,6 @@ private fun FormRow(form: String, modifier: Modifier = Modifier) {
 private fun ScoresContent(
     groups: List<CompetitionGroup>,
     leagueLogos: Map<String, ByteArray>,
-    lastUpdated: Instant?,
-    isRefreshing: Boolean,
     onOpenSettings: () -> Unit,
     onOpenMyTeam: () -> Unit,
     onOpenStandings: () -> Unit,
@@ -339,14 +344,12 @@ private fun ScoresContent(
     onMatchClick: (Fixture) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
+        // Was "Updating…" / "Updated {time}" / "Today" depending on refresh state — simplified to
+        // always read "Today" on request. ScoreScreenMode.Scores.lastUpdated/isRefreshing (and
+        // formatUpdatedAt in SoccerFormatting.kt) are unused by this screen now but left in place
+        // in case a future refresh indicator wants them again.
         LightTopBar(
-            center = LightTopBarCenter.Text(
-                text = when {
-                    isRefreshing -> "Updating…"
-                    lastUpdated != null -> "Updated ${formatUpdatedAt(lastUpdated)}"
-                    else -> "Today"
-                },
-            ),
+            center = LightTopBarCenter.Text(text = "Today"),
             modifier = Modifier.padding(bottom = 0.25f.gridUnitsAsDp()),
         )
 
@@ -478,12 +481,13 @@ private fun MatchGroupCard(
     }
 }
 
-/** One match's row: a leading fixed-width slot ([LEFT_SLOT_WIDTH]) for its status — live minute,
- * "FT", a kickoff time, or (My Team's "RECENT RESULTS" only) a colored [ResultBadge] — then the
- * team names, then a trailing score slot ([SCORE_SLOT_WIDTH]). The status used to trail the score
- * on the right instead; moved to lead the row instead, matching the reference fotmob layout, and
- * incidentally removing the old score-drift problem for free — the score now sits in its own fixed
- * slot with nothing else competing for its space, so it isn't affected by what leads the row. */
+/** One match's row: a leading fixed-width slot ([LEFT_SLOT_WIDTH], or [LEFT_SLOT_WIDTH_DATED] for
+ * My Team's "UPCOMING" card) for its status — live minute, "FT", a kickoff time, or (My Team's
+ * "RECENT RESULTS" only) a colored [ResultBadge] — then the team names, then a trailing score slot
+ * ([SCORE_SLOT_WIDTH]). The status used to trail the score on the right instead; moved to lead the
+ * row instead, matching the reference fotmob layout, and incidentally removing the old score-drift
+ * problem for free — the score now sits in its own fixed slot with nothing else competing for its
+ * space, so it isn't affected by what leads the row. */
 @Composable
 private fun MatchRow(
     match: Fixture,
@@ -499,6 +503,11 @@ private fun MatchRow(
     highlightTeamId: Int? = null,
     onClick: () -> Unit,
 ) {
+    // Only My Team's "UPCOMING" card ever hits the showDate+SCHEDULED branch below (its rows are
+    // all upcoming, so this is consistent card-to-card, not row-to-row within one card) — everyone
+    // else (Scores/Fixtures, and My Team's "RECENT RESULTS") uses the narrower common width.
+    val usesDatedKickoffLabel = !match.hasScore && showDate && match.status == MatchStatus.SCHEDULED
+    val leftSlotWidth = if (usesDatedKickoffLabel) LEFT_SLOT_WIDTH_DATED else LEFT_SLOT_WIDTH
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -507,7 +516,7 @@ private fun MatchRow(
             .padding(vertical = 0.65f.gridUnitsAsDp()),
     ) {
         Box(
-            modifier = Modifier.width(LEFT_SLOT_WIDTH.gridUnitsAsDp()),
+            modifier = Modifier.width(leftSlotWidth.gridUnitsAsDp()),
             contentAlignment = Alignment.CenterStart,
         ) {
             if (match.hasScore) {
@@ -523,7 +532,7 @@ private fun MatchRow(
                 }
             } else {
                 // Upcoming match, no score yet — nothing to color-code, just the kickoff label.
-                val label = if (showDate && match.status == MatchStatus.SCHEDULED) {
+                val label = if (usesDatedKickoffLabel) {
                     formatKickoffDateAndTime(match.utcDate)
                 } else {
                     match.statusLabel()
