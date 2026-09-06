@@ -329,6 +329,13 @@ internal class ApiFootballApi {
             .toMap()
     }
 
+    /** Team crest bytes for one or more [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] URLs, keyed
+     * by URL — used by Scores and Results & Fixtures' combined team-crest/score cell (see
+     * MatchTeamsAndScoreCell in SoccerHomeScreen.kt). Mechanically identical to [fetchLeagueLogos]
+     * (fetch each distinct URL once, keyed by URL, omit on failure) — this is a separate name
+     * purely so call sites read as "team crests", not because the fetch itself differs at all. */
+    suspend fun fetchTeamLogos(urls: Collection<String>): Map<String, ByteArray> = fetchLeagueLogos(urls)
+
     /** Fetches a hosted image as raw bytes — used for team crest URLs off [ApiFootballFixtureTeamDto.logo].
      * Deliberately bypasses [get]/[getChecked] below: there's no JSON body here to run through
      * [apiFootballErrorMessage]'s success/failure check, and the crest URL points at whatever CDN

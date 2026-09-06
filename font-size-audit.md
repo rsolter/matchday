@@ -648,3 +648,60 @@ should stay orange, leaving a slightly ragged edge around the orange region rath
 one. This is worth checking on a real device once built, and the four constants
 (`ORANGE_HUE_MIN`/`MAX`, `ORANGE_MIN_SATURATION`, `ORANGE_MIN_VALUE`) are named and centralized
 specifically so they're easy to retune without touching the recolor logic itself.
+
+## 19. Today and Results & Fixtures: combined team-crest/score cell, Fixtures' cards get their header back
+
+On request, referencing two fotmob screenshots: combine each match's home/away names, team crests,
+and score/kickoff-time into one cell (rather than plain team-name text plus a separate trailing
+score column), on both Today (Scores) and Results & Fixtures — and, for Fixtures specifically,
+drop the per-row league crest column from last round and go back to a per-card header (crest +
+league name at the top of the card), matching how Scores' own cards already look.
+
+**The new shared cell.** Added `MatchTeamsAndScoreCell` (and a small `TeamCrestImage` helper it
+uses twice): home team name, home crest, a centered score/kickoff-time slot, away crest, away team
+name — crests sit next to the score/time in the middle, team names bookend on the outside, matching
+the reference screenshots' order rather than a crest sitting right next to its own team's name.
+`TeamCrestImage` always reserves the same fixed-size box whether or not its bytes actually decoded,
+so one missing/failed crest doesn't shift that row's alignment out of step with its neighbors.
+
+**Today (Scores/My Team).** `MatchRow` gained three new params — `showTeamCrests` (default
+`false`), `homeTeamLogoBytes`, `awayTeamLogoBytes` — and now branches: when `showTeamCrests` is set,
+the old "Home vs Away" text plus trailing score box is replaced by `MatchTeamsAndScoreCell`;
+otherwise (the default) the row is byte-for-byte the same code as before. Only Scores' call site
+(via a new `showTeamCrests`/`teamLogos` pair threaded through `MatchGroupCard`) ever sets it — My
+Team's "RECENT RESULTS" and "UPCOMING" cards never do, so they're completely unaffected by this
+round. Today's own leading slot (FT badge/live minute/result badge/kickoff time) is untouched; the
+cell's center slot stays blank for a not-yet-started match there (`showCenterLabelWhenScheduled =
+false`) since that slot already has the kickoff time via the leading slot — showing it twice would
+be redundant.
+
+**Results & Fixtures.** Reverted `FixtureLeagueCard` back to its own crest+name header (the same
+pattern `MatchGroupCard` uses, just not tappable to Standings — that wasn't asked for here), undoing
+last round's per-row league-crest column. `FixtureMatchRow` shrank down to a thin wrapper around
+`MatchTeamsAndScoreCell` (`showCenterLabelWhenScheduled = true`, since this row has no leading slot
+of its own to show a kickoff time in some other way) — it lost its `leagueLogoBytes`/`leagueId`/
+`leagueColorFilter`/`leagueName` params entirely along with `FIXTURE_LEAGUE_ICON_SLOT_WIDTH`, since
+the league identity moved back to the card header. The existing "don't repeat an identical kickoff
+time back-to-back" de-dup rule from a previous round carries over unchanged, just renamed
+(`suppressCenterLabel`) to match the cell's terminology.
+
+Deliberately *not* merged into `MatchGroupCard`/`MatchRow` outright, even though the two composables
+now look and behave very similarly: Fixtures groups by day *and* league at once (Scores only ever
+groups by league) and its rows still have no leading status slot at all, unlike Today's — folding
+that difference into the already-heavily-parameterized shared card felt like it would cost more in
+clarity than it would save in duplication, so the two stayed separate, just now sharing the actual
+cell-rendering code via `MatchTeamsAndScoreCell`.
+
+**Fetching team crests — a genuinely new cost, flagged plainly.** Team crest bytes weren't
+previously fetched in bulk anywhere; only the single tapped match's two crests were ever fetched
+(for `MatchDetailScreen`). Scores/Fixtures now fetch *every distinct team crest URL on screen* as a
+follow-up, reusing the exact same by-URL fetch mechanism `fetchLeagueLogos` already used (a new
+`fetchTeamLogos` is a one-line delegate to it) — run concurrently with the league-logo fetch via
+`coroutineScope`/`async` rather than sequentially. This is a materially larger number of image
+fetches than before (potentially dozens of teams per screen, versus roughly a dozen tracked
+competitions total) — still off the image CDN directly rather than through this app's own
+API-Football proxy/quota (per `fetchImageBytes`'s existing doc comment), so it doesn't touch the
+request budget, but it is more real network and battery work on every Scores refresh and every
+`openFixtures()` call. Worth watching for a noticeable slowdown or extra data use once this runs on
+a real device — the two fetches are already concurrent with each other, but nothing here caches
+crests across refreshes (same "refetch every time" behavior `leagueLogos` already had).

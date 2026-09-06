@@ -8,6 +8,8 @@ import com.thelightphone.sdk.LightViewModel
 import com.thelightphone.sdk.SimpleLightScreen
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +36,11 @@ sealed class ScoreScreenMode {
          * resolves; a group simply renders without a badge until then, same "omit rather than show
          * broken" convention as every other image on this screen. */
         val leagueLogos: Map<String, ByteArray> = emptyMap(),
+        /** Keyed by [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] URL — backs the per-match team
+         * crests in [MatchTeamsAndScoreCell] (SoccerHomeScreen.kt). Fetched alongside [leagueLogos]
+         * as the same follow-up in [refresh]; a missing entry just means that one crest is skipped,
+         * not that the whole row falls back to text-only. */
+        val teamLogos: Map<String, ByteArray> = emptyMap(),
     ) : ScoreScreenMode()
 
     data class Settings(
@@ -61,15 +68,17 @@ sealed class ScoreScreenMode {
     /** All followed leagues' fixtures, grouped by day then by competition — see
      * [groupedByDateThenLeague]. No more standalone per-league picker/view (removed on request);
      * this is reached directly from the bottom bar, same as [Standings] is now reached only via a
-     * league logo tap rather than its own picker. [leagueLogos] backs the per-row league badge that
-     * replaced this screen's old per-league text header (see FixtureMatchRow in
-     * SoccerHomeScreen.kt) — fetched as a follow-up the same way [Scores.leagueLogos] is, keyed by
-     * the same [CompetitionGroup.leagueLogo] URL. */
+     * league logo tap rather than its own picker. [leagueLogos] backs each day/league card's header
+     * badge (see FixtureLeagueCard in SoccerHomeScreen.kt) — fetched as a follow-up the same way
+     * [Scores.leagueLogos] is, keyed by the same [CompetitionGroup.leagueLogo] URL. [teamLogos],
+     * keyed by [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] URL, backs the per-match team crests
+     * in [MatchTeamsAndScoreCell] — fetched concurrently with [leagueLogos] in the same follow-up. */
     data class Fixtures(
         val groups: List<FixtureDayGroup>,
         val isLoading: Boolean,
         val lastUpdated: Instant?,
         val leagueLogos: Map<String, ByteArray> = emptyMap(),
+        val teamLogos: Map<String, ByteArray> = emptyMap(),
     ) : ScoreScreenMode()
 
     /** My Team setup, step 1: pick which followed league the team plays in — there's no team
@@ -262,13 +271,19 @@ class SoccerViewModel(
                         state.copy(errorModal = null)
                     }
                 }
-                // League badges fetch only now, as a follow-up — same pattern as MatchDetailScreen's
-                // coach photos below: nothing here needs to block the scores themselves rendering.
-                // Silent on failure/blank, same "just render without a badge" convention as the rest
-                // of this app's images.
-                val leagueLogos = api.fetchLeagueLogos(groups.map { it.leagueLogo })
-                if (leagueLogos.isNotEmpty()) {
-                    val modeWithLogos = mode.copy(leagueLogos = leagueLogos)
+                // League badges and team crests fetch only now, as a follow-up, run concurrently
+                // with each other — same pattern as MatchDetailScreen's coach photos below: nothing
+                // here needs to block the scores themselves rendering. Silent on failure/blank, same
+                // "just render without a badge" convention as the rest of this app's images.
+                val (leagueLogos, teamLogos) = coroutineScope {
+                    val leagueLogosDeferred = async { api.fetchLeagueLogos(groups.map { it.leagueLogo }) }
+                    val teamLogosDeferred = async {
+                        api.fetchTeamLogos(matches.flatMap { listOf(it.homeTeamLogo, it.awayTeamLogo) })
+                    }
+                    leagueLogosDeferred.await() to teamLogosDeferred.await()
+                }
+                if (leagueLogos.isNotEmpty() || teamLogos.isNotEmpty()) {
+                    val modeWithLogos = mode.copy(leagueLogos = leagueLogos, teamLogos = teamLogos)
                     lastScores = modeWithLogos
                     updateState { state ->
                         // Guards against a newer refresh() call having already replaced groups by
@@ -500,16 +515,25 @@ class SoccerViewModel(
                             state
                         }
                     }
-                    // League badges fetch only now, as a follow-up — same pattern refresh() already
-                    // uses for Scores' own leagueLogos: doesn't block the fixtures themselves
-                    // rendering, silent on failure/blank.
-                    val leagueLogos = api.fetchLeagueLogos(groups.flatMap { it.leagueGroups }.map { it.leagueLogo })
-                    if (leagueLogos.isNotEmpty()) {
+                    // League badges and team crests fetch only now, as a follow-up, run concurrently
+                    // with each other — same pattern refresh() already uses for Scores' own
+                    // leagueLogos/teamLogos: doesn't block the fixtures themselves rendering, silent
+                    // on failure/blank.
+                    val (leagueLogos, teamLogos) = coroutineScope {
+                        val leagueLogosDeferred = async {
+                            api.fetchLeagueLogos(groups.flatMap { it.leagueGroups }.map { it.leagueLogo })
+                        }
+                        val teamLogosDeferred = async {
+                            api.fetchTeamLogos(matches.flatMap { listOf(it.homeTeamLogo, it.awayTeamLogo) })
+                        }
+                        leagueLogosDeferred.await() to teamLogosDeferred.await()
+                    }
+                    if (leagueLogos.isNotEmpty() || teamLogos.isNotEmpty()) {
                         updateState { state ->
                             // Guards against a newer openFixtures() call having already replaced
                             // groups by the time this slower logo fetch resolves.
                             if (state.mode is ScoreScreenMode.Fixtures && state.mode.groups == groups) {
-                                state.copy(mode = state.mode.copy(leagueLogos = leagueLogos))
+                                state.copy(mode = state.mode.copy(leagueLogos = leagueLogos, teamLogos = teamLogos))
                             } else {
                                 state
                             }
