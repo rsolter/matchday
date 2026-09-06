@@ -539,3 +539,59 @@ than it needed to. `MatchRow` gained a `showScoreSlot` param (default `true`, so
 caller — Scores, Fixtures, My Team's own "RECENT RESULTS" — is unaffected); set to `false` only at
 this one call site, it omits the score `Box` entirely rather than just leaving it visually empty,
 handing that width back to the team-name text so most matchups now fit on one line.
+
+## 17. Results & Fixtures: renamed, condensed to one line per match, per-row league crest
+
+Round 24 (a separate sync, folded in here for a complete history) renamed this screen's header
+from "Fixtures" to "Results & Fixtures", on request — cosmetic only, `LightTopBarCenter.Text` was
+already the single line it needed to be.
+
+This round is the bigger one: on request, condensed every match on this screen to one line, and
+replaced each competition's text header with a small crest shown on every row instead. Discussed
+first rather than guessed at, since the original ask ("shorten SERIE A to ITA, La Liga to ESP")
+had a real problem — country-code abbreviations collide for any country with more than one
+tracked competition (England alone has four: Premier League, Championship, FA Cup, EFL Cup), which
+would have made two different competitions unreadable from each other on the same day. Confirmed
+instead: crest icon (not text) for the league marker, one card per league with the header dropped
+rather than a fully flattened day list, and — since the "Today" Scores screen was explicitly to be
+left alone — a completely separate row structure for this screen rather than more flags on the
+shared `MatchGroupCard`/`MatchRow`.
+
+**New composables, Results & Fixtures only:** `FixtureLeagueCard` (a per-league card with no title
+row — just a rounded container and dividers between rows) and `FixtureMatchRow` (the condensed row
+itself). Neither touches `MatchGroupCard`/`MatchRow`, which Scores and My Team's cards keep using
+exactly as before. `FixtureMatchRow`'s layout: a narrow `FIXTURE_LEAGUE_ICON_SLOT_WIDTH` (1.8, vs.
+`MatchRow`'s `LEFT_SLOT_WIDTH` of 4.2) holding the competition's crest — reusing the exact bytes/
+tint machinery Scores' own title icon already uses (`leagueLogoColorFilter` for the two leagues
+that need a white recolor) — then team names forced to `maxLines = 1` (unlike `MatchRow`'s
+2-line allowance elsewhere), then a trailing slot doing double duty: a fixture's kickoff time
+(moved here from the old leading slot, on request), or a result's score, tinted
+`LIVE_STATUS_GREEN` while still in progress (same color `MatchStatusBadge` already uses for a live
+minute elsewhere). The same "don't repeat an identical kickoff time back-to-back" suppression from
+round 23 carries over, just recomputed for the new trailing-slot position instead of the old
+leading one.
+
+**Fetching the crests:** `ScoreScreenMode.Fixtures` gained a `leagueLogos: Map<String, ByteArray>`
+field, fetched as a follow-up once `groups` resolves — the exact same pattern `Scores.leagueLogos`
+already uses (doesn't block the fixtures themselves from rendering; silent on failure/blank; a
+staleness guard checks `groups` hasn't already been replaced by a newer `openFixtures()` call
+before the slower logo fetch applies).
+
+**A real bug fixed along the way, not requested but worth flagging:** `Fixture.hasScore` is a
+blunt "not NS/TBD" check, true for postponed/cancelled/suspended matches too, which have no real
+goals — `MatchRow`'s score slot already had this gap (a postponed match there would print a fake
+"0 - 0"), just masked in practice: Scores shows a simultaneous "Postponed" status badge alongside
+the fake score, and the old (round 23) Fixtures screen showed neither the badge nor anything
+else — just a silently wrong "0 - 0" with no indication anything was off. Since this new row's
+trailing slot has nothing else to fall back on, a new `Fixture.showsFinalOrLiveScore()` (finished
+or currently live, specifically — not just "not NS/TBD") decides whether that slot shows a score
+at all; when it doesn't, the slot now correctly shows "Postponed"/"Cancelled"/"Suspended" (or the
+kickoff time) instead. `MatchRow` itself wasn't touched, so Scores/My Team still have the
+pre-existing gap — fixing it there felt like scope creep beyond what was asked this round.
+
+**Cleanup:** `suppressRepeatedKickoffTime` (`MatchGroupCard`) and `suppressKickoffLabel`
+(`MatchRow`) — both added last round for Fixtures specifically — are removed now that Fixtures no
+longer calls either composable; nothing else ever set them. A few doc comments that referenced
+Fixtures as a caller of the shared row/card (and `CompetitionPickerContent`'s "Standings / Fixtures
+/ My Team setup" header, stale since round 22 removed the first of those two) were corrected in
+the same pass.

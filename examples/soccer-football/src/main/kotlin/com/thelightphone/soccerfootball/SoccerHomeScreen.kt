@@ -134,6 +134,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                     is ScoreScreenMode.Fixtures -> {
                         FixturesContent(
                             groups = mode.groups,
+                            leagueLogos = mode.leagueLogos,
                             isLoading = mode.isLoading,
                             onBack = viewModel::backFromFixturesTable,
                             onMatchClick = viewModel::openMatchDetail,
@@ -220,8 +221,8 @@ private fun LoadingContent(title: String, message: String) {
 private val LEFT_SLOT_WIDTH = 4.2f
 
 // Wider leading-slot width for the one case that doesn't fit LEFT_SLOT_WIDTH: My Team's "UPCOMING"
-// card, whose kickoff label includes a date prefix ("9/25 19:45") since — unlike Scores/Fixtures —
-// it isn't already grouped under a per-day header (see formatKickoffDateAndTime's doc comment in
+// card, whose kickoff label includes a date prefix ("9/25 19:45") since — unlike Scores — it isn't
+// already grouped under a per-day header (see formatKickoffDateAndTime's doc comment in
 // SoccerFormatting.kt). Only ever used for that one card, so it doesn't affect row alignment
 // anywhere else — every other card's rows are internally consistent using LEFT_SLOT_WIDTH.
 private val LEFT_SLOT_WIDTH_DATED = 6.5f
@@ -396,25 +397,25 @@ private fun ScoresContent(
 }
 
 /** A rounded card grouping a set of matches under one header — same card-per-group pattern as the
- * ESPN/football-data.org variants of this tool. Used for Scores (grouped by competition),
- * Fixtures (grouped by date), and My Team (upcoming/recent). [showFinishedStatus] controls whether
+ * ESPN/football-data.org variants of this tool. Used for Scores (grouped by competition) and My
+ * Team (upcoming/recent) — Results & Fixtures used to share this too, before it moved to its own
+ * headerless FixtureLeagueCard/FixtureMatchRow (see that pair's doc comments for why).
+ * [showFinishedStatus] controls whether
  * a finished match still prints its "FT"/"Postponed"/etc. label in the row's left slot.
- * [titleLogoBytes] is only ever passed by Scores' competition groups — Fixtures/My Team group by
- * date or a plain "RECENT RESULTS"/"UPCOMING" label, neither of which has a single league badge to
- * show. [titleLogoTint], when set, recolors that logo — see [leagueLogoColorFilter]'s doc comment
+ * [titleLogoBytes] is only ever passed by Scores' competition groups — My Team's cards use a plain
+ * "RECENT RESULTS"/"UPCOMING" label instead, which has no single league badge to show.
+ * [titleLogoTint], when set, recolors that logo — see [leagueLogoColorFilter]'s doc comment
  * for why (only Scores' call site ever passes one, computed from the group's own league ID).
  * [onTitleLogoClick], when set (Scores only, and only for leagues with a real table — see
  * `competitionHasStandings` in SoccerModels.kt), makes the title logo itself tappable to jump
  * straight to that league's Standings table; this is now the table's *only* entry point, since the
  * Home screen's own Standings button was removed. [highlightTeamId] is only ever passed by My
  * Team's "RECENT RESULTS" card, to color each match's left slot by its result for that team
- * instead — see [MatchRow]. [allowKickoffLabelWrap] is only ever passed by Fixtures' per-league
- * list and My Team's "UPCOMING" card — see [MatchRow]. [suppressRepeatedKickoffTime], only ever
- * passed by Fixtures, blanks a scheduled match's kickoff time whenever it's identical to the
- * previous row's within this same card — see [MatchRow]'s `suppressKickoffLabel`. [showScoreSlot],
- * only ever set false by My Team's "UPCOMING" card, drops the trailing score column entirely
- * (rather than just leaving it visually empty) so the team-name text gets that width back — see
- * [MatchRow]. */
+ * instead — see [MatchRow]. [allowKickoffLabelWrap] is only ever passed by My Team's "UPCOMING"
+ * card — see [MatchRow] (Fixtures used to be the other caller, before it moved to its own
+ * FixtureMatchRow — see that composable's doc comment for why). [showScoreSlot], only ever set
+ * false by My Team's "UPCOMING" card, drops the trailing score column entirely (rather than just
+ * leaving it visually empty) so the team-name text gets that width back — see [MatchRow]. */
 @Composable
 private fun MatchGroupCard(
     title: String,
@@ -427,7 +428,6 @@ private fun MatchGroupCard(
     showDate: Boolean = false,
     highlightTeamId: Int? = null,
     allowKickoffLabelWrap: Boolean = false,
-    suppressRepeatedKickoffTime: Boolean = false,
     showScoreSlot: Boolean = true,
     onMatchClick: (Fixture) -> Unit,
 ) {
@@ -470,18 +470,12 @@ private fun MatchGroupCard(
                         .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
                 )
             }
-            // Only a run of consecutive *scheduled* matches sharing the exact same kickoff instant
-            // gets blanked past the first — a live/finished match's row shows a status badge, not a
-            // kickoff time, in this same slot, so it's never a candidate either way.
-            val suppressKickoff = suppressRepeatedKickoffTime && index > 0 &&
-                !match.hasScore && !matches[index - 1].hasScore && match.utcDate == matches[index - 1].utcDate
             MatchRow(
                 match,
                 showFinishedStatus = showFinishedStatus,
                 showDate = showDate,
                 highlightTeamId = highlightTeamId,
                 allowKickoffLabelWrap = allowKickoffLabelWrap,
-                suppressKickoffLabel = suppressKickoff,
                 showScoreSlot = showScoreSlot,
                 onClick = { onMatchClick(match) },
             )
@@ -501,24 +495,21 @@ private fun MatchRow(
     match: Fixture,
     showFinishedStatus: Boolean = true,
     // My Team's "UPCOMING" card is the one caller that isn't already grouped under a per-day
-    // header (unlike Scores/Fixtures), so a bare kickoff time there could be mistaken for today's
-    // game — see formatKickoffDateAndTime's doc comment in SoccerFormatting.kt.
+    // header (unlike Scores), so a bare kickoff time there could be mistaken for today's game —
+    // see formatKickoffDateAndTime's doc comment in SoccerFormatting.kt.
     showDate: Boolean = false,
     // Set only by My Team's "RECENT RESULTS" card (showFinishedStatus = false there, so the FT
     // badge that would otherwise occupy this slot is already suppressed) — shows a colored W/D/L
     // result badge for this specific team in the same left-hand slot instead. See
     // Fixture.resultFor/ResultBadge.
     highlightTeamId: Int? = null,
-    // Set only by Fixtures' per-league list and My Team's "UPCOMING" card, where the kickoff label
-    // can be a full date + time (e.g. "9/13 19:45") or just a longer local time — letting it wrap
-    // to a second line instead of ellipsizing. Left off (default) for Scores, which keeps its
-    // original single-line/ellipsis behavior — see the SoccerHomeScreen font-size audit, §9, for
-    // why Scores wasn't included even though it can clip the same way.
+    // Set only by My Team's "UPCOMING" card, where the kickoff label can be a full date + time
+    // (e.g. "9/13 19:45") or just a longer local time — letting it wrap to a second line instead
+    // of ellipsizing. Left off (default) for Scores, which keeps its original single-line/ellipsis
+    // behavior — see the SoccerHomeScreen font-size audit, §9, for why Scores wasn't included even
+    // though it can clip the same way. Fixtures used to be the other caller too, before it moved
+    // to its own FixtureMatchRow.
     allowKickoffLabelWrap: Boolean = false,
-    // Set only by Fixtures, computed by MatchGroupCard: true when this row shares its exact
-    // kickoff instant with the row directly above it in the same card, so the same time isn't
-    // printed once per match sharing a kickoff — on request, see a real Fixtures screenshot.
-    suppressKickoffLabel: Boolean = false,
     // False only for My Team's "UPCOMING" card, on request — every one of its matches is scheduled
     // (no score to show yet anyway), and dropping the slot entirely rather than just leaving it
     // empty gives the team-name text that width back, letting most matchups fit on one line.
@@ -527,7 +518,7 @@ private fun MatchRow(
 ) {
     // Only My Team's "UPCOMING" card ever hits the showDate+SCHEDULED branch below (its rows are
     // all upcoming, so this is consistent card-to-card, not row-to-row within one card) — everyone
-    // else (Scores/Fixtures, and My Team's "RECENT RESULTS") uses the narrower common width.
+    // else (Scores, and My Team's "RECENT RESULTS") uses the narrower common width.
     val usesDatedKickoffLabel = !match.hasScore && showDate && match.status == MatchStatus.SCHEDULED
     val leftSlotWidth = if (usesDatedKickoffLabel) LEFT_SLOT_WIDTH_DATED else LEFT_SLOT_WIDTH
     Row(
@@ -552,7 +543,7 @@ private fun MatchRow(
                         ResultBadge(result)
                     }
                 }
-            } else if (!suppressKickoffLabel) {
+            } else {
                 // Upcoming match, no score yet — nothing to color-code, just the kickoff label.
                 val label = if (usesDatedKickoffLabel) {
                     formatKickoffDateAndTime(match.utcDate)
@@ -824,7 +815,11 @@ private fun LeagueSelectionContent(
     }
 }
 
-// --- Shared competition picker (Standings / Fixtures / My Team setup) ----------------------
+// --- Shared competition picker (My Team setup) ----------------------------------------------
+//
+// Named "shared" from when Standings and Fixtures each had their own picker screen reusing this
+// same composable too — both are gone now (Standings moved to a league-logo tap, Fixtures to an
+// all-leagues view), leaving My Team's league-picker step as the only caller.
 
 @Composable
 private fun CompetitionPickerContent(
@@ -1014,6 +1009,7 @@ private fun StandingsRow.goalDifferenceLabel(): String =
 @Composable
 private fun FixturesContent(
     groups: List<FixtureDayGroup>,
+    leagueLogos: Map<String, ByteArray>,
     isLoading: Boolean,
     onBack: () -> Unit,
     onMatchClick: (Fixture) -> Unit,
@@ -1050,11 +1046,11 @@ private fun FixturesContent(
             LightScrollView(
                 modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
             ) {
-                // Two levels of grouping now, on request: a plain-text day header (was previously
-                // itself a MatchGroupCard's title — moved out to a bare LightText since a day can
-                // now contain several leagues' cards under it, not one flat match list), then one
-                // MatchGroupCard per competition that has a match that day — same per-league
-                // grouping/order Scores already uses (groupedForDisplay), just repeated per day.
+                // Two levels of grouping, same as before: a plain-text day header, then one
+                // FixtureLeagueCard per competition that has a match that day (same per-league
+                // grouping/order Scores already uses — groupedForDisplay). On request, each
+                // competition's card is now headerless — its identity moves onto every row instead
+                // (a small crest, see FixtureMatchRow) — condensing the view to one line per match.
                 groups.forEachIndexed { dayIndex, day ->
                     Column(
                         modifier = Modifier
@@ -1069,21 +1065,157 @@ private fun FixturesContent(
                             modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
                         )
                         day.leagueGroups.forEachIndexed { leagueIndex, leagueGroup ->
-                            MatchGroupCard(
-                                title = leagueGroup.leagueName.uppercase(),
+                            FixtureLeagueCard(
                                 matches = leagueGroup.matches,
+                                leagueLogoBytes = leagueLogos[leagueGroup.leagueLogo],
+                                leagueName = leagueGroup.leagueName,
                                 modifier = Modifier.padding(top = if (leagueIndex == 0) 0.dp else 0.75f.gridUnitsAsDp()),
-                                showFinishedStatus = false,
-                                allowKickoffLabelWrap = true,
-                                // On request: when several of this league's matches on this day
-                                // kick off at the exact same instant, only the first shows a time —
-                                // the rest leave that slot blank instead of repeating it.
-                                suppressRepeatedKickoffTime = true,
                                 onMatchClick = onMatchClick,
                             )
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+// Narrower than MatchRow's LEFT_SLOT_WIDTH — this column holds only a small crest, not text, so it
+// doesn't need nearly as much room; the space saved goes back to the team-name text.
+private val FIXTURE_LEAGUE_ICON_SLOT_WIDTH = 1.8f
+
+/** One competition's matches on one day, condensed to one line per match — Results & Fixtures
+ * only. Deliberately a separate structure from [MatchGroupCard]/[MatchRow] rather than more flags
+ * bolted onto those (which Scores and My Team's cards still use unchanged): this view replaces the
+ * per-card league header with a per-row league crest instead (see [FixtureMatchRow]), moves a
+ * fixture's kickoff time into the trailing slot where a result's score sits, and forces team names
+ * to a single line — different enough from the shared row that keeping it separate seemed safer
+ * than risking Scores/My Team's behavior via more conditional params. */
+@Composable
+private fun FixtureLeagueCard(
+    matches: List<Fixture>,
+    leagueLogoBytes: ByteArray?,
+    leagueName: String,
+    modifier: Modifier = Modifier,
+    onMatchClick: (Fixture) -> Unit,
+) {
+    val leagueId = matches.firstOrNull()?.leagueId
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(1.2f.gridUnitsAsDp()))
+            .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f))
+            .padding(horizontal = 1f.gridUnitsAsDp(), vertical = 0.5f.gridUnitsAsDp()),
+    ) {
+        matches.forEachIndexed { index, match ->
+            if (index > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
+                )
+            }
+            // Only a run of consecutive *scheduled* matches sharing the exact same kickoff instant
+            // gets blanked past the first — same rule round 23 used for the old per-league header
+            // cards, carried over here since it's still just as relevant with the time slot moved.
+            val previous = matches.getOrNull(index - 1)
+            val suppressTime = previous != null &&
+                !match.showsFinalOrLiveScore() && !previous.showsFinalOrLiveScore() && match.utcDate == previous.utcDate
+            FixtureMatchRow(
+                match = match,
+                leagueLogoBytes = leagueLogoBytes,
+                leagueColorFilter = leagueId?.let { leagueLogoColorFilter(it) },
+                leagueName = leagueName,
+                suppressTimeLabel = suppressTime,
+                onClick = { onMatchClick(match) },
+            )
+        }
+    }
+}
+
+/** True once a match has a real, meaningful score to show — finished or currently in progress.
+ * Deliberately narrower than [Fixture.hasScore] (which is just "not NS/TBD" and is also true for
+ * postponed/cancelled/suspended matches with no real goals): using [hasScore] here would print a
+ * fake "0 - 0" for those instead of "Postponed"/"Cancelled"/"Suspended" — a pre-existing quirk
+ * elsewhere in this app (`MatchRow` has the same gap, papered over on Scores by a simultaneous
+ * "Postponed" status badge alongside the fake score, and left fully bare on the old, pre-this-
+ * round Fixtures screen, which showed neither). This row has nothing else to fall back on, so it's
+ * worth getting right here rather than carrying the same gap forward. */
+private fun Fixture.showsFinalOrLiveScore(): Boolean = status == MatchStatus.FINISHED || status.isLive
+
+/** One match, condensed to a single line: a small league crest leads (replacing the old per-card
+ * text header — see [FixtureLeagueCard]), then the team names (forced to one line, unlike
+ * [MatchRow]'s two-line allowance), then a trailing slot that does double duty — a fixture's
+ * kickoff time on request (moved here from the old leading slot), or a result's score, colored
+ * green while the match is still live ([LIVE_STATUS_GREEN], same color [MatchStatusBadge] uses).
+ * [suppressTimeLabel], computed by [FixtureLeagueCard], blanks that slot when this row's kickoff
+ * time is identical to the row directly above it. */
+@Composable
+private fun FixtureMatchRow(
+    match: Fixture,
+    leagueLogoBytes: ByteArray?,
+    leagueColorFilter: ColorFilter?,
+    leagueName: String,
+    suppressTimeLabel: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .lightClickable(onClick = onClick)
+            .padding(vertical = 0.65f.gridUnitsAsDp()),
+    ) {
+        Box(
+            modifier = Modifier.width(FIXTURE_LEAGUE_ICON_SLOT_WIDTH.gridUnitsAsDp()),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            val leagueLogoBitmap = leagueLogoBytes?.let { bytes ->
+                remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+            }
+            if (leagueLogoBitmap != null) {
+                Image(
+                    bitmap = leagueLogoBitmap,
+                    contentDescription = "$leagueName badge",
+                    contentScale = ContentScale.Fit,
+                    colorFilter = leagueColorFilter,
+                    modifier = Modifier.size(1.3f.gridUnitsAsDp()),
+                )
+            }
+        }
+        LightText(
+            text = "${match.homeTeamName} vs ${match.awayTeamName}",
+            variant = LightTextVariant.Fine,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(start = 0.5f.gridUnitsAsDp()),
+        )
+        Box(
+            modifier = Modifier.width(SCORE_SLOT_WIDTH.gridUnitsAsDp()),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            if (match.showsFinalOrLiveScore()) {
+                LightText(
+                    text = match.scoreLabel(),
+                    variant = LightTextVariant.Fine,
+                    align = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = if (match.status.isLive) LIVE_STATUS_GREEN else null,
+                )
+            } else if (!suppressTimeLabel) {
+                // Not yet finished/live: statusLabel() resolves to a plain kickoff time for a
+                // scheduled match, or "Postponed"/"Cancelled"/"Suspended" for the rest — see its
+                // doc comment in SoccerFormatting.kt.
+                LightText(
+                    text = match.statusLabel(),
+                    variant = LightTextVariant.Fine,
+                    lighten = true,
+                    align = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

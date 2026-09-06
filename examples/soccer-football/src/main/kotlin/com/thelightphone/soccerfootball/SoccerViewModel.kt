@@ -61,11 +61,15 @@ sealed class ScoreScreenMode {
     /** All followed leagues' fixtures, grouped by day then by competition — see
      * [groupedByDateThenLeague]. No more standalone per-league picker/view (removed on request);
      * this is reached directly from the bottom bar, same as [Standings] is now reached only via a
-     * league logo tap rather than its own picker. */
+     * league logo tap rather than its own picker. [leagueLogos] backs the per-row league badge that
+     * replaced this screen's old per-league text header (see FixtureMatchRow in
+     * SoccerHomeScreen.kt) — fetched as a follow-up the same way [Scores.leagueLogos] is, keyed by
+     * the same [CompetitionGroup.leagueLogo] URL. */
     data class Fixtures(
         val groups: List<FixtureDayGroup>,
         val isLoading: Boolean,
         val lastUpdated: Instant?,
+        val leagueLogos: Map<String, ByteArray> = emptyMap(),
     ) : ScoreScreenMode()
 
     /** My Team setup, step 1: pick which followed league the team plays in — there's no team
@@ -481,11 +485,12 @@ class SoccerViewModel(
             val result = api.fetchFixturesForLeagues(followedLeagues().map { it.id }, dateFrom, dateTo)
             result.fold(
                 onSuccess = { matches ->
+                    val groups = matches.groupedByDateThenLeague()
                     updateState { state ->
                         if (state.mode is ScoreScreenMode.Fixtures) {
                             state.copy(
                                 mode = ScoreScreenMode.Fixtures(
-                                    groups = matches.groupedByDateThenLeague(),
+                                    groups = groups,
                                     isLoading = false,
                                     lastUpdated = Clock.System.now(),
                                 ),
@@ -493,6 +498,21 @@ class SoccerViewModel(
                             )
                         } else {
                             state
+                        }
+                    }
+                    // League badges fetch only now, as a follow-up — same pattern refresh() already
+                    // uses for Scores' own leagueLogos: doesn't block the fixtures themselves
+                    // rendering, silent on failure/blank.
+                    val leagueLogos = api.fetchLeagueLogos(groups.flatMap { it.leagueGroups }.map { it.leagueLogo })
+                    if (leagueLogos.isNotEmpty()) {
+                        updateState { state ->
+                            // Guards against a newer openFixtures() call having already replaced
+                            // groups by the time this slower logo fetch resolves.
+                            if (state.mode is ScoreScreenMode.Fixtures && state.mode.groups == groups) {
+                                state.copy(mode = state.mode.copy(leagueLogos = leagueLogos))
+                            } else {
+                                state
+                            }
                         }
                     }
                 },
