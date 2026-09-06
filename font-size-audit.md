@@ -127,11 +127,15 @@ Same `MatchGroupCard`/`MatchRow` as Scores above, plus:
 | Stat label (center column) | Detail (lighten) | 20 | label |
 
 ### Match detail — Events tab
+Shrunk in the same pass as the lineup tab (§ above) — the headline and glyph icons were `Copy`
+(30), noticeably bigger than the minute label and secondary line either side of them; brought down
+to `Detail` (20) to match, per the same request that shrunk the lineup tab.
+
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| Goal/substitution glyph icon | Copy | 30 | icon (renders as text glyph) |
+| Goal/substitution glyph icon | Detail | 20 | icon (renders as text glyph) |
 | Minute label | Detail (lighten) | 20 | label |
-| Event headline | Copy | 30 | primary content |
+| Event headline | Detail | 20 | primary content |
 | Team + subtext line | Detail (lighten) | 20 | secondary content |
 
 ### Match detail — Home/Away lineup tab

@@ -1418,8 +1418,8 @@ private fun EventTimelineSection(events: List<MatchEvent>, modifier: Modifier = 
 private fun MatchEventIcon(event: MatchEvent, modifier: Modifier = Modifier) {
     Box(modifier = modifier.size(1.4f.gridUnitsAsDp()), contentAlignment = Alignment.Center) {
         when (event.type) {
-            MatchEventType.GOAL -> LightText(text = "⚽", variant = LightTextVariant.Copy, align = TextAlign.Center)
-            MatchEventType.SUBSTITUTION -> LightText(text = "⇄", variant = LightTextVariant.Copy, align = TextAlign.Center)
+            MatchEventType.GOAL -> LightText(text = "⚽", variant = LightTextVariant.Detail, align = TextAlign.Center)
+            MatchEventType.SUBSTITUTION -> LightText(text = "⇄", variant = LightTextVariant.Detail, align = TextAlign.Center)
             MatchEventType.CARD -> {
                 val isRed = event.headline.contains("red", ignoreCase = true)
                 Box(
@@ -1456,7 +1456,10 @@ private fun EventTimelineRow(event: MatchEvent) {
             modifier = Modifier.align(Alignment.CenterVertically).padding(end = 0.5f.gridUnitsAsDp()),
         )
         Column(modifier = Modifier.weight(1f)) {
-            LightText(text = event.headline, variant = LightTextVariant.Copy, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // Detail, not Copy — matches the minute label and the secondary team/subtext line
+            // below it, so the whole Events row reads at one smaller, consistent size instead of
+            // the headline standing out as the biggest text in the tab.
+            LightText(text = event.headline, variant = LightTextVariant.Detail, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val secondary = listOfNotNull(event.teamName.takeIf { it.isNotBlank() }, event.subtext).joinToString(" · ")
             if (secondary.isNotBlank()) {
                 LightText(
