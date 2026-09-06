@@ -421,7 +421,8 @@ private fun ScoresContent(
  * [titleLogoBytes] is only ever passed by Scores' competition groups — Fixtures/My Team group by
  * date or a plain "RECENT RESULTS"/"UPCOMING" label, neither of which has a single league badge to
  * show. [highlightTeamId] is only ever passed by My Team's "RECENT RESULTS" card, to color each
- * match's left slot by its result for that team instead — see [MatchRow]. */
+ * match's left slot by its result for that team instead — see [MatchRow]. [allowKickoffLabelWrap]
+ * is only ever passed by Fixtures' per-league list and My Team's "UPCOMING" card — see [MatchRow]. */
 @Composable
 private fun MatchGroupCard(
     title: String,
@@ -431,6 +432,7 @@ private fun MatchGroupCard(
     showFinishedStatus: Boolean = true,
     showDate: Boolean = false,
     highlightTeamId: Int? = null,
+    allowKickoffLabelWrap: Boolean = false,
     onMatchClick: (Fixture) -> Unit,
 ) {
     Column(
@@ -475,6 +477,7 @@ private fun MatchGroupCard(
                 showFinishedStatus = showFinishedStatus,
                 showDate = showDate,
                 highlightTeamId = highlightTeamId,
+                allowKickoffLabelWrap = allowKickoffLabelWrap,
                 onClick = { onMatchClick(match) },
             )
         }
@@ -501,6 +504,12 @@ private fun MatchRow(
     // result badge for this specific team in the same left-hand slot instead. See
     // Fixture.resultFor/ResultBadge.
     highlightTeamId: Int? = null,
+    // Set only by Fixtures' per-league list and My Team's "UPCOMING" card, where the kickoff label
+    // can be a full date + time (e.g. "9/13 2:45 PM") or just a longer local time — letting it wrap
+    // to a second line instead of ellipsizing. Left off (default) for Scores, which keeps its
+    // original single-line/ellipsis behavior — see the SoccerHomeScreen font-size audit, §9, for
+    // why Scores wasn't included even though it can clip the same way.
+    allowKickoffLabelWrap: Boolean = false,
     onClick: () -> Unit,
 ) {
     // Only My Team's "UPCOMING" card ever hits the showDate+SCHEDULED branch below (its rows are
@@ -538,12 +547,13 @@ private fun MatchRow(
                     match.statusLabel()
                 }
                 // Was Superfine (16), then Detail (20) after round 13's revert — now Fine (25),
-                // matched to the rest of MatchRow's text.
+                // matched to the rest of MatchRow's text. maxLines is 2 (wrapping instead of
+                // ellipsizing) only where allowKickoffLabelWrap opts in — see its doc comment above.
                 LightText(
                     text = label,
                     variant = LightTextVariant.Fine,
                     lighten = true,
-                    maxLines = 1,
+                    maxLines = if (allowKickoffLabelWrap) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -997,6 +1007,7 @@ private fun FixturesContent(
                             .padding(top = if (index == 0) 0.dp else 0.75f.gridUnitsAsDp())
                             .let { if (index == targetIndex) it.bringIntoViewRequester(bringIntoViewRequester) else it },
                         showFinishedStatus = false,
+                        allowKickoffLabelWrap = true,
                         onMatchClick = onMatchClick,
                     )
                 }
@@ -1119,6 +1130,7 @@ private fun MyTeamContent(
                         matches = summary.upcomingFixtures,
                         modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
                         showDate = true,
+                        allowKickoffLabelWrap = true,
                         onMatchClick = onMatchClick,
                     )
                 }

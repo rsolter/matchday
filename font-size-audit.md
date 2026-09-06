@@ -287,3 +287,25 @@ PM") only used a fraction of that width, leaving visible dead space before team 
 `4.2f` for the common case; a new `LEFT_SLOT_WIDTH_DATED` (`6.5f`, the old value) is used only when
 `MatchRow` is actually rendering the dated format — i.e. only ever on My Team's "UPCOMING" card,
 so every other card's own rows stay internally consistent at the narrower width.
+
+## 9. Kickoff label allowed to wrap onto a second line (Fixtures + My Team's "UPCOMING" only)
+
+Also not a font-size change, but tracked here for the same reason as §8: it's a follow-on to that
+same narrowed `LEFT_SLOT_WIDTH`/`LEFT_SLOT_WIDTH_DATED` pair. Narrowing the slot in §8 traded dead
+space for a new problem — at Fine (25), a kickoff label can now be wider than its slot. Confirmed
+clipping in two places: Fixtures' per-league list (a same-day time like "12:30 PM", using the
+narrower `LEFT_SLOT_WIDTH`), and My Team's "UPCOMING" card (the dated format, e.g. "9/13 2:45 PM",
+using `LEFT_SLOT_WIDTH_DATED`). Both were `maxLines = 1` with `TextOverflow.Ellipsis`, so the tail
+of the string was silently cut instead of wrapping.
+
+Added a new opt-in `allowKickoffLabelWrap` parameter, threaded through `MatchGroupCard` →
+`MatchRow` the same way `showDate`/`highlightTeamId` are, defaulting to `false`. When `true`, the
+kickoff label's `maxLines` becomes `2` instead of `1` — it wraps inside the existing slot width
+rather than widening the slot itself. Set to `true` only at Fixtures' `MatchGroupCard` call site
+and My Team's "UPCOMING" call site.
+
+Scores uses the identical code path (`formatKickoffTime()`, same `LEFT_SLOT_WIDTH`,
+`maxLines = 1`) and can clip the same way for a same-day upcoming match — it just hadn't shown up
+in a screenshot yet. Left out of this fix deliberately, at the user's choice, after they were told
+the two were the same underlying bug: Scores keeps its original single-line/ellipsis behavior, and
+that latent clipping risk stays unaddressed for now.
