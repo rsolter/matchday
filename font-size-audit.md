@@ -729,3 +729,32 @@ parameter entirely (`suppressCenterLabel` off `MatchTeamsAndScoreCell`, `suppres
 rather than just disabling it, since nothing else used it. Every future fixture's row now always
 shows its own kickoff time, regardless of what the row above it showed. `MatchRow` (Scores/My
 Team) never used this suppression rule to begin with, so nothing changes there.
+
+## 21. Today's leading slot: narrower, smaller FT/live-minute/kickoff-time text
+
+On request, from a real Today screenshot showing a wide gap between the "FT" badge and the team
+name that followed it ("Everton", "Arsenal", "Wolves" all sat well right of where "FT" ended).
+
+Two changes, made together since the first only becomes safe because of the second:
+
+- `LEFT_SLOT_WIDTH` (the fixed-width box `MatchRow`'s leading status content sits in — FT/live-
+  minute badge, plain kickoff time, or My Team's result badge) cut from 4.2 to 2.8 grid units.
+  This is the *second* time this same constant has been narrowed for the same complaint (it was
+  6.5 originally, cut to 4.2 in an earlier round) — still a fixed width rather than
+  content-sized, for the same reason as before: it's what keeps every row's crest-cell starting
+  at the same x position regardless of what leads it.
+- The FT/live-minute badge (`MatchStatusBadge`) and the plain kickoff-time label (both in
+  `MatchRow`'s leading slot) dropped one size, `Fine` (25) → `Detail` (20) — the user explicitly
+  okayed this specifically to let the narrower slot above avoid clipping "45+2'"-style live
+  minutes or "19:45"-style kickoff times.
+
+Both are estimates, not verified against a real device — 2.8 grid units for `LEFT_SLOT_WIDTH` is
+a guess at how much room "45+2'" (the widest common case in that slot) needs at Detail size, not
+a measured value. If a live match's minute counter still clips, or the gap still reads as too
+wide, this is the constant to revisit again.
+
+Deliberately left untouched: `LEFT_SLOT_WIDTH_DATED` (My Team's "UPCOMING" card only, for its
+longer "9/13 19:45" dated kickoff label) — not shown in the reported screenshots, and the same
+font-size drop already gives it more breathing room at its current width rather than less, so
+there was no matching complaint to act on there. `ResultBadge` (My Team's W/D/L blocks) also
+untouched — a different indicator from "FT/Min/Time", not mentioned in the request.

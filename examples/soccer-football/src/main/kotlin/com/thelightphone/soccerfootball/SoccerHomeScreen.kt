@@ -216,12 +216,16 @@ private fun LoadingContent(title: String, message: String) {
 
 // Fixed width for MatchRow's leading slot in the common case — a status badge (FT/live-minute), a
 // same-day kickoff time ("19:45", already grouped under a date header so no date prefix needed),
-// or a My Team result badge. Narrowed on request: at 6.5f (sized for the much longer dated kickoff
-// format below) this left a lot of dead space in front of team names for every row that wasn't
-// using the longest case. Keeping this as a fixed width at all, rather than letting the slot's
-// content size itself, is what keeps every row's team names starting at the same x position
-// regardless of what leads them.
-private val LEFT_SLOT_WIDTH = 4.2f
+// or a My Team result badge. Narrowed once already (from 6.5f, sized for the much longer dated
+// kickoff format below, which left a lot of dead space in front of team names for every row that
+// wasn't using the longest case), then narrowed again here on request after a real screenshot
+// still showed a wide gap before the team name — paired with the same round's FT/live-minute/
+// kickoff-time font size dropping to Detail (20, was Fine/25), which is what makes a slot this
+// narrow safe for "45+2'"/"19:45" without clipping. Keeping this as a fixed width at all, rather
+// than letting the slot's content size itself, is what keeps every row's team names starting at
+// the same x position regardless of what leads them. An estimate, not verified on a real device —
+// may need another pass if "45+2'" still clips.
+private val LEFT_SLOT_WIDTH = 2.8f
 
 // Wider leading-slot width for the one case that doesn't fit LEFT_SLOT_WIDTH: My Team's "UPCOMING"
 // card, whose kickoff label includes a date prefix ("9/25 19:45") since — unlike Scores — it isn't
@@ -260,11 +264,12 @@ private fun MatchStatusBadge(text: String, isLive: Boolean, modifier: Modifier =
             .background(LightThemeTokens.colors.content.copy(alpha = 0.12f))
             .padding(horizontal = 0.4f.gridUnitsAsDp(), vertical = 0.05f.gridUnitsAsDp()),
     ) {
-        // Was Superfine (16), then Detail (20) after round 13's revert — now Fine (25), one size up
-        // again, matched to the rest of MatchRow's text (team names/score) at the same size.
+        // Was Superfine (16), then Detail (20) after round 13's revert, then Fine (25) to match the
+        // rest of MatchRow's text — now back to Detail, on request, alongside LEFT_SLOT_WIDTH
+        // narrowing further, to close the gap a real screenshot showed before the team name.
         LightText(
             text = text,
-            variant = LightTextVariant.Fine,
+            variant = LightTextVariant.Detail,
             align = TextAlign.End,
             lighten = !isLive,
             color = if (isLive) LIVE_STATUS_GREEN else null,
@@ -756,12 +761,13 @@ private fun MatchRow(
                 } else {
                     match.statusLabel()
                 }
-                // Was Superfine (16), then Detail (20) after round 13's revert — now Fine (25),
-                // matched to the rest of MatchRow's text. maxLines is 2 (wrapping instead of
-                // ellipsizing) only where allowKickoffLabelWrap opts in — see its doc comment above.
+                // Was Superfine (16), then Detail (20) after round 13's revert, then Fine (25) —
+                // now back to Detail, on request, matching MatchStatusBadge's same move (see its
+                // doc comment). maxLines is 2 (wrapping instead of ellipsizing) only where
+                // allowKickoffLabelWrap opts in — see its doc comment above.
                 LightText(
                     text = label,
-                    variant = LightTextVariant.Fine,
+                    variant = LightTextVariant.Detail,
                     lighten = true,
                     maxLines = if (allowKickoffLabelWrap) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
