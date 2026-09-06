@@ -61,15 +61,22 @@ internal class ApiFootballApi {
 
     // --- Fixtures ------------------------------------------------------------
 
-    /** Today's ([todayLocalDate]) matches across [leagueIds]. One request per league, fanned out
-     * concurrently and tolerant of partial failure — mirrors the ESPN variant's
-     * [SoccerApi.fetchTodaysMatches] fan-out for the same reason: one league's request failing
-     * shouldn't blank out the others. */
-    suspend fun fetchTodaysMatches(leagueIds: List<Int>): Result<List<Fixture>> = coroutineScope {
+    /** [leagueIds]' matches within [dateFrom]..[dateTo] (both yyyy-MM-dd, inclusive), one request
+     * per league fanned out concurrently and tolerant of partial failure — mirrors the ESPN
+     * variant's own fan-out for the same reason: one league's request failing shouldn't blank out
+     * the others. Backs both [fetchTodaysMatches] (today..today, for Scores) and the Fixtures
+     * screen's all-followed-leagues view (a wider window — see [SoccerViewModel.openFixtures]).
+     * Uses `from`/`to` rather than API-Football's `last` parameter, which was Pro-only on the free
+     * tier (confirmed: `last=5` returned
+     * `{"errors":{"plan":"Free plans do not have access to the Last parameter."}}`). */
+    suspend fun fetchFixturesForLeagues(
+        leagueIds: List<Int>,
+        dateFrom: String,
+        dateTo: String,
+    ): Result<List<Fixture>> = coroutineScope {
         if (leagueIds.isEmpty()) return@coroutineScope Result.success(emptyList())
-        val date = todayLocalDate().toString()
         val results = leagueIds.map { id ->
-            async { runCatching { fetchFixturesInternal(leagueId = id, dateFrom = date, dateTo = date) } }
+            async { runCatching { fetchFixturesInternal(leagueId = id, dateFrom = dateFrom, dateTo = dateTo) } }
         }.map { it.await() }
 
         val succeeded = results.mapNotNull { it.getOrNull() }
@@ -82,18 +89,15 @@ internal class ApiFootballApi {
         }
     }
 
-    /** A single competition's matches within [dateFrom]..[dateTo] (both yyyy-MM-dd, inclusive) —
-     * the Fixtures mode's by-date list. Uses `from`/`to` rather than API-Football's `last`
-     * parameter, which was Pro-only on the free tier (confirmed: `last=5` returned
-     * `{"errors":{"plan":"Free plans do not have access to the Last parameter."}}`). */
-    suspend fun fetchFixturesForLeague(
-        leagueId: Int,
-        dateFrom: String,
-        dateTo: String,
-    ): Result<List<Fixture>> = runCatching { fetchFixturesInternal(leagueId = leagueId, dateFrom = dateFrom, dateTo = dateTo) }
+    /** Today's ([todayLocalDate]) matches across [leagueIds] — a thin wrapper over
+     * [fetchFixturesForLeagues] with both ends of the range pinned to today. */
+    suspend fun fetchTodaysMatches(leagueIds: List<Int>): Result<List<Fixture>> {
+        val date = todayLocalDate().toString()
+        return fetchFixturesForLeagues(leagueIds, date, date)
+    }
 
     /** A single team's matches within [dateFrom]..[dateTo] — My Team's upcoming/recent fixtures.
-     * Uses API-Football's `team` filter the same way [fetchFixturesForLeague] uses `league`; this
+     * Uses API-Football's `team` filter the same way [fetchFixturesForLeagues] uses `league`; this
      * specific combination (`team` + `season` + `from`/`to`, no `league`) was **not**
      * independently curl-verified this session (only `league`-scoped fixture queries were run) —
      * worth a quick real-request check before trusting it against a live match, same as the
@@ -431,6 +435,11 @@ private const val MY_TEAM_FIXTURE_LIMIT = 5
 
 /** How far back/forward of [todayLocalDate] to search for a followed team's fixtures — wide enough
  * that a team without a match in the immediate past/future week still turns up something on
- * both sides, without pulling a whole season. */
-private const val MY_TEAM_WINDOW_PAST_DAYS = 30
+ * both sides, without pulling a whole season. [MY_TEAM_WINDOW_PAST_DAYS] was 30 until a real
+ * screenshot showed only 4 "RECENT RESULTS" for a team that plays roughly weekly — MY_TEAM_
+ * FIXTURE_LIMIT below was already 5, so the cap wasn't the bottleneck, the fetch window was: 30
+ * days of a ~weekly domestic schedule (plus the odd cup week off) lands on 4 played matches about
+ * as often as 5. Bumped to 45 for enough buffer that a normal schedule reliably clears 5, without
+ * fetching a whole season's worth of history. */
+private const val MY_TEAM_WINDOW_PAST_DAYS = 45
 private const val MY_TEAM_WINDOW_FUTURE_DAYS = 30

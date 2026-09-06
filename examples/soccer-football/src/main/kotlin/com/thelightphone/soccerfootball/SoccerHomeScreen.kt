@@ -90,7 +90,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             onOpenSettings = viewModel::openSettings,
                             onOpenMyTeam = viewModel::openMyTeam,
                             onOpenStandingsTable = viewModel::openStandingsTable,
-                            onOpenFixtures = viewModel::openFixturesPicker,
+                            onOpenFixtures = viewModel::openFixtures,
                             onMatchClick = viewModel::openMatchDetail,
                         )
                     }
@@ -131,18 +131,8 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                         )
                     }
 
-                    is ScoreScreenMode.FixturesPicker -> {
-                        CompetitionPickerContent(
-                            title = "Fixtures",
-                            leagues = mode.leagues,
-                            onSelect = viewModel::openFixtures,
-                            onBack = viewModel::backFromFixturesPicker,
-                        )
-                    }
-
                     is ScoreScreenMode.Fixtures -> {
                         FixturesContent(
-                            leagueName = mode.leagueName,
                             groups = mode.groups,
                             isLoading = mode.isLoading,
                             onBack = viewModel::backFromFixturesTable,
@@ -419,7 +409,12 @@ private fun ScoresContent(
  * Home screen's own Standings button was removed. [highlightTeamId] is only ever passed by My
  * Team's "RECENT RESULTS" card, to color each match's left slot by its result for that team
  * instead — see [MatchRow]. [allowKickoffLabelWrap] is only ever passed by Fixtures' per-league
- * list and My Team's "UPCOMING" card — see [MatchRow]. */
+ * list and My Team's "UPCOMING" card — see [MatchRow]. [suppressRepeatedKickoffTime], only ever
+ * passed by Fixtures, blanks a scheduled match's kickoff time whenever it's identical to the
+ * previous row's within this same card — see [MatchRow]'s `suppressKickoffLabel`. [showScoreSlot],
+ * only ever set false by My Team's "UPCOMING" card, drops the trailing score column entirely
+ * (rather than just leaving it visually empty) so the team-name text gets that width back — see
+ * [MatchRow]. */
 @Composable
 private fun MatchGroupCard(
     title: String,
@@ -432,6 +427,8 @@ private fun MatchGroupCard(
     showDate: Boolean = false,
     highlightTeamId: Int? = null,
     allowKickoffLabelWrap: Boolean = false,
+    suppressRepeatedKickoffTime: Boolean = false,
+    showScoreSlot: Boolean = true,
     onMatchClick: (Fixture) -> Unit,
 ) {
     Column(
@@ -473,12 +470,19 @@ private fun MatchGroupCard(
                         .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
                 )
             }
+            // Only a run of consecutive *scheduled* matches sharing the exact same kickoff instant
+            // gets blanked past the first — a live/finished match's row shows a status badge, not a
+            // kickoff time, in this same slot, so it's never a candidate either way.
+            val suppressKickoff = suppressRepeatedKickoffTime && index > 0 &&
+                !match.hasScore && !matches[index - 1].hasScore && match.utcDate == matches[index - 1].utcDate
             MatchRow(
                 match,
                 showFinishedStatus = showFinishedStatus,
                 showDate = showDate,
                 highlightTeamId = highlightTeamId,
                 allowKickoffLabelWrap = allowKickoffLabelWrap,
+                suppressKickoffLabel = suppressKickoff,
+                showScoreSlot = showScoreSlot,
                 onClick = { onMatchClick(match) },
             )
         }
@@ -511,6 +515,14 @@ private fun MatchRow(
     // original single-line/ellipsis behavior — see the SoccerHomeScreen font-size audit, §9, for
     // why Scores wasn't included even though it can clip the same way.
     allowKickoffLabelWrap: Boolean = false,
+    // Set only by Fixtures, computed by MatchGroupCard: true when this row shares its exact
+    // kickoff instant with the row directly above it in the same card, so the same time isn't
+    // printed once per match sharing a kickoff — on request, see a real Fixtures screenshot.
+    suppressKickoffLabel: Boolean = false,
+    // False only for My Team's "UPCOMING" card, on request — every one of its matches is scheduled
+    // (no score to show yet anyway), and dropping the slot entirely rather than just leaving it
+    // empty gives the team-name text that width back, letting most matchups fit on one line.
+    showScoreSlot: Boolean = true,
     onClick: () -> Unit,
 ) {
     // Only My Team's "UPCOMING" card ever hits the showDate+SCHEDULED branch below (its rows are
@@ -540,7 +552,7 @@ private fun MatchRow(
                         ResultBadge(result)
                     }
                 }
-            } else {
+            } else if (!suppressKickoffLabel) {
                 // Upcoming match, no score yet — nothing to color-code, just the kickoff label.
                 val label = if (usesDatedKickoffLabel) {
                     formatKickoffDateAndTime(match.utcDate)
@@ -569,20 +581,22 @@ private fun MatchRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(start = 0.5f.gridUnitsAsDp()),
         )
-        Box(
-            modifier = Modifier.width(SCORE_SLOT_WIDTH.gridUnitsAsDp()),
-            contentAlignment = Alignment.CenterEnd,
-        ) {
-            if (match.hasScore) {
-                // Was Detail (20), then Copy (30) after round 13's revert — now Fine (25), matched
-                // to the rest of MatchRow's text.
-                LightText(
-                    text = match.scoreLabel(),
-                    variant = LightTextVariant.Fine,
-                    align = TextAlign.End,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+        if (showScoreSlot) {
+            Box(
+                modifier = Modifier.width(SCORE_SLOT_WIDTH.gridUnitsAsDp()),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                if (match.hasScore) {
+                    // Was Detail (20), then Copy (30) after round 13's revert — now Fine (25),
+                    // matched to the rest of MatchRow's text.
+                    LightText(
+                        text = match.scoreLabel(),
+                        variant = LightTextVariant.Fine,
+                        align = TextAlign.End,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
@@ -999,8 +1013,7 @@ private fun StandingsRow.goalDifferenceLabel(): String =
 
 @Composable
 private fun FixturesContent(
-    leagueName: String,
-    groups: List<FixtureDateGroup>,
+    groups: List<FixtureDayGroup>,
     isLoading: Boolean,
     onBack: () -> Unit,
     onMatchClick: (Fixture) -> Unit,
@@ -1008,7 +1021,7 @@ private fun FixturesContent(
     Column(modifier = Modifier.fillMaxSize()) {
         LightTopBar(
             leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = onBack),
-            center = LightTopBarCenter.Text(leagueName),
+            center = LightTopBarCenter.Text("Fixtures"),
             modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
         )
 
@@ -1019,7 +1032,7 @@ private fun FixturesContent(
         } else if (groups.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 LightText(
-                    text = "No fixtures found for this league right now.",
+                    text = "No fixtures found for your leagues right now.",
                     variant = LightTextVariant.Detail,
                     align = TextAlign.Center,
                     lighten = true,
@@ -1037,17 +1050,39 @@ private fun FixturesContent(
             LightScrollView(
                 modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
             ) {
-                groups.forEachIndexed { index, group ->
-                    MatchGroupCard(
-                        title = group.dateLabel,
-                        matches = group.matches,
+                // Two levels of grouping now, on request: a plain-text day header (was previously
+                // itself a MatchGroupCard's title — moved out to a bare LightText since a day can
+                // now contain several leagues' cards under it, not one flat match list), then one
+                // MatchGroupCard per competition that has a match that day — same per-league
+                // grouping/order Scores already uses (groupedForDisplay), just repeated per day.
+                groups.forEachIndexed { dayIndex, day ->
+                    Column(
                         modifier = Modifier
-                            .padding(top = if (index == 0) 0.dp else 0.75f.gridUnitsAsDp())
-                            .let { if (index == targetIndex) it.bringIntoViewRequester(bringIntoViewRequester) else it },
-                        showFinishedStatus = false,
-                        allowKickoffLabelWrap = true,
-                        onMatchClick = onMatchClick,
-                    )
+                            .fillMaxWidth()
+                            .padding(top = if (dayIndex == 0) 0.dp else 1f.gridUnitsAsDp())
+                            .let { if (dayIndex == targetIndex) it.bringIntoViewRequester(bringIntoViewRequester) else it },
+                    ) {
+                        LightText(
+                            text = day.dateLabel,
+                            variant = LightTextVariant.Detail,
+                            lighten = true,
+                            modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
+                        )
+                        day.leagueGroups.forEachIndexed { leagueIndex, leagueGroup ->
+                            MatchGroupCard(
+                                title = leagueGroup.leagueName.uppercase(),
+                                matches = leagueGroup.matches,
+                                modifier = Modifier.padding(top = if (leagueIndex == 0) 0.dp else 0.75f.gridUnitsAsDp()),
+                                showFinishedStatus = false,
+                                allowKickoffLabelWrap = true,
+                                // On request: when several of this league's matches on this day
+                                // kick off at the exact same instant, only the first shows a time —
+                                // the rest leave that slot blank instead of repeating it.
+                                suppressRepeatedKickoffTime = true,
+                                onMatchClick = onMatchClick,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1151,6 +1186,10 @@ private fun MyTeamContent(
                         modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
                         showDate = true,
                         allowKickoffLabelWrap = true,
+                        // On request: no match here has a score yet anyway, so the reserved score
+                        // column was always empty — dropping it gives the "X vs Y" text that width
+                        // back instead of wrapping to a second line.
+                        showScoreSlot = false,
                         onMatchClick = onMatchClick,
                     )
                 }

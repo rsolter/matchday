@@ -643,13 +643,17 @@ fun List<Fixture>.groupedForDisplay(): List<CompetitionGroup> = this
     }
     .sortedBy { COMPETITION_DISPLAY_ORDER[it.leagueId] ?: Int.MAX_VALUE }
 
-data class FixtureDateGroup(val date: LocalDate, val dateLabel: String, val matches: List<Fixture>)
+/** One calendar day's fixtures across every followed league, on request replacing the old
+ * per-league Fixtures picker/view entirely — [leagueGroups] is that day's matches split out by
+ * competition (reusing [CompetitionGroup]/[groupedForDisplay], the same per-league grouping Scores
+ * already uses), each competition rendered as its own card under one shared day header. See
+ * [groupedByDateThenLeague]. */
+data class FixtureDayGroup(val date: LocalDate, val dateLabel: String, val leagueGroups: List<CompetitionGroup>)
 
-fun List<Fixture>.groupedByDate(): List<FixtureDateGroup> = this
+fun List<Fixture>.groupedByDateThenLeague(): List<FixtureDayGroup> = this
     .mapNotNull { match -> match.localDate()?.let { it to match } }
-    .sortedBy { it.second.utcDate }
-    .groupBy { it.first }
-    .map { (date, pairs) -> FixtureDateGroup(date, formatFixtureDateHeader(date), pairs.map { it.second }) }
+    .groupBy({ it.first }) { it.second }
+    .map { (date, matches) -> FixtureDayGroup(date, formatFixtureDateHeader(date), matches.groupedForDisplay()) }
     .sortedBy { it.date }
 
 /**

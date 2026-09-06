@@ -58,12 +58,12 @@ sealed class ScoreScreenMode {
         val leagueLogoBytes: ByteArray? = null,
     ) : ScoreScreenMode()
 
-    /** Only the leagues the user currently follows (see [ScoreScreenMode.LeagueSelection]). */
-    data class FixturesPicker(val leagues: List<Competition>) : ScoreScreenMode()
+    /** All followed leagues' fixtures, grouped by day then by competition — see
+     * [groupedByDateThenLeague]. No more standalone per-league picker/view (removed on request);
+     * this is reached directly from the bottom bar, same as [Standings] is now reached only via a
+     * league logo tap rather than its own picker. */
     data class Fixtures(
-        val leagueId: Int,
-        val leagueName: String,
-        val groups: List<FixtureDateGroup>,
+        val groups: List<FixtureDayGroup>,
         val isLoading: Boolean,
         val lastUpdated: Instant?,
     ) : ScoreScreenMode()
@@ -465,36 +465,27 @@ class SoccerViewModel(
     }
 
     // --- Fixtures ------------------------------------------------------------------
+    //
+    // No standalone per-league picker/view (removed on request) — this is now a single screen
+    // covering every followed league at once, grouped by day then by competition (see
+    // groupedByDateThenLeague in SoccerModels.kt), reached directly from the bottom bar.
 
-    fun openFixturesPicker() {
-        updateState { it.copy(mode = ScoreScreenMode.FixturesPicker(followedLeagues()), errorModal = null) }
-    }
-
-    fun backFromFixturesPicker() {
-        updateState { it.copy(mode = lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE), errorModal = null) }
-    }
-
-    fun openFixtures(leagueId: Int, leagueName: String) {
+    fun openFixtures() {
         updateState {
-            it.copy(
-                mode = ScoreScreenMode.Fixtures(leagueId, leagueName, emptyList(), isLoading = true, lastUpdated = null),
-                errorModal = null,
-            )
+            it.copy(mode = ScoreScreenMode.Fixtures(emptyList(), isLoading = true, lastUpdated = null), errorModal = null)
         }
         viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
             val today = todayLocalDate()
             val dateFrom = today.minus(FIXTURES_PAST_DAYS, DateTimeUnit.DAY).toString()
             val dateTo = today.plus(FIXTURES_FUTURE_DAYS, DateTimeUnit.DAY).toString()
-            val result = api.fetchFixturesForLeague(leagueId, dateFrom, dateTo)
+            val result = api.fetchFixturesForLeagues(followedLeagues().map { it.id }, dateFrom, dateTo)
             result.fold(
                 onSuccess = { matches ->
                     updateState { state ->
-                        if (state.mode is ScoreScreenMode.Fixtures && state.mode.leagueId == leagueId) {
+                        if (state.mode is ScoreScreenMode.Fixtures) {
                             state.copy(
                                 mode = ScoreScreenMode.Fixtures(
-                                    leagueId = leagueId,
-                                    leagueName = leagueName,
-                                    groups = matches.groupedByDate(),
+                                    groups = matches.groupedByDateThenLeague(),
                                     isLoading = false,
                                     lastUpdated = Clock.System.now(),
                                 ),
@@ -507,8 +498,8 @@ class SoccerViewModel(
                 },
                 onFailure = { error ->
                     updateState { state ->
-                        val fallback = if (state.mode is ScoreScreenMode.Fixtures && state.mode.leagueId == leagueId) {
-                            ScoreScreenMode.Fixtures(leagueId, leagueName, emptyList(), false, null)
+                        val fallback = if (state.mode is ScoreScreenMode.Fixtures) {
+                            ScoreScreenMode.Fixtures(emptyList(), false, null)
                         } else {
                             state.mode
                         }
@@ -520,7 +511,7 @@ class SoccerViewModel(
     }
 
     fun backFromFixturesTable() {
-        updateState { it.copy(mode = ScoreScreenMode.FixturesPicker(followedLeagues()), errorModal = null) }
+        updateState { it.copy(mode = lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE), errorModal = null) }
     }
 
     // --- My Team ---------------------------------------------------------------------

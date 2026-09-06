@@ -489,3 +489,53 @@ it's still used by My Team's league-picker navigation, even though its one other
 (`openStandingsPicker`) is gone. Also left alone: the `ic_table_white` drawable resource the removed
 bottom-bar icon used to render — it's now unused dead weight in `res/drawable/`, but deleting
 resource files felt out of scope for this round; worth a cleanup pass later if it bothers you.
+
+## 16. Fixtures rebuilt as one all-leagues day×league view; My Team recent-results window widened; UPCOMING's dead score column dropped
+
+Not a font-size round at all (no `LightTextVariant` changed) — tracked here anyway, continuing this
+document's role as the de facto changelog for structural changes too (see §12/§15).
+
+**Fixtures, on request ("no more league specific views... just show all fixtures grouped by day
+and by league").** The per-league picker screen (§15's sibling to the since-removed Standings
+picker) is gone: `ScoreScreenMode.FixturesPicker`, `openFixturesPicker()`, and
+`backFromFixturesPicker()` are all deleted, and the bottom bar's Fixtures icon now opens a single
+`Fixtures` screen directly — same direct-navigation shape Standings moved to in §15. That screen
+now covers every followed league at once: a new `SoccerApi.fetchFixturesForLeagues(leagueIds,
+dateFrom, dateTo)` fans a request out per league the same way the existing `fetchTodaysMatches`
+already did (tolerant of partial failure — one league's request failing doesn't blank the rest),
+and `fetchTodaysMatches` itself was rewritten as a thin wrapper over it (today..today) rather than
+duplicating the fan-out logic. A new `SoccerModels.groupedByDateThenLeague()` groups the combined
+result first by calendar day, then within each day by competition (reusing `CompetitionGroup`/
+`groupedForDisplay` — the exact per-league grouping Scores already uses), replacing the old flat
+`FixtureDateGroup`/`groupedByDate()` (deleted, now unused). On screen, each day gets a plain-text
+header (`Detail`, lighten — the same size the old per-day card title used, just moved outside the
+card since a day can now hold several leagues' cards under it) followed by one `MatchGroupCard` per
+competition that has a match that day; the auto-scroll-to-today behavior carries over unchanged,
+just retargeted to the day block instead of a single card.
+
+**Same-time kickoffs no longer repeat, on request ("within league when games are at the same time,
+do not list out all the times").** `MatchGroupCard` gained a `suppressRepeatedKickoffTime` param
+(Fixtures only, default off everywhere else); when set, it compares each scheduled match's raw
+`utcDate` against the row directly above it in the same card, and if they match exactly, threads a
+new `suppressKickoffLabel = true` down to that row's `MatchRow`, which then renders that slot
+blank instead of repeating the identical time. Guarded to only ever apply between two *scheduled*
+(no-score) matches — a live or finished match shows a status badge in that slot instead of a time,
+so it was never going to collide with this in the first place.
+
+**My Team's "RECENT RESULTS" window widened, on request ("show 5 previous matches, not 4").**
+Diagnosed rather than assumed: `MY_TEAM_FIXTURE_LIMIT` (the `.take()` cap on both lists) was
+already 5, not 4 — so the real constraint was `MY_TEAM_WINDOW_PAST_DAYS`, the 30-day lookback used
+to fetch a followed team's fixtures in the first place. A team playing roughly one match a week
+(with the odd international-break week off) clears 4 played matches inside 30 days about as often
+as 5, which is exactly what a real screenshot showed. Bumped to 45 days — leaves the future window
+(`MY_TEAM_WINDOW_FUTURE_DAYS`, still 30, untouched — not part of this request) and the take(5) cap
+alone, just gives the fetch enough runway that a normal schedule reliably surfaces all 5.
+
+**My Team's "UPCOMING" card's dead score column dropped, on request ("empty 3rd column on the
+right that we could drop... only make that change here").** Every match in this card is, by
+definition, still scheduled — `MatchRow`'s trailing score slot was always empty there, just still
+reserving its fixed width and squeezing the team-name text into wrapping onto a second line more
+than it needed to. `MatchRow` gained a `showScoreSlot` param (default `true`, so every other
+caller — Scores, Fixtures, My Team's own "RECENT RESULTS" — is unaffected); set to `false` only at
+this one call site, it omits the score `Box` entirely rather than just leaving it visually empty,
+handing that width back to the team-name text so most matchups now fit on one line.
