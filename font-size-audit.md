@@ -17,183 +17,183 @@ source plus every call site in the app, cross-referenced.
 | Variant | Design size | Where else it lands |
 |---|---|---|
 | Micro | 8 | not used anywhere in this app |
-| Superfine | 16 | not used in this app as of the lineup redesign (see §2) |
-| Detail | 20 | the app's default "label / secondary" size |
-| Paragraph | 24.5 | About screen body text only |
+| **Superfine** | **16** | the app's default "label / secondary" size, as of the global shift below |
+| Detail | 20 | the app's default "primary content" size, as of the global shift below |
+| Paragraph | 24.5 | not used in this app as of the global shift below |
 | **Fine** | **25** | see finding below |
 | ParagraphWide | 25 | not used in this app |
 | Subheading | 30 | not used in this app |
-| Copy | 30 | the app's default "primary content" size |
+| Copy | 30 | score labels, "My Team" position/points, as of the global shift below |
 | Button | 30 | not used directly by this app (LightTopBar's own buttons use it) |
-| Heading | 38 | score labels, "My Team" position/points, Settings row values |
+| Heading | 38 | not used in this app as of the global shift below |
 | Subtitle | 52 | not used in this app |
-| Title | 115 | not used in this app (removed from the match header last session) |
+| Title | 115 | not used in this app (removed from the match header in an earlier session) |
 
 **Finding — `Fine` is not fine.** Its name and its position in the enum's declared order both read
 as "smaller than Detail," but it's actually defined at 25 — five design-units *larger* than
 `Detail`'s 20, and only barely smaller than `Copy`'s 30. Three places in this app used `Fine`
 specifically to get a smaller, de-emphasized caption under something else, and all three ended up
-rendering *larger* than the label or number next to them instead:
-
-- The "Injured"/"Suspended" reason text on My Team, sized bigger than the "Out"/"Doubtful" label
-  directly above it (`Detail`).
-- The lineup screen's "Coach: {name}" line, sized almost as large as the players' own names.
-- Each lineup player's surname under their jersey-number circle, sized bigger than the number
-  itself (`Detail`) and nearly as large as full `Copy` body text.
-
-I fixed the reason text and coach name → `Detail` as part of that pass, since they were a clear
-case of the variant not doing what the code around it was written assuming it did, not a subjective
-design call. The third — the player surname under each circle — briefly went to `Superfine` in that
-same pass, but the lineup tab was redesigned in the very next round (a vertical pitch with
-number-only dots plus a separate roster list — see §2's lineup tab section) and that element no
-longer exists at all; its replacement (the roster list) uses `Copy`, matching the rest of the app's
-"primary content" convention rather than needing a caption-sized variant. Everything below this
-point is **analysis and recommendations only** — nothing else has been changed.
+rendering *larger* than the label or number next to them instead: the "Injured"/"Suspended" reason
+text on My Team, the lineup screen's "Coach: {name}" line, and (in a design that's since been
+replaced) a player surname under each jersey-number circle. All three were fixed to `Detail` in an
+earlier pass — and have since moved again to `Superfine`, along with everything else, in the global
+one-step-down pass described in §3.
 
 Also worth knowing, though it's in the vendored SDK and not this app's code to change:
 `LightTopBar`'s screen title and header buttons both use `Fine` (25) — every screen's title
-("Settings," "Standings," "Match," etc.) renders slightly *smaller* than this app's own `Copy`
-(30) body text. That's presumably deliberate LightOS chrome styling, not a bug, but it means "the
-title is the biggest text on screen" isn't actually true anywhere in this app.
+("Settings," "Standings," "Match," etc.) now renders *larger* than this app's own primary content
+(`Detail`, 20, post-shift), the reverse of how it compared before this round. That's outside this
+app's control (vendored SDK styling), but worth knowing if a screen's title starts looking oddly
+dominant compared to the shrunk content beneath it.
 
 ## 2. Every current usage, by screen
 
 "Role" is my read of what the text is doing, not anything in the code. Sizes are the design-unit
-value from the table above.
+value from the table above, reflecting the state **after** §3's global one-step-down pass — this
+section is a live snapshot, not a history.
 
 ### Scores (today's matches)
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| "No matches today..." empty state | Copy | 30 | message |
-| Competition group header | Detail (lighten) | 20 | section label |
-| "{home} vs {away}" | Copy | 30 | primary content |
-| Score ("2 - 1") | Copy | 30 | primary content |
-| Live/finished/kickoff status | Detail | 20 | secondary label |
+| "No matches today..." empty state | Detail | 20 | message |
+| Competition group header (+ league badge) | Superfine (lighten) | 16 | section label |
+| "{home} vs {away}" | Detail | 20 | primary content |
+| Score ("2 - 1") | Detail | 20 | primary content |
+| Live/finished/kickoff status | Superfine | 16 | secondary label |
 
 ### Settings
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| "My Team" row label | Detail (lighten) | 20 | label |
-| **My Team row value** ("Not set" / team name) | ~~Heading~~ → **Copy** *(applied)* | 30 | value |
-| "Forget My Team" / "Refresh now" / "About" rows | Copy | 30 | clickable row |
-| "Leagues followed" label | Detail (lighten) | 20 | label |
-| Each followed league name | ~~Copy~~ → **Detail** *(applied)* | 20 | list item |
-| About screen body paragraph | Paragraph | 24.5 | reading text |
+| "My Team" row label | Superfine (lighten) | 16 | label |
+| "My Team" row value ("Not set" / team name) | Detail | 20 | value |
+| "Forget My Team" / "Refresh now" / "About" rows | Detail | 20 | clickable row |
+| "Leagues followed" label | Superfine (lighten) | 16 | label |
+| Each followed league name | Superfine | 16 | list item |
+| About screen body paragraph | Detail | 20 | reading text |
 
 ### League selection / competition pickers (Standings, Fixtures, My Team setup)
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| League row name | Copy | 30 | list item |
+| League row name | Detail | 20 | list item |
 
 ### Standings
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| Loading / empty state | Copy | 30 | message |
-| Group header (Champions League groups) | Detail (lighten) | 20 | section label |
-| Column headers (#, TEAM, MP, GF, GA, GD, PTS) | Detail (lighten) | 20 | table header |
-| **Every data cell in every row** | ~~Copy~~ → **Detail** *(applied)* | 20 | table data |
+| Loading / empty state | Detail | 20 | message |
+| Group header (Champions League groups) | Superfine (lighten) | 16 | section label |
+| Column headers (#, TEAM, MP, GF, GA, GD, PTS) | Superfine (lighten) | 16 | table header |
+| Every data cell in every row | Superfine | 16 | table data |
 
 ### Fixtures
 Same `MatchGroupCard`/`MatchRow` as Scores above, plus:
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| Loading / empty state | Copy | 30 | message |
+| Loading / empty state | Detail | 20 | message |
 
 ### My Team
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| Loading / empty / no-data messages | Copy | 30 | message |
-| League name label | Detail (lighten) | 20 | label |
-| "#{pos} · {pts} pts" | Heading | 38 | hero stat |
-| "{W}W {D}D {L}L · {GD} GD · form {X}" | Detail (lighten) | 20 | secondary summary |
-| "UNAVAILABLE FOR NEXT MATCH" header | Detail (lighten) | 20 | section label |
-| "Injured"/"Suspended" group label | Detail (lighten) | 20 | label |
-| Player name | Copy | 30 | primary content |
-| "Out"/"Doubtful" | Detail (lighten) | 20 | label |
-| Reason text | ~~Fine~~ → **Detail** *(fixed this pass)* | 20 | caption |
+| Loading / empty / no-data messages | Detail | 20 | message |
+| League name label | Superfine (lighten) | 16 | label |
+| "#{pos} · {pts} pts" | Copy | 30 | hero stat |
+| "{W}W {D}D {L}L · {GD} GD · form {X}" | Superfine (lighten) | 16 | secondary summary |
+| "UNAVAILABLE FOR NEXT MATCH" header | Superfine (lighten) | 16 | section label |
+| "Injured"/"Suspended" group label | Superfine (lighten) | 16 | label |
+| Player name | Detail | 20 | primary content |
+| "Out"/"Doubtful" | Superfine (lighten) | 16 | label |
+| Reason text | Superfine (lighten) | 16 | caption |
 
 ### Match detail — header (all tabs)
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| Team name under crest | Detail | 20 | label (deliberately shrunk last session for crest space) |
-| Score ("2 - 1") | Heading | 38 | hero stat |
-| Live/status label | Detail | 20 | secondary label |
-| Goal scorer lines | Detail (lighten) | 20 | secondary content |
+| Team name under crest | Superfine | 16 | label |
+| Score ("2 - 1") | Copy | 30 | hero stat |
+| Live/status label | Superfine | 16 | secondary label |
+| Goal scorer lines | Superfine (lighten) | 16 | secondary content |
 
 ### Match detail — Stats tab
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| Home/away stat value | Copy | 30 | primary content |
-| Stat label (center column) | Detail (lighten) | 20 | label |
+| Home/away stat value | Detail | 20 | primary content |
+| Stat label (center column) | Superfine (lighten) | 16 | label |
 
 ### Match detail — Events tab
-Shrunk in the same pass as the lineup tab (§ above) — the headline and glyph icons were `Copy`
-(30), noticeably bigger than the minute label and secondary line either side of them; brought down
-to `Detail` (20) to match, per the same request that shrunk the lineup tab.
-
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| Goal/substitution glyph icon | Detail | 20 | icon (renders as text glyph) |
-| Minute label | Detail (lighten) | 20 | label |
-| Event headline | Detail | 20 | primary content |
-| Team + subtext line | Detail (lighten) | 20 | secondary content |
+| Goal/substitution glyph icon | Superfine | 16 | icon (renders as text glyph) |
+| Minute label | Superfine (lighten) | 16 | label |
+| Event headline | Superfine | 16 | primary content |
+| Team + subtext line | Superfine (lighten) | 16 | secondary content |
 
 ### Match detail — Home/Away lineup tab
-The lineup was redesigned in the same session this audit was fixed for — it's now a vertical pitch
-(number-only dots, keeper at the bottom) beside a numbered name list, rather than named dots in
-horizontal columns. That redesign changed what's below; the row for "player surname under the
-circle" this table used to have is gone along with the element itself, not just relabeled.
-
-The roster list's number/name briefly shipped at `Copy` (30), one size up from the team
-name/formation row and "Coach: {name}" immediately around it — sized down to `Detail` (20) the next
-round to match, and the substitutes list brought down to `Detail` too for one consistent size
-across the whole tab, rather than the starters looking smaller than the substitutes below them.
+A vertical pitch (number-only dots, keeper at the bottom) beside a numbered name list, rather than
+named dots in horizontal columns — the redesign this audit originally documented; nothing about the
+layout itself changed in this round, only every size below it.
 
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| Team name + formation | Detail (lighten) | 20 | label |
-| Jersey number (in circle, on the pitch) | Detail | 20 | primary content (small, by design — it's inside a 2.3-grid-unit circle) |
-| Roster list: number | Detail (lighten) | 20 | label, beside the matching name |
-| Roster list: player name | Detail | 20 | primary content |
-| "Coach: {name}" | Detail (lighten) | 20 | caption |
-| "SUBSTITUTES" header | Detail (lighten) | 20 | section label |
-| Substitute number / name | Detail | 20 | primary content |
-| Substitute position | Detail (lighten) | 20 | label |
+| Team name + formation | Superfine (lighten) | 16 | label |
+| Jersey number (in circle, on the pitch) | Superfine | 16 | primary content (small, by design — it's inside a 2.3-grid-unit circle) |
+| Roster list: number | Superfine (lighten) | 16 | label, beside the matching name |
+| Roster list: player name | Superfine | 16 | primary content |
+| "Coach: {name}" (+ headshot) | Superfine (lighten) | 16 | caption |
+| "SUBSTITUTES" header | Superfine (lighten) | 16 | section label |
+| Substitute number / name | Superfine | 16 | primary content |
+| Substitute position | Superfine (lighten) | 16 | label |
 
 ### Tab row (Stats / Events / Home / Away)
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| Tab label | Detail | 20 | button label |
+| Tab label | Superfine | 16 | button label |
 
-## 3. Standardization — applied
+## 3. Global one-step-down pass
 
-The app already mostly follows a consistent two-tier pattern — **`Copy` (30) for primary
-content, `Detail` (20, usually `lighten = true`) for secondary labels** — and it's a reasonable
-pattern to keep as the standard going forward; most of the app already matches it. Three places
-departed from it in ways worth a second look; all three have now been applied (not just
-recommended):
+Applied on request: every text element in the app shifted down exactly one step in §1's *real*
+type scale (not enum declaration order — that's the whole point of the `Fine` finding above). Only
+variants this app actually used were touched; the mapping was applied as one atomic pass across the
+whole file, so nothing got shifted twice:
 
-1. **Standings table data cells: `Copy` (30) → `Detail` (20).** This is the densest layout in the
-   app: seven columns (#, TEAM, MP, GF, GA, GD, PTS) sharing one row, several of them already
-   narrowed to make room for GF/GA in an earlier round of changes. The column headers already used
-   `Detail` at 20; sizing the data rows to match gives the table more breathing room and lets a
-   longer team name run further before eliding. Data and header are now the same size, distinguished
-   only by the header's `lighten = true` — a deliberate tradeoff, made because the density gain
-   outweighed keeping them visually distinct by size too.
+| Was | Now | Count |
+|---|---|---|
+| Heading (38) | Copy (30) | 2 |
+| Copy (30) | Detail (20) | 25 |
+| Paragraph (24.5) | Detail (20) | 1 |
+| Detail (20) | Superfine (16) | 49 |
 
-2. **Settings row value: `Heading` (38) → `Copy` (30).** "My Team" 's value ("Not set" or the team
-   name) previously rendered at the same size as a match score or the My Team position/points
-   line — both places where a big number is genuinely the point of the screen. In a plain settings
-   list that read as heavier than the row needed; `Copy` still reads clearly as "the value" against
-   the smaller `Detail` label above it, just without matching a scoreline.
+Two consequences worth flagging rather than leaving implicit:
 
-3. **Followed league names in Settings: `Copy` (30) → `Detail` (20).** With this app now tracking
-   up to 15 competitions, a user following several of them gets that many lines stacked under
-   "Leagues followed." `Detail` matches the same "value list under a label" treatment `LeaguesRow`'s
-   own label already uses one size up from — relevant regardless of how many leagues any one user
-   follows, since the list is unbounded in principle.
+- **Copy and Heading collapsed together.** Before this pass, `Heading` (38) was reserved for the two
+  genuinely "hero stat" numbers in the app — the match score and My Team's `#{pos} · {pts} pts`
+  line — one visual size larger than everything else, including regular `Copy` body text. Both now
+  render at `Copy`'s size (30), the same as ordinary primary content elsewhere on those same
+  screens. That's an intentional flattening of hierarchy, not a bug, but it does mean a match score
+  no longer visually dominates the row it's in the way it used to.
 
-None of these three were broken the way the three `Fine` cases were — they were consistent,
-readable, and matched the letter of the app's own two-tier pattern (primary vs. secondary). They
-were just the places where "could this be smaller" had a real, arguable case for it, and that case
-has now been acted on.
+- **Superfine (16) is a new floor for this app.** Nothing here used it before. It's now the landing
+  spot for every element that was `Detail` (the app's entire "secondary label" layer, plus most of
+  what recently became "primary content" too, e.g. Standings' data cells and the whole lineup tab).
+  16 design-units is the smallest text this app has ever shipped with — worth an actual look on a
+  real device before assuming it's still comfortably readable, since nothing here was checked
+  against a running build.
+
+`About` screen body text (`Paragraph`, was 24.5) now renders at `Detail`'s size (20) rather than its
+own dedicated reading-text size — reading paragraphs and UI labels are now the same size everywhere
+in the app.
+
+## 4. Standardization — applied (superseded by §3 above)
+
+The three recommendations below were written against the *pre-§3* scale and applied in an earlier
+round; they're kept here for history, but every specific size they mention has since shifted again
+per §3. The underlying reasoning (why each was singled out) still holds even though the resulting
+variant/size does not:
+
+1. **Standings table data cells: `Copy` (30) → `Detail` (20).** Matched the column headers, which
+   already used `Detail`, giving the densest layout in the app (7 columns) more breathing room.
+   (Now both are `Superfine`, 16, per §3.)
+
+2. **Settings row value: `Heading` (38) → `Copy` (30).** "My Team"'s value previously matched a
+   match score's weight, heavier than a plain settings row needed. (Now `Detail`, 20, per §3.)
+
+3. **Followed league names in Settings: `Copy` (30) → `Detail` (20).** Matches the "value list
+   under a label" treatment `LeaguesRow`'s own label already used, relevant given this app can track
+   up to 15 competitions. (Now `Superfine`, 16, per §3.)

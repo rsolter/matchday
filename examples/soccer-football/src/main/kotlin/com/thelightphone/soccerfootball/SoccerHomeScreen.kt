@@ -219,7 +219,7 @@ private fun LoadingContent(title: String, message: String) {
         ) {
             LightText(
                 text = message,
-                variant = LightTextVariant.Copy,
+                variant = LightTextVariant.Detail,
                 align = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 1f.gridUnitsAsDp()),
             )
@@ -262,7 +262,7 @@ private fun ScoresContent(
             ) {
                 LightText(
                     text = "No matches today in your leagues.",
-                    variant = LightTextVariant.Copy,
+                    variant = LightTextVariant.Detail,
                     align = TextAlign.Center,
                     lighten = true,
                     modifier = Modifier.padding(horizontal = 2f.gridUnitsAsDp()),
@@ -354,7 +354,7 @@ private fun MatchGroupCard(
                         .padding(end = 0.4f.gridUnitsAsDp()),
                 )
             }
-            LightText(text = title, variant = LightTextVariant.Detail, lighten = true)
+            LightText(text = title, variant = LightTextVariant.Superfine, lighten = true)
         }
         matches.forEachIndexed { index, match ->
             if (index > 0) {
@@ -388,7 +388,7 @@ private fun MatchRow(
     ) {
         LightText(
             text = "${match.homeTeamName} vs ${match.awayTeamName}",
-            variant = LightTextVariant.Copy,
+            variant = LightTextVariant.Detail,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
@@ -398,7 +398,7 @@ private fun MatchRow(
             modifier = Modifier.width(SCORE_COLUMN_WIDTH.gridUnitsAsDp()),
         ) {
             if (match.hasScore) {
-                LightText(text = match.scoreLabel(), variant = LightTextVariant.Copy, align = TextAlign.End)
+                LightText(text = match.scoreLabel(), variant = LightTextVariant.Detail, align = TextAlign.End)
             }
             if (match.status.isLive) {
                 Box(
@@ -408,7 +408,7 @@ private fun MatchRow(
                         .background(LightThemeTokens.colors.content.copy(alpha = 0.12f))
                         .padding(horizontal = 0.4f.gridUnitsAsDp(), vertical = 0.05f.gridUnitsAsDp()),
                 ) {
-                    LightText(text = match.statusLabel(), variant = LightTextVariant.Detail, align = TextAlign.End)
+                    LightText(text = match.statusLabel(), variant = LightTextVariant.Superfine, align = TextAlign.End)
                 }
             } else if (!match.hasScore || showFinishedStatus) {
                 val label = if (showDate && match.status == MatchStatus.SCHEDULED) {
@@ -418,7 +418,7 @@ private fun MatchRow(
                 }
                 LightText(
                     text = label,
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Superfine,
                     align = TextAlign.End,
                     lighten = true,
                     modifier = if (match.hasScore) Modifier.padding(top = 0.15f.gridUnitsAsDp()) else Modifier,
@@ -460,7 +460,7 @@ private fun SettingsContent(
             if (myTeamName != null) {
                 LightText(
                     text = "Forget My Team",
-                    variant = LightTextVariant.Copy,
+                    variant = LightTextVariant.Detail,
                     modifier = Modifier
                         .fillMaxWidth()
                         .lightClickable(onClick = onClearMyTeam)
@@ -471,7 +471,7 @@ private fun SettingsContent(
             // for why there's no bottom-bar refresh icon.
             LightText(
                 text = "Refresh now",
-                variant = LightTextVariant.Copy,
+                variant = LightTextVariant.Detail,
                 modifier = Modifier
                     .fillMaxWidth()
                     .lightClickable(onClick = onManualRefresh)
@@ -487,7 +487,7 @@ private fun SettingsContent(
         // regardless of how long the scrollable list above gets.
         LightText(
             text = "About",
-            variant = LightTextVariant.Copy,
+            variant = LightTextVariant.Detail,
             modifier = Modifier
                 .fillMaxWidth()
                 .lightClickable(onClick = onOpenAttribution)
@@ -505,12 +505,11 @@ private fun SettingRow(label: String, value: String, onClick: (() -> Unit)?) {
             .let { if (onClick != null) it.lightClickable(onClick = onClick) else it }
             .padding(vertical = 0.75f.gridUnitsAsDp()),
     ) {
-        LightText(text = label, variant = LightTextVariant.Detail, lighten = true)
-        // Heading (38) matched a match score or the My Team position/points line — both places
-        // where a big number is genuinely the point of the screen. In a plain settings list that
-        // read as heavier than the row needs; Copy still reads as "the value" against the smaller
-        // label above it. See font-size-audit.md recommendation #2.
-        LightText(text = value, variant = LightTextVariant.Copy)
+        LightText(text = label, variant = LightTextVariant.Superfine, lighten = true)
+        // Was Heading (38), then Copy (30) — see font-size-audit.md recommendation #2 for why
+        // Heading was too heavy for a plain settings row. Now Detail (20) after the global
+        // one-step-down pass; still reads as "the value" against the (also-shifted) label above.
+        LightText(text = value, variant = LightTextVariant.Detail)
     }
 }
 
@@ -522,12 +521,13 @@ private fun LeaguesRow(leagueNames: List<String>, onClick: () -> Unit) {
             .lightClickable(onClick = onClick)
             .padding(vertical = 0.75f.gridUnitsAsDp()),
     ) {
-        LightText(text = "Leagues followed", variant = LightTextVariant.Detail, lighten = true)
-        // Detail, not Copy: with up to 15 trackable competitions, a user following several gets
-        // that many lines stacked under the label above — sized to match a value list under a
-        // label, same as the label itself one size up. See font-size-audit.md recommendation #3.
+        LightText(text = "Leagues followed", variant = LightTextVariant.Superfine, lighten = true)
+        // Was Copy, then Detail (see font-size-audit.md recommendation #3 — with up to 15
+        // trackable competitions, a user following several gets that many stacked lines, so this
+        // matches the label above rather than standing out as heavier). Now Superfine after the
+        // global one-step-down pass, same size as that label once again.
         leagueNames.forEach { name ->
-            LightText(text = name, variant = LightTextVariant.Detail, modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()))
+            LightText(text = name, variant = LightTextVariant.Superfine, modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()))
         }
     }
 }
@@ -556,7 +556,7 @@ private fun AttributionContent(onBack: () -> Unit) {
                     "the API-Football key and absorbs the request load — there's nothing to set " +
                     "up or configure here. Scores, fixtures, and standings are live, " +
                     "current-season data.",
-                variant = LightTextVariant.Paragraph,
+                variant = LightTextVariant.Detail,
             )
         }
     }
@@ -588,7 +588,7 @@ private fun LeagueSelectionContent(
                         .lightClickable(onClick = { onToggle(row.id) })
                         .padding(vertical = 0.85f.gridUnitsAsDp()),
                 ) {
-                    LightText(text = row.name, variant = LightTextVariant.Copy, modifier = Modifier.weight(1f))
+                    LightText(text = row.name, variant = LightTextVariant.Detail, modifier = Modifier.weight(1f))
                     LightIcon(
                         icon = if (row.selected) LightIcons.TOGGLE_STATE_ON else LightIcons.TOGGLE_STATE_OFF,
                         size = 2f,
@@ -622,7 +622,7 @@ private fun CompetitionPickerContent(
             leagues.forEach { league ->
                 LightText(
                     text = league.name,
-                    variant = LightTextVariant.Copy,
+                    variant = LightTextVariant.Detail,
                     modifier = Modifier
                         .fillMaxWidth()
                         .lightClickable(onClick = { onSelect(league.id, league.name) })
@@ -681,13 +681,13 @@ private fun StandingsTableContent(
 
         if (isLoading) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                LightText(text = "fetching standings...", variant = LightTextVariant.Copy)
+                LightText(text = "fetching standings...", variant = LightTextVariant.Detail)
             }
         } else if (rows.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 LightText(
                     text = "Standings aren't available for this league right now.",
-                    variant = LightTextVariant.Copy,
+                    variant = LightTextVariant.Detail,
                     align = TextAlign.Center,
                     lighten = true,
                     modifier = Modifier.padding(horizontal = 2f.gridUnitsAsDp()),
@@ -719,7 +719,7 @@ private fun StandingsTableContent(
                         currentGroup = row.group
                         LightText(
                             text = row.group.uppercase(),
-                            variant = LightTextVariant.Detail,
+                            variant = LightTextVariant.Superfine,
                             lighten = true,
                             modifier = Modifier.padding(top = 0.75f.gridUnitsAsDp(), bottom = 0.25f.gridUnitsAsDp()),
                         )
@@ -743,13 +743,13 @@ private fun StandingsTableContent(
 @Composable
 private fun StandingsHeaderRow() {
     Row(modifier = Modifier.fillMaxWidth().padding(bottom = 0.4f.gridUnitsAsDp())) {
-        LightText(text = "#", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
-        LightText(text = "TEAM", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT))
-        LightText(text = "MP", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
-        LightText(text = "GF", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
-        LightText(text = "GA", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
-        LightText(text = "GD", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
-        LightText(text = "PTS", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
+        LightText(text = "#", variant = LightTextVariant.Superfine, lighten = true, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
+        LightText(text = "TEAM", variant = LightTextVariant.Superfine, lighten = true, modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT))
+        LightText(text = "MP", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
+        LightText(text = "GF", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
+        LightText(text = "GA", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
+        LightText(text = "GD", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
+        LightText(text = "PTS", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
 }
 
@@ -759,22 +759,23 @@ private fun StandingsTableRow(row: StandingsRow) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(vertical = 0.4f.gridUnitsAsDp()),
     ) {
-        // Sized to match the column headers above (also Detail) — see font-size-audit.md
-        // recommendation #1: this is the densest row in the app (7 columns), and matching the
-        // header size gives the data more room before a long team name has to ellipsize.
-        LightText(text = row.position.toString(), variant = LightTextVariant.Detail, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
+        // Sized to match the column headers above (also Superfine, after the global one-step-down
+        // pass — both were Detail before that) — see font-size-audit.md recommendation #1: this is
+        // the densest row in the app (7 columns), and matching the header size gives the data more
+        // room before a long team name has to ellipsize.
+        LightText(text = row.position.toString(), variant = LightTextVariant.Superfine, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
         LightText(
             text = row.teamName,
-            variant = LightTextVariant.Detail,
+            variant = LightTextVariant.Superfine,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT),
         )
-        LightText(text = row.played.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
-        LightText(text = row.goalsFor.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
-        LightText(text = row.goalsAgainst.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
-        LightText(text = row.goalDifferenceLabel(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
-        LightText(text = row.points.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
+        LightText(text = row.played.toString(), variant = LightTextVariant.Superfine, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
+        LightText(text = row.goalsFor.toString(), variant = LightTextVariant.Superfine, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
+        LightText(text = row.goalsAgainst.toString(), variant = LightTextVariant.Superfine, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
+        LightText(text = row.goalDifferenceLabel(), variant = LightTextVariant.Superfine, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
+        LightText(text = row.points.toString(), variant = LightTextVariant.Superfine, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
 }
 
@@ -800,13 +801,13 @@ private fun FixturesContent(
 
         if (isLoading) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                LightText(text = "fetching fixtures...", variant = LightTextVariant.Copy)
+                LightText(text = "fetching fixtures...", variant = LightTextVariant.Detail)
             }
         } else if (groups.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 LightText(
                     text = "No fixtures found for this league right now.",
-                    variant = LightTextVariant.Copy,
+                    variant = LightTextVariant.Detail,
                     align = TextAlign.Center,
                     lighten = true,
                     modifier = Modifier.padding(horizontal = 2f.gridUnitsAsDp()),
@@ -858,7 +859,7 @@ private fun MyTeamTeamPickerContent(
 
         if (isLoading) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                LightText(text = "fetching teams...", variant = LightTextVariant.Copy)
+                LightText(text = "fetching teams...", variant = LightTextVariant.Detail)
             }
         } else {
             LightScrollView(
@@ -867,7 +868,7 @@ private fun MyTeamTeamPickerContent(
                 teams.sortedBy { it.teamName }.forEach { team ->
                     LightText(
                         text = team.teamName,
-                        variant = LightTextVariant.Copy,
+                        variant = LightTextVariant.Detail,
                         modifier = Modifier
                             .fillMaxWidth()
                             .lightClickable(onClick = { onSelect(team.teamId, team.teamName) })
@@ -895,13 +896,13 @@ private fun MyTeamContent(
 
         if (isLoading) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                LightText(text = "fetching your team...", variant = LightTextVariant.Copy)
+                LightText(text = "fetching your team...", variant = LightTextVariant.Detail)
             }
         } else if (summary == null) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 LightText(
                     text = "Couldn't load My Team right now.",
-                    variant = LightTextVariant.Copy,
+                    variant = LightTextVariant.Detail,
                     align = TextAlign.Center,
                     lighten = true,
                     modifier = Modifier.padding(horizontal = 2f.gridUnitsAsDp()),
@@ -966,7 +967,7 @@ private fun MyTeamContent(
                 ) {
                     LightText(
                         text = "No data available for this team right now.",
-                        variant = LightTextVariant.Copy,
+                        variant = LightTextVariant.Detail,
                         align = TextAlign.Center,
                         lighten = true,
                         modifier = Modifier.fillMaxWidth().padding(top = 1.5f.gridUnitsAsDp()),
@@ -980,16 +981,16 @@ private fun MyTeamContent(
 @Composable
 private fun MyTeamStandingBlock(leagueName: String, row: StandingsRow, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth().padding(top = 0.5f.gridUnitsAsDp(), bottom = 0.25f.gridUnitsAsDp())) {
-        LightText(text = leagueName.uppercase(), variant = LightTextVariant.Detail, lighten = true)
+        LightText(text = leagueName.uppercase(), variant = LightTextVariant.Superfine, lighten = true)
         LightText(
             text = "#${row.position} · ${row.points} pts",
-            variant = LightTextVariant.Heading,
+            variant = LightTextVariant.Copy,
             modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()),
         )
         LightText(
             text = "${row.win}W ${row.draw}D ${row.lose}L · ${row.goalDifferenceLabel()} GD" +
                 (row.form?.let { " · form $it" } ?: ""),
-            variant = LightTextVariant.Detail,
+            variant = LightTextVariant.Superfine,
             lighten = true,
             modifier = Modifier.padding(top = 0.15f.gridUnitsAsDp()),
         )
@@ -1007,7 +1008,7 @@ private fun UnavailableBlock(players: List<UnavailablePlayer>, modifier: Modifie
             .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f))
             .padding(horizontal = 1f.gridUnitsAsDp(), vertical = 0.75f.gridUnitsAsDp()),
     ) {
-        LightText(text = "UNAVAILABLE FOR NEXT MATCH", variant = LightTextVariant.Detail, lighten = true)
+        LightText(text = "UNAVAILABLE FOR NEXT MATCH", variant = LightTextVariant.Superfine, lighten = true)
         if (injured.isNotEmpty()) {
             UnavailableGroup(label = "Injured", players = injured, modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()))
         }
@@ -1020,30 +1021,31 @@ private fun UnavailableBlock(players: List<UnavailablePlayer>, modifier: Modifie
 @Composable
 private fun UnavailableGroup(label: String, players: List<UnavailablePlayer>, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth()) {
-        LightText(text = label, variant = LightTextVariant.Detail, lighten = true)
+        LightText(text = label, variant = LightTextVariant.Superfine, lighten = true)
         players.forEach { player ->
             Row(modifier = Modifier.fillMaxWidth().padding(top = 0.2f.gridUnitsAsDp())) {
                 LightText(
                     text = player.playerName,
-                    variant = LightTextVariant.Copy,
+                    variant = LightTextVariant.Detail,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 LightText(
                     text = if (player.isOut) "Out" else "Doubtful",
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Superfine,
                     lighten = true,
                     align = TextAlign.End,
                 )
             }
-            // Detail, not Fine: despite the name, Fine (25sp) renders larger than Detail (20sp) in
-            // this SDK's real type scale — see the font-size audit doc — so Fine was actually
-            // making this secondary reason text bigger than the "Out"/"Doubtful" label above it,
-            // the opposite of the intended caption-sized, de-emphasized treatment.
+            // Was Fine, fixed to Detail: despite the name, Fine (25, design units) renders larger
+            // than Detail (20) in this SDK's real type scale — see the font-size audit doc — so
+            // Fine was actually making this secondary reason text bigger than the "Out"/"Doubtful"
+            // label above it, the opposite of the intended caption-sized, de-emphasized treatment.
+            // Now Superfine (16) after a later global one-step-down pass.
             LightText(
                 text = player.reason,
-                variant = LightTextVariant.Detail,
+                variant = LightTextVariant.Superfine,
                 lighten = true,
                 modifier = Modifier.padding(top = 0.05f.gridUnitsAsDp()),
             )
@@ -1099,7 +1101,7 @@ private fun MatchDetailContent(mode: ScoreScreenMode.MatchDetailScreen, onBack: 
                 mode.isLoading -> {
                     LightText(
                         text = "fetching match details...",
-                        variant = LightTextVariant.Copy,
+                        variant = LightTextVariant.Detail,
                         lighten = true,
                         align = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(top = 1.5f.gridUnitsAsDp()),
@@ -1109,7 +1111,7 @@ private fun MatchDetailContent(mode: ScoreScreenMode.MatchDetailScreen, onBack: 
                 detail == null || detail.isEmpty() -> {
                     LightText(
                         text = "No additional details available for this match yet.",
-                        variant = LightTextVariant.Copy,
+                        variant = LightTextVariant.Detail,
                         align = TextAlign.Center,
                         lighten = true,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()).padding(top = 1.5f.gridUnitsAsDp()),
@@ -1175,12 +1177,13 @@ private fun MatchDetailHeader(
     Column(modifier = Modifier.fillMaxWidth().padding(top = 0.5f.gridUnitsAsDp(), bottom = 0.25f.gridUnitsAsDp())) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             MatchDetailTeamBlock(name = homeTeamName, logoBytes = homeTeamLogoBytes, modifier = Modifier.weight(1f))
-            // Heading (24sp), not Title (34sp) — the crest icons beside each team name below need
-            // the horizontal room this used to take up; shrinking the score is the deliberate
-            // trade-off (still the visually dominant element on the row, just not oversized).
+            // Was Title, shrunk to Heading (38, design units) in an earlier session — the crest
+            // icons beside each team name below need the horizontal room Title used to take up.
+            // Now Copy (30) after this round's global one-step-down pass; still the visually
+            // dominant element on the row, just not oversized.
             LightText(
                 text = scoreLabel,
-                variant = LightTextVariant.Heading,
+                variant = LightTextVariant.Copy,
                 align = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 0.5f.gridUnitsAsDp()),
             )
@@ -1196,12 +1199,12 @@ private fun MatchDetailHeader(
                     .background(LightThemeTokens.colors.content.copy(alpha = 0.12f))
                     .padding(horizontal = 0.4f.gridUnitsAsDp(), vertical = 0.15f.gridUnitsAsDp()),
             ) {
-                LightText(text = statusLabel, variant = LightTextVariant.Detail)
+                LightText(text = statusLabel, variant = LightTextVariant.Superfine)
             }
         } else {
             LightText(
                 text = statusLabel,
-                variant = LightTextVariant.Detail,
+                variant = LightTextVariant.Superfine,
                 lighten = true,
                 align = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 0.4f.gridUnitsAsDp()),
@@ -1241,13 +1244,14 @@ private fun MatchDetailTeamBlock(name: String, logoBytes: ByteArray?, modifier: 
                     .padding(bottom = 0.2f.gridUnitsAsDp()),
             )
         }
-        // Detail (20sp), not Copy (30sp): the API doesn't give us a short/abbreviated team name,
-        // so the only lever we have to stop long names ("Manchester City", "FC Copenhagen") from
-        // wrapping mid-word is a smaller font. maxLines/Ellipsis stays as a safety net for names
-        // this still doesn't fit.
+        // Was Detail (20, design units), not Copy (30): the API doesn't give us a short/abbreviated
+        // team name, so the only lever we have to stop long names ("Manchester City", "FC
+        // Copenhagen") from wrapping mid-word is a smaller font. Now Superfine (16) after this
+        // round's global one-step-down pass. maxLines/Ellipsis stays as a safety net for names this
+        // still doesn't fit.
         LightText(
             text = name,
-            variant = LightTextVariant.Detail,
+            variant = LightTextVariant.Superfine,
             align = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -1369,7 +1373,7 @@ private fun GoalScorersRow(
             homeScorers.forEach { event ->
                 LightText(
                     text = event.goalScorerLabel(),
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Superfine,
                     lighten = true,
                     align = TextAlign.End,
                     maxLines = 1,
@@ -1383,7 +1387,7 @@ private fun GoalScorersRow(
             awayScorers.forEach { event ->
                 LightText(
                     text = event.goalScorerLabel(),
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Superfine,
                     lighten = true,
                     align = TextAlign.Start,
                     maxLines = 1,
@@ -1415,15 +1419,15 @@ private fun MatchStatsSection(stats: List<MatchStatRow>, modifier: Modifier = Mo
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 0.35f.gridUnitsAsDp()),
             ) {
-                LightText(text = row.homeValue, variant = LightTextVariant.Copy, align = TextAlign.Center, modifier = Modifier.weight(0.25f))
+                LightText(text = row.homeValue, variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(0.25f))
                 LightText(
                     text = prettifyStatLabel(row.label),
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Superfine,
                     lighten = true,
                     align = TextAlign.Center,
                     modifier = Modifier.weight(0.5f),
                 )
-                LightText(text = row.awayValue, variant = LightTextVariant.Copy, align = TextAlign.Center, modifier = Modifier.weight(0.25f))
+                LightText(text = row.awayValue, variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(0.25f))
             }
         }
     }
@@ -1469,8 +1473,8 @@ private fun EventTimelineSection(events: List<MatchEvent>, modifier: Modifier = 
 private fun MatchEventIcon(event: MatchEvent, modifier: Modifier = Modifier) {
     Box(modifier = modifier.size(1.4f.gridUnitsAsDp()), contentAlignment = Alignment.Center) {
         when (event.type) {
-            MatchEventType.GOAL -> LightText(text = "⚽", variant = LightTextVariant.Detail, align = TextAlign.Center)
-            MatchEventType.SUBSTITUTION -> LightText(text = "⇄", variant = LightTextVariant.Detail, align = TextAlign.Center)
+            MatchEventType.GOAL -> LightText(text = "⚽", variant = LightTextVariant.Superfine, align = TextAlign.Center)
+            MatchEventType.SUBSTITUTION -> LightText(text = "⇄", variant = LightTextVariant.Superfine, align = TextAlign.Center)
             MatchEventType.CARD -> {
                 val isRed = event.headline.contains("red", ignoreCase = true)
                 Box(
@@ -1498,7 +1502,7 @@ private fun EventTimelineRow(event: MatchEvent) {
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 0.5f.gridUnitsAsDp())) {
         LightText(
             text = event.minuteLabel,
-            variant = LightTextVariant.Detail,
+            variant = LightTextVariant.Superfine,
             lighten = true,
             modifier = Modifier.width(2.4f.gridUnitsAsDp()),
         )
@@ -1507,15 +1511,16 @@ private fun EventTimelineRow(event: MatchEvent) {
             modifier = Modifier.align(Alignment.CenterVertically).padding(end = 0.5f.gridUnitsAsDp()),
         )
         Column(modifier = Modifier.weight(1f)) {
-            // Detail, not Copy — matches the minute label and the secondary team/subtext line
-            // below it, so the whole Events row reads at one smaller, consistent size instead of
-            // the headline standing out as the biggest text in the tab.
-            LightText(text = event.headline, variant = LightTextVariant.Detail, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // Was Copy, shrunk to Detail (matching the minute label and the secondary team/subtext
+            // line below it, so the whole Events row read at one smaller, consistent size instead
+            // of the headline standing out as the biggest text in the tab). Now Superfine after a
+            // later global one-step-down pass.
+            LightText(text = event.headline, variant = LightTextVariant.Superfine, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val secondary = listOfNotNull(event.teamName.takeIf { it.isNotBlank() }, event.subtext).joinToString(" · ")
             if (secondary.isNotBlank()) {
                 LightText(
                     text = secondary,
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Superfine,
                     lighten = true,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1555,7 +1560,7 @@ private fun DetailTabButton(text: String, isSelected: Boolean, onClick: () -> Un
     ) {
         LightText(
             text = text,
-            variant = LightTextVariant.Detail,
+            variant = LightTextVariant.Superfine,
             lighten = !isSelected,
             align = TextAlign.Center,
             maxLines = 1,
@@ -1568,7 +1573,7 @@ private fun DetailTabButton(text: String, isSelected: Boolean, onClick: () -> Un
 private fun NoDataForTab(text: String) {
     LightText(
         text = text,
-        variant = LightTextVariant.Copy,
+        variant = LightTextVariant.Detail,
         align = TextAlign.Center,
         lighten = true,
         modifier = Modifier.fillMaxWidth().padding(top = 1.5f.gridUnitsAsDp()),
@@ -1619,13 +1624,13 @@ private fun LineupSection(
             // + Ellipsis trades a truncated name ("Mancheste…") for avoiding an ugly mid-word wrap.
             LightText(
                 text = teamName,
-                variant = LightTextVariant.Detail,
+                variant = LightTextVariant.Superfine,
                 lighten = true,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            lineup.formation?.let { LightText(text = it, variant = LightTextVariant.Detail, lighten = true) }
+            lineup.formation?.let { LightText(text = it, variant = LightTextVariant.Superfine, lighten = true) }
         }
 
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -1680,11 +1685,12 @@ private fun LineupSection(
                         modifier = Modifier.size(1.6f.gridUnitsAsDp()).clip(CircleShape),
                     )
                 }
-                // Detail, not Fine — see the font-size audit doc: Fine (25sp) is bigger than
-                // Detail (20sp) in this SDK's real type scale despite the name suggesting the
-                // opposite, so this caption was rendering almost as large as the primary player
-                // names above it.
-                LightText(text = "Coach: $coachName", variant = LightTextVariant.Detail, lighten = true)
+                // Was Fine, fixed to Detail — see the font-size audit doc: Fine (25, design units)
+                // is bigger than Detail (20) in this SDK's real type scale despite the name
+                // suggesting the opposite, so this caption was rendering almost as large as the
+                // primary player names above it. Now Superfine (16) after a later global
+                // one-step-down pass.
+                LightText(text = "Coach: $coachName", variant = LightTextVariant.Superfine, lighten = true)
             }
         }
 
@@ -1716,17 +1722,18 @@ private fun LineupRosterList(pitchRows: List<List<LineupPlayer>>, modifier: Modi
                         .fillMaxWidth()
                         .padding(top = topPadding, bottom = 0.15f.gridUnitsAsDp()),
                 ) {
-                    // Detail, not Copy — matches the team name/formation row and "Coach: {name}"
-                    // above and below this list, rather than standing out as noticeably bigger.
+                    // Was Copy, shrunk to Detail (matching the team name/formation row and
+                    // "Coach: {name}" above and below this list, rather than standing out as
+                    // noticeably bigger). Now Superfine after a later global one-step-down pass.
                     LightText(
                         text = player.number?.toString() ?: "-",
-                        variant = LightTextVariant.Detail,
+                        variant = LightTextVariant.Superfine,
                         lighten = true,
                         modifier = Modifier.width(1.6f.gridUnitsAsDp()),
                     )
                     LightText(
                         text = player.name,
-                        variant = LightTextVariant.Detail,
+                        variant = LightTextVariant.Superfine,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
@@ -1750,34 +1757,35 @@ private fun PitchNumberDot(player: LineupPlayer, dotColor: Color?, modifier: Mod
             .clip(CircleShape)
             .background(dotColor?.copy(alpha = 0.55f) ?: LightThemeTokens.colors.contentSecondary.copy(alpha = 0.22f)),
     ) {
-        LightText(text = player.number?.toString() ?: "-", variant = LightTextVariant.Detail, color = numberColor)
+        LightText(text = player.number?.toString() ?: "-", variant = LightTextVariant.Superfine, color = numberColor)
     }
 }
 
 @Composable
 private fun SubstitutesBlock(substitutes: List<LineupPlayer>, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth()) {
-        LightText(text = "SUBSTITUTES", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.padding(bottom = 0.4f.gridUnitsAsDp()))
+        LightText(text = "SUBSTITUTES", variant = LightTextVariant.Superfine, lighten = true, modifier = Modifier.padding(bottom = 0.4f.gridUnitsAsDp()))
         substitutes.forEach { player ->
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 0.1f.gridUnitsAsDp())) {
-                // Detail, not Copy — matches the starting XI roster list above (and the team
-                // name/coach line), for one consistent size across the whole lineup tab rather
-                // than the starters' names being smaller than the substitutes' own.
+                // Was Copy, shrunk to Detail (matching the starting XI roster list above, and the
+                // team name/coach line, for one consistent size across the whole lineup tab rather
+                // than the starters' names being smaller than the substitutes' own). Now Superfine
+                // after a later global one-step-down pass.
                 LightText(
                     text = player.number?.toString() ?: "-",
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Superfine,
                     lighten = true,
                     modifier = Modifier.width(1.6f.gridUnitsAsDp()),
                 )
                 LightText(
                     text = player.name,
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Superfine,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 player.position?.let {
-                    LightText(text = it, variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End)
+                    LightText(text = it, variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End)
                 }
             }
         }
