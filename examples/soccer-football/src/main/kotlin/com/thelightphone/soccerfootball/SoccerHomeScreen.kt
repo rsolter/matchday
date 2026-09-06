@@ -1021,7 +1021,7 @@ private fun FixturesContent(
     Column(modifier = Modifier.fillMaxSize()) {
         LightTopBar(
             leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = onBack),
-            center = LightTopBarCenter.Text("Fixtures"),
+            center = LightTopBarCenter.Text("Results & Fixtures"),
             modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
         )
 
