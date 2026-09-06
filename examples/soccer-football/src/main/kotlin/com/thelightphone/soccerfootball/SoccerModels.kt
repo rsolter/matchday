@@ -77,6 +77,11 @@ private val COMPETITION_NAMES: Map<Int, String> = TRACKED_COMPETITIONS.associate
 
 fun competitionName(id: Int): String = COMPETITION_NAMES[id] ?: "League $id"
 
+/** Whether [id] has a real league table — false for single-elimination cups (see [Competition.hasStandings]).
+ * Used to gate the Scores screen's league-logo-tap navigation so tapping a cup's logo doesn't try
+ * to open a standings table that doesn't exist. */
+fun competitionHasStandings(id: Int): Boolean = TRACKED_COMPETITIONS.firstOrNull { it.id == id }?.hasStandings ?: false
+
 // --- Wire format (API-Football /fixtures response) ----------------------------
 //
 // Confirmed against a real `GET /fixtures?league=39&season=2023&from=2023-08-01&to=2023-08-31`

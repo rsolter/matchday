@@ -46,8 +46,6 @@ sealed class ScoreScreenMode {
 
     data class LeagueSelection(val rows: List<LeagueSelectionRow>) : ScoreScreenMode()
 
-    /** Only the leagues the user currently follows (see [ScoreScreenMode.LeagueSelection]). */
-    data class StandingsPicker(val leagues: List<Competition>) : ScoreScreenMode()
     data class Standings(
         val leagueId: Int,
         val leagueName: String,
@@ -404,14 +402,11 @@ class SoccerViewModel(
         TRACKED_COMPETITIONS.map { LeagueSelectionRow(it.id, it.name, it.id in selectedIds) }
 
     // --- Standings -----------------------------------------------------------------
-
-    fun openStandingsPicker() {
-        updateState { it.copy(mode = ScoreScreenMode.StandingsPicker(followedTableCompetitions()), errorModal = null) }
-    }
-
-    fun backFromStandingsPicker() {
-        updateState { it.copy(mode = lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE), errorModal = null) }
-    }
+    //
+    // No standalone picker screen — the table is reached only by tapping a league logo
+    // elsewhere (currently Scores' per-competition headers; see `competitionHasStandings`
+    // in SoccerModels.kt for the cup-competition guard), so this section is just the table
+    // itself plus its back navigation.
 
     fun openStandingsTable(leagueId: Int, leagueName: String) {
         updateState {
@@ -466,7 +461,7 @@ class SoccerViewModel(
     }
 
     fun backFromStandingsTable() {
-        updateState { it.copy(mode = ScoreScreenMode.StandingsPicker(followedTableCompetitions()), errorModal = null) }
+        updateState { it.copy(mode = lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE), errorModal = null) }
     }
 
     // --- Fixtures ------------------------------------------------------------------

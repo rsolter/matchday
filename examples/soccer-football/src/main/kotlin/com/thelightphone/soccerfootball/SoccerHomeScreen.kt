@@ -89,7 +89,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             leagueLogos = mode.leagueLogos,
                             onOpenSettings = viewModel::openSettings,
                             onOpenMyTeam = viewModel::openMyTeam,
-                            onOpenStandings = viewModel::openStandingsPicker,
+                            onOpenStandingsTable = viewModel::openStandingsTable,
                             onOpenFixtures = viewModel::openFixturesPicker,
                             onMatchClick = viewModel::openMatchDetail,
                         )
@@ -117,15 +117,6 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             rows = mode.rows,
                             onToggle = viewModel::toggleLeague,
                             onBack = viewModel::closeLeagueSelection,
-                        )
-                    }
-
-                    is ScoreScreenMode.StandingsPicker -> {
-                        CompetitionPickerContent(
-                            title = "Standings",
-                            leagues = mode.leagues,
-                            onSelect = viewModel::openStandingsTable,
-                            onBack = viewModel::backFromStandingsPicker,
                         )
                     }
 
@@ -335,7 +326,7 @@ private fun ScoresContent(
     leagueLogos: Map<String, ByteArray>,
     onOpenSettings: () -> Unit,
     onOpenMyTeam: () -> Unit,
-    onOpenStandings: () -> Unit,
+    onOpenStandingsTable: (Int, String) -> Unit,
     onOpenFixtures: () -> Unit,
     onMatchClick: (Fixture) -> Unit,
 ) {
@@ -378,15 +369,22 @@ private fun ScoresContent(
                         titleLogoTint = leagueLogoColorFilter(group.leagueId),
                         matches = group.matches,
                         modifier = Modifier.padding(top = if (index == 0) 0.dp else 0.75f.gridUnitsAsDp()),
+                        onTitleLogoClick = if (competitionHasStandings(group.leagueId)) {
+                            { onOpenStandingsTable(group.leagueId, group.leagueName) }
+                        } else {
+                            null
+                        },
                         onMatchClick = onMatchClick,
                     )
                 }
             }
         }
 
-        // Bottom bar order (left to right): Settings, My Team, Standings, Fixtures — deliberately
-        // no Refresh icon here, see SoccerViewModel's class doc comment for why (free-tier quota
-        // + frozen historical data in Phase 1). Manual refresh lives in Settings instead.
+        // Bottom bar order (left to right): Settings, My Team, Fixtures — deliberately no Refresh
+        // icon here, see SoccerViewModel's class doc comment for why (free-tier quota + frozen
+        // historical data in Phase 1). Manual refresh lives in Settings instead. Standings used to
+        // have its own button here too; it's gone now — the table is reached only by tapping a
+        // league's logo above (see MatchGroupCard's onTitleLogoClick).
         LightBottomBar(
             items = listOf(
                 LightBarButton.LightIcon(
@@ -398,10 +396,6 @@ private fun ScoresContent(
                     onClick = onOpenMyTeam,
                     contentDescription = "My Team",
                 ) { SoccerBarIcon(R.drawable.ic_jersey_white, "My Team") },
-                LightBarButton.Custom(
-                    onClick = onOpenStandings,
-                    contentDescription = "Standings",
-                ) { SoccerBarIcon(R.drawable.ic_table_white, "Standings") },
                 LightBarButton.Custom(
                     onClick = onOpenFixtures,
                     contentDescription = "Fixtures",
@@ -419,9 +413,13 @@ private fun ScoresContent(
  * date or a plain "RECENT RESULTS"/"UPCOMING" label, neither of which has a single league badge to
  * show. [titleLogoTint], when set, recolors that logo — see [leagueLogoColorFilter]'s doc comment
  * for why (only Scores' call site ever passes one, computed from the group's own league ID).
- * [highlightTeamId] is only ever passed by My Team's "RECENT RESULTS" card, to color each
- * match's left slot by its result for that team instead — see [MatchRow]. [allowKickoffLabelWrap]
- * is only ever passed by Fixtures' per-league list and My Team's "UPCOMING" card — see [MatchRow]. */
+ * [onTitleLogoClick], when set (Scores only, and only for leagues with a real table — see
+ * `competitionHasStandings` in SoccerModels.kt), makes the title logo itself tappable to jump
+ * straight to that league's Standings table; this is now the table's *only* entry point, since the
+ * Home screen's own Standings button was removed. [highlightTeamId] is only ever passed by My
+ * Team's "RECENT RESULTS" card, to color each match's left slot by its result for that team
+ * instead — see [MatchRow]. [allowKickoffLabelWrap] is only ever passed by Fixtures' per-league
+ * list and My Team's "UPCOMING" card — see [MatchRow]. */
 @Composable
 private fun MatchGroupCard(
     title: String,
@@ -429,6 +427,7 @@ private fun MatchGroupCard(
     modifier: Modifier = Modifier,
     titleLogoBytes: ByteArray? = null,
     titleLogoTint: ColorFilter? = null,
+    onTitleLogoClick: (() -> Unit)? = null,
     showFinishedStatus: Boolean = true,
     showDate: Boolean = false,
     highlightTeamId: Int? = null,
@@ -457,6 +456,7 @@ private fun MatchGroupCard(
                     colorFilter = titleLogoTint,
                     modifier = Modifier
                         .size(1.4f.gridUnitsAsDp())
+                        .let { if (onTitleLogoClick != null) it.lightClickable(onClick = onTitleLogoClick) else it }
                         .padding(end = 0.4f.gridUnitsAsDp()),
                 )
             }
@@ -893,13 +893,13 @@ private fun StandingsTableContent(
 
         if (isLoading) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                LightText(text = "fetching standings...", variant = LightTextVariant.Detail)
+                LightText(text = "fetching standings...", variant = LightTextVariant.Fine)
             }
         } else if (rows.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 LightText(
                     text = "Standings aren't available for this league right now.",
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Fine,
                     align = TextAlign.Center,
                     lighten = true,
                     modifier = Modifier.padding(horizontal = 2f.gridUnitsAsDp()),
@@ -931,7 +931,7 @@ private fun StandingsTableContent(
                         currentGroup = row.group
                         LightText(
                             text = row.group.uppercase(),
-                            variant = LightTextVariant.Superfine,
+                            variant = LightTextVariant.Detail,
                             lighten = true,
                             modifier = Modifier.padding(top = 0.75f.gridUnitsAsDp(), bottom = 0.25f.gridUnitsAsDp()),
                         )
@@ -955,13 +955,13 @@ private fun StandingsTableContent(
 @Composable
 private fun StandingsHeaderRow() {
     Row(modifier = Modifier.fillMaxWidth().padding(bottom = 0.4f.gridUnitsAsDp())) {
-        LightText(text = "#", variant = LightTextVariant.Superfine, lighten = true, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
-        LightText(text = "TEAM", variant = LightTextVariant.Superfine, lighten = true, modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT))
-        LightText(text = "MP", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
-        LightText(text = "GF", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
-        LightText(text = "GA", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
-        LightText(text = "GD", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
-        LightText(text = "PTS", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
+        LightText(text = "#", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
+        LightText(text = "TEAM", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT))
+        LightText(text = "MP", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
+        LightText(text = "GF", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
+        LightText(text = "GA", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
+        LightText(text = "GD", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
+        LightText(text = "PTS", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
 }
 
@@ -971,23 +971,24 @@ private fun StandingsTableRow(row: StandingsRow) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(vertical = 0.4f.gridUnitsAsDp()),
     ) {
-        // Sized to match the column headers above (also Superfine, after the global one-step-down
-        // pass — both were Detail before that) — see font-size-audit.md recommendation #1: this is
-        // the densest row in the app (7 columns), and matching the header size gives the data more
-        // room before a long team name has to ellipsize.
-        LightText(text = row.position.toString(), variant = LightTextVariant.Superfine, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
+        // Sized to match the column headers above (also Detail, after the one-size-larger pass
+        // requested on top of the app's earlier global one-step-down pass) — see
+        // font-size-audit.md recommendation #1: this is the densest row in the app (7 columns), and
+        // matching the header size gives the data more room before a long team name has to
+        // ellipsize.
+        LightText(text = row.position.toString(), variant = LightTextVariant.Detail, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
         LightText(
             text = row.teamName,
-            variant = LightTextVariant.Superfine,
+            variant = LightTextVariant.Detail,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT),
         )
-        LightText(text = row.played.toString(), variant = LightTextVariant.Superfine, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
-        LightText(text = row.goalsFor.toString(), variant = LightTextVariant.Superfine, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
-        LightText(text = row.goalsAgainst.toString(), variant = LightTextVariant.Superfine, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
-        LightText(text = row.goalDifferenceLabel(), variant = LightTextVariant.Superfine, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
-        LightText(text = row.points.toString(), variant = LightTextVariant.Superfine, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
+        LightText(text = row.played.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
+        LightText(text = row.goalsFor.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
+        LightText(text = row.goalsAgainst.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
+        LightText(text = row.goalDifferenceLabel(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
+        LightText(text = row.points.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
 }
 

@@ -442,3 +442,50 @@ from the group's own `leagueId` at Scores' call site) and Standings' own header 
 TableContent` gained a `leagueId` parameter for this). `BlendMode.SrcIn` paints solid white over
 every non-transparent pixel of the source bitmap — a full silhouette recolor, matching "all white"
 literally, not a partial tint that would keep some of the original shading.
+
+## 15. Standings: text bumped one size; Home screen button removed, reached via league-logo tap instead
+
+**Font size, on request ("one size larger... for all").** Every text element inside
+`StandingsTableContent`/`StandingsHeaderRow`/`StandingsTableRow` moved up one step on the app's
+established ladder: the two status messages ("fetching standings...", "Standings aren't available
+for this league right now.") `Detail (20) → Fine (25)`; the group-stage subheader (e.g. "GROUP A",
+UEFA competitions only) and every column header (#, TEAM, MP, GF, GA, GD, PTS) and every data cell
+in each table row (position, team name, played, goals for/against, goal difference, points), all
+`Superfine (16) → Detail (20)`. This is the same ladder used throughout the app (see the top of
+this document); nothing here introduces a new size step.
+
+**Navigation restructure, on request ("drop that button... only accessible if you click on the
+league logo").** The Home screen's bottom bar used to carry its own Standings icon
+(`LightBarButton.Custom` → `viewModel::openStandingsPicker`, which opened a league-picker screen
+listing every followed league with a table). That whole path is gone: `ScoreScreenMode.Standings-
+Picker`, `openStandingsPicker()`, and `backFromStandingsPicker()` are all deleted, and the Home
+bottom bar now has three icons instead of four (Settings, My Team, Fixtures — Standings removed
+entirely, not just hidden). In its place, `MatchGroupCard` (Scores' per-competition cards) gained
+an `onTitleLogoClick: (() -> Unit)? = null` parameter — when set, the league logo at the top of a
+card becomes tappable (via `.lightClickable`, the same conditional-click pattern `SettingRow`
+already uses for its own optional `onClick`) and jumps straight into that league's `Standings`
+screen via the already-existing `openStandingsTable(leagueId, leagueName)` (unchanged — it already
+supported direct navigation without a picker in front of it).
+
+Two things worth flagging as judgment calls, not explicitly spelled out in the request:
+
+- **Cup competitions are guarded off.** Scores shows every followed competition, including
+  single-elimination domestic cups that have no league table at all (`Competition.hasStandings =
+  false` — FA Cup, EFL Cup, Copa del Rey, Coppa Italia, DFB-Pokal, Coupe de France; see
+  `TRACKED_COMPETITIONS` in SoccerModels.kt). A new `competitionHasStandings(leagueId)` helper
+  gates the click: only leagues with a real table get `onTitleLogoClick` wired up, so tapping a
+  cup's logo does nothing rather than navigating to a table that doesn't exist. This wasn't asked
+  for directly, but seemed necessary given cups already render in Scores alongside table leagues.
+- **`backFromStandingsTable()`'s destination changed.** It used to return to the now-deleted
+  `StandingsPicker` screen; since that screen is gone and Standings is now only ever reached from
+  Scores, its back button goes straight to Scores instead (`lastScores ?: ScoreScreenMode.Loading`
+  — the same fallback pattern several other "back" functions in this ViewModel already use).
+
+**Not touched:** the two picker screens that share `CompetitionPickerContent` with the old
+Standings picker — Fixtures' and My Team's own league pickers — are untouched; they're structurally
+independent `ScoreScreenMode` subclasses that happen to reuse one rendering composable, so removing
+Standings' picker doesn't affect either of them. `followedTableCompetitions()` is also untouched —
+it's still used by My Team's league-picker navigation, even though its one other caller
+(`openStandingsPicker`) is gone. Also left alone: the `ic_table_white` drawable resource the removed
+bottom-bar icon used to render — it's now unused dead weight in `res/drawable/`, but deleting
+resource files felt out of scope for this round; worth a cleanup pass later if it bothers you.
