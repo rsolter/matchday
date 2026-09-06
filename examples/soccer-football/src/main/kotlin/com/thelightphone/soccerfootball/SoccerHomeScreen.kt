@@ -601,28 +601,31 @@ private fun TeamCrestImage(bytes: ByteArray?, contentDescription: String, modifi
  * Fixtures, always). Team names bookend — right-aligned on the home side, left-aligned on the away
  * side — with each side's crest sitting next to the centered score/time, matching the reference
  * fotmob screenshots' order (home name, home crest, score/time, away crest, away name) rather than
- * a crest immediately beside its own team's name.
+ * a crest immediately beside its own team's name. Team names are one size down ([Detail], not
+ * [Fine]) from the center score/time — on request, after a real screenshot showed names clipping
+ * ("Manch…", "Birmin…") too often at the original size; the center label stays [Fine] since that
+ * wasn't the complaint.
  * [showCenterLabelWhenScheduled] controls whether a not-yet-finished match's center slot shows a
  * kickoff/status label at all: false for [MatchRow] (Scores/My Team already show that in their own
  * leading slot — showing it twice would be redundant), true for [FixtureMatchRow] (which has no
  * leading slot of its own since the per-row league crest that used to live there reverted to a
  * per-card header — see [FixtureLeagueCard] — so this center slot is the only place a fixture's
- * kickoff time appears). [suppressCenterLabel], only ever set by [FixtureMatchRow], blanks that
- * label when it would repeat the row directly above's — see [FixtureLeagueCard]'s doc comment for
- * that de-dup rule; [MatchRow] never needs it; a match with a real score ignores it either way. */
+ * kickoff time appears). A previous round also blanked this label for a run of same-time matches in
+ * a row; removed on request (every future fixture now always shows its time, even when it shares a
+ * kickoff instant with the match above — real matchdays commonly have several games at the same
+ * time, and hiding that read as missing data rather than a helpful de-dup). */
 @Composable
 private fun MatchTeamsAndScoreCell(
     match: Fixture,
     homeLogoBytes: ByteArray?,
     awayLogoBytes: ByteArray?,
     showCenterLabelWhenScheduled: Boolean,
-    suppressCenterLabel: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.fillMaxWidth()) {
         LightText(
             text = match.homeTeamName,
-            variant = LightTextVariant.Fine,
+            variant = LightTextVariant.Detail,
             align = TextAlign.End,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -646,7 +649,7 @@ private fun MatchTeamsAndScoreCell(
                     overflow = TextOverflow.Ellipsis,
                     color = if (match.status.isLive) LIVE_STATUS_GREEN else null,
                 )
-            } else if (showCenterLabelWhenScheduled && !suppressCenterLabel) {
+            } else if (showCenterLabelWhenScheduled) {
                 // Not yet finished/live: statusLabel() resolves to a plain kickoff time for a
                 // scheduled match, or "Postponed"/"Cancelled"/"Suspended" for the rest — see its
                 // doc comment in SoccerFormatting.kt.
@@ -667,7 +670,7 @@ private fun MatchTeamsAndScoreCell(
         )
         LightText(
             text = match.awayTeamName,
-            variant = LightTextVariant.Fine,
+            variant = LightTextVariant.Detail,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
@@ -1353,17 +1356,10 @@ private fun FixtureLeagueCard(
                         .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
                 )
             }
-            // Only a run of consecutive *scheduled* matches sharing the exact same kickoff instant
-            // gets blanked past the first — same rule round 23 introduced, still just as relevant
-            // now that the time label lives in MatchTeamsAndScoreCell's center slot.
-            val previous = matches.getOrNull(index - 1)
-            val suppressTime = previous != null &&
-                !match.showsFinalOrLiveScore() && !previous.showsFinalOrLiveScore() && match.utcDate == previous.utcDate
             FixtureMatchRow(
                 match = match,
                 homeLogoBytes = teamLogos[match.homeTeamLogo],
                 awayLogoBytes = teamLogos[match.awayTeamLogo],
-                suppressTimeLabel = suppressTime,
                 onClick = { onMatchClick(match) },
             )
         }
@@ -1383,14 +1379,14 @@ private fun Fixture.showsFinalOrLiveScore(): Boolean = status == MatchStatus.FIN
 /** One match, rendered entirely via [MatchTeamsAndScoreCell] — no leading status slot at all (unlike
  * [MatchRow]): the league crest that used to lead this row moved back to [FixtureLeagueCard]'s own
  * header on request, so the cell's center slot is the only place a kickoff time or score appears.
- * [suppressTimeLabel], computed by [FixtureLeagueCard], blanks that center label when it would
- * repeat the row directly above's kickoff time. */
+ * Always shows that center label for a scheduled match (`showCenterLabelWhenScheduled = true`) —
+ * a previous round blanked it when it repeated the row above's kickoff time, removed on request so
+ * every future fixture shows its time, even ones sharing a kickoff instant with the match above. */
 @Composable
 private fun FixtureMatchRow(
     match: Fixture,
     homeLogoBytes: ByteArray?,
     awayLogoBytes: ByteArray?,
-    suppressTimeLabel: Boolean,
     onClick: () -> Unit,
 ) {
     MatchTeamsAndScoreCell(
@@ -1398,7 +1394,6 @@ private fun FixtureMatchRow(
         homeLogoBytes = homeLogoBytes,
         awayLogoBytes = awayLogoBytes,
         showCenterLabelWhenScheduled = true,
-        suppressCenterLabel = suppressTimeLabel,
         modifier = Modifier
             .fillMaxWidth()
             .lightClickable(onClick = onClick)

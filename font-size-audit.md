@@ -705,3 +705,27 @@ request budget, but it is more real network and battery work on every Scores ref
 `openFixtures()` call. Worth watching for a noticeable slowdown or extra data use once this runs on
 a real device — the two fetches are already concurrent with each other, but nothing here caches
 crests across refreshes (same "refetch every time" behavior `leagueLogos` already had).
+
+## 20. MatchTeamsAndScoreCell tweaks: smaller team names, kickoff-time suppression removed
+
+Two small follow-ups after seeing round 19's combined cell on a real device, from real
+screenshots showing "Manch…", "Birmin…", "AFC E…" clipping more than expected.
+
+**Team names one size down.** `MatchTeamsAndScoreCell`'s two team-name `LightText`s moved from
+`Fine` (25) to `Detail` (20) — tried on request to see if it cuts down on clipping. The center
+score/kickoff-time label stays `Fine`; the ask was specifically about team names, and it's the
+one piece every screenshot showed getting cut off.
+
+**Kickoff-time suppression removed for Results & Fixtures.** A previous round's "don't repeat an
+identical kickoff time back-to-back" rule (`suppressCenterLabel`/`suppressTimeLabel`, threaded
+through `FixtureLeagueCard` → `FixtureMatchRow` → `MatchTeamsAndScoreCell`) turned out to hide
+real information once real fixture data was on screen: Champions League matchdays commonly have
+several distinct fixtures kicking off at the exact same instant (all group-stage games at 12:45,
+say), and the suppression rule couldn't tell "same match's time repeated" from "different match,
+same slot" — it blanked every match past the first at each shared time, which read as missing
+data rather than helpful de-duplication once you could see actual results in the app. Removed the
+parameter entirely (`suppressCenterLabel` off `MatchTeamsAndScoreCell`, `suppressTimeLabel` off
+`FixtureMatchRow`, and the per-row `previous`/`suppressTime` computation off `FixtureLeagueCard`)
+rather than just disabling it, since nothing else used it. Every future fixture's row now always
+shows its own kickoff time, regardless of what the row above it showed. `MatchRow` (Scores/My
+Team) never used this suppression rule to begin with, so nothing changes there.
