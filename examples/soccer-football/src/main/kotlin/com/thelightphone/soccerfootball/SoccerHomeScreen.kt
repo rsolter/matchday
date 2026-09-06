@@ -1429,12 +1429,13 @@ private fun MatchDetailTeamBlock(name: String, logoBytes: ByteArray?, modifier: 
         }
         // Was Detail (20, design units), not Copy (30): the API doesn't give us a short/abbreviated
         // team name, so the only lever we have to stop long names ("Manchester City", "FC
-        // Copenhagen") from wrapping mid-word is a smaller font. Now Superfine (16) after this
-        // round's global one-step-down pass. maxLines/Ellipsis stays as a safety net for names this
-        // still doesn't fit.
+        // Copenhagen") from wrapping mid-word is a smaller font. Shrunk to Superfine (16) by an
+        // earlier global one-step-down pass, then back up to Detail on request — one size larger
+        // than the rest of this file's Superfine baseline. maxLines/Ellipsis stays as a safety net
+        // for names this still doesn't fit.
         LightText(
             text = name,
-            variant = LightTextVariant.Superfine,
+            variant = LightTextVariant.Detail,
             align = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -1602,15 +1603,18 @@ private fun MatchStatsSection(stats: List<MatchStatRow>, modifier: Modifier = Mo
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 0.35f.gridUnitsAsDp()),
             ) {
-                LightText(text = row.homeValue, variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(0.25f))
+                // Whole row bumped one size on request: values Detail (20) -> Fine (25), label
+                // Superfine (16) -> Detail (20) — same one-step-larger relationship preserved
+                // between the two.
+                LightText(text = row.homeValue, variant = LightTextVariant.Fine, align = TextAlign.Center, modifier = Modifier.weight(0.25f))
                 LightText(
                     text = prettifyStatLabel(row.label),
-                    variant = LightTextVariant.Superfine,
+                    variant = LightTextVariant.Detail,
                     lighten = true,
                     align = TextAlign.Center,
                     modifier = Modifier.weight(0.5f),
                 )
-                LightText(text = row.awayValue, variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(0.25f))
+                LightText(text = row.awayValue, variant = LightTextVariant.Fine, align = TextAlign.Center, modifier = Modifier.weight(0.25f))
             }
         }
     }
@@ -1683,9 +1687,11 @@ private val CARD_RED = Color(0xFFD32F2F)
 @Composable
 private fun EventTimelineRow(event: MatchEvent) {
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 0.5f.gridUnitsAsDp())) {
+        // Minute column bumped one size on request, Superfine (16) -> Detail (20) — the secondary
+        // team/subtext line below the headline stays at Superfine, unchanged.
         LightText(
             text = event.minuteLabel,
-            variant = LightTextVariant.Superfine,
+            variant = LightTextVariant.Detail,
             lighten = true,
             modifier = Modifier.width(2.4f.gridUnitsAsDp()),
         )
@@ -1696,9 +1702,11 @@ private fun EventTimelineRow(event: MatchEvent) {
         Column(modifier = Modifier.weight(1f)) {
             // Was Copy, shrunk to Detail (matching the minute label and the secondary team/subtext
             // line below it, so the whole Events row read at one smaller, consistent size instead
-            // of the headline standing out as the biggest text in the tab). Now Superfine after a
-            // later global one-step-down pass.
-            LightText(text = event.headline, variant = LightTextVariant.Superfine, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // of the headline standing out as the biggest text in the tab), then Superfine after a
+            // later global one-step-down pass. Bumped one size on request, back to Detail — this is
+            // the event's own description text ("Goal — Haaland", "Yellow Card — Smith", etc.), see
+            // MatchEvent.headline's doc comment in SoccerModels.kt.
+            LightText(text = event.headline, variant = LightTextVariant.Detail, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val secondary = listOfNotNull(event.teamName.takeIf { it.isNotBlank() }, event.subtext).joinToString(" · ")
             if (secondary.isNotBlank()) {
                 LightText(
@@ -1805,15 +1813,17 @@ private fun LineupSection(
             // This row already shares its width with the formation label, so even Detail-size
             // team names ("Manchester City") can still be too wide to fit on one line — maxLines=1
             // + Ellipsis trades a truncated name ("Mancheste…") for avoiding an ugly mid-word wrap.
+            // Bumped one size on request (Superfine -> Detail), along with the rest of this tab
+            // except PitchNumberDot's own number — see that composable's call site below.
             LightText(
                 text = teamName,
-                variant = LightTextVariant.Superfine,
+                variant = LightTextVariant.Detail,
                 lighten = true,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            lineup.formation?.let { LightText(text = it, variant = LightTextVariant.Superfine, lighten = true) }
+            lineup.formation?.let { LightText(text = it, variant = LightTextVariant.Detail, lighten = true) }
         }
 
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -1871,9 +1881,10 @@ private fun LineupSection(
                 // Was Fine, fixed to Detail — see the font-size audit doc: Fine (25, design units)
                 // is bigger than Detail (20) in this SDK's real type scale despite the name
                 // suggesting the opposite, so this caption was rendering almost as large as the
-                // primary player names above it. Now Superfine (16) after a later global
-                // one-step-down pass.
-                LightText(text = "Coach: $coachName", variant = LightTextVariant.Superfine, lighten = true)
+                // primary player names above it. Shrunk to Superfine (16) by a later global
+                // one-step-down pass, now bumped back to Detail on request along with the rest of
+                // this tab (except PitchNumberDot's own number).
+                LightText(text = "Coach: $coachName", variant = LightTextVariant.Detail, lighten = true)
             }
         }
 
@@ -1907,16 +1918,20 @@ private fun LineupRosterList(pitchRows: List<List<LineupPlayer>>, modifier: Modi
                 ) {
                     // Was Copy, shrunk to Detail (matching the team name/formation row and
                     // "Coach: {name}" above and below this list, rather than standing out as
-                    // noticeably bigger). Now Superfine after a later global one-step-down pass.
+                    // noticeably bigger), then Superfine after a later global one-step-down pass.
+                    // Bumped back to Detail on request, along with the rest of this tab — except
+                    // PitchNumberDot's own number (the pitch-diagram circles), which stays put.
+                    // This roster-list number is plain text, not "behind a circle", so it's
+                    // included in the bump.
                     LightText(
                         text = player.number?.toString() ?: "-",
-                        variant = LightTextVariant.Superfine,
+                        variant = LightTextVariant.Detail,
                         lighten = true,
                         modifier = Modifier.width(1.6f.gridUnitsAsDp()),
                     )
                     LightText(
                         text = player.name,
-                        variant = LightTextVariant.Superfine,
+                        variant = LightTextVariant.Detail,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
@@ -1940,6 +1955,10 @@ private fun PitchNumberDot(player: LineupPlayer, dotColor: Color?, modifier: Mod
             .clip(CircleShape)
             .background(dotColor?.copy(alpha = 0.55f) ?: LightThemeTokens.colors.contentSecondary.copy(alpha = 0.22f)),
     ) {
+        // Deliberately left at Superfine (not bumped with the rest of the Lineup tab) — the user
+        // asked to enlarge "all text one size Except for the numbers behind the circles", and this
+        // dot's number is exactly that: it's already visually prominent inside its own colored
+        // circle, unlike the roster list's plain-text numbers.
         LightText(text = player.number?.toString() ?: "-", variant = LightTextVariant.Superfine, color = numberColor)
     }
 }
@@ -1947,28 +1966,30 @@ private fun PitchNumberDot(player: LineupPlayer, dotColor: Color?, modifier: Mod
 @Composable
 private fun SubstitutesBlock(substitutes: List<LineupPlayer>, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth()) {
-        LightText(text = "SUBSTITUTES", variant = LightTextVariant.Superfine, lighten = true, modifier = Modifier.padding(bottom = 0.4f.gridUnitsAsDp()))
+        // Whole block bumped one size on request (Superfine -> Detail), same as the rest of the
+        // Lineup tab except PitchNumberDot's own number.
+        LightText(text = "SUBSTITUTES", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.padding(bottom = 0.4f.gridUnitsAsDp()))
         substitutes.forEach { player ->
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 0.1f.gridUnitsAsDp())) {
                 // Was Copy, shrunk to Detail (matching the starting XI roster list above, and the
                 // team name/coach line, for one consistent size across the whole lineup tab rather
-                // than the starters' names being smaller than the substitutes' own). Now Superfine
-                // after a later global one-step-down pass.
+                // than the starters' names being smaller than the substitutes' own), then Superfine
+                // after a later global one-step-down pass. Bumped back to Detail on request.
                 LightText(
                     text = player.number?.toString() ?: "-",
-                    variant = LightTextVariant.Superfine,
+                    variant = LightTextVariant.Detail,
                     lighten = true,
                     modifier = Modifier.width(1.6f.gridUnitsAsDp()),
                 )
                 LightText(
                     text = player.name,
-                    variant = LightTextVariant.Superfine,
+                    variant = LightTextVariant.Detail,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 player.position?.let {
-                    LightText(text = it, variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End)
+                    LightText(text = it, variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End)
                 }
             }
         }

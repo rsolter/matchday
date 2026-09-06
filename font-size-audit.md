@@ -326,3 +326,26 @@ label is now 2-3 characters shorter than before. That's a genuine, if modest, ea
 clipping problem tracked in §§8-9 — worth knowing if a future round revisits whether Scores still
 needs the same fix Fixtures/My Team's "UPCOMING" got in §9, since the margin for the un-fixed case
 just got a little wider (this does not remove the risk, it only shrinks it).
+
+## 11. Match Detail screen: several elements bumped one size
+
+Four specific, separately-requested bumps within the Match Detail screen (`MatchDetailContent` and
+its tabs) — all one step larger on this app's practical size ladder, `Superfine (16) → Detail (20)`,
+except where noted:
+
+- **Header team names** (`MatchDetailTeamBlock`, the name under each crest at the top of the
+  screen): `Superfine → Detail`.
+- **Stats tab** (`MatchStatsSection`): the whole row bumped together — home/away values
+  `Detail (20) → Fine (25)`, and the center stat label `Superfine → Detail` — preserving the same
+  one-step-larger relationship between the two that existed before.
+- **Events tab** (`EventTimelineRow`): the minute column (`event.minuteLabel`, e.g. "83'") and the
+  event's own description text (`event.headline`, e.g. "Goal — Haaland") both `Superfine → Detail`.
+  The secondary team/subtext line underneath was left untouched at `Superfine` — not part of the
+  request.
+- **Home/Away lineup tabs** (`LineupSection` and everything under it): every text element bumped
+  `Superfine → Detail` — the team name/formation header, `LineupRosterList`'s plain-text number and
+  name columns, the "Coach: {name}" line, and `SubstitutesBlock` (its "SUBSTITUTES" header and each
+  substitute's number/name/position) — **except** `PitchNumberDot`'s number, the one shown inside
+  each colored circle on the pitch diagram, which was deliberately left at `Superfine` per the
+  request ("Except for the numbers behind the circles"). The roster list's own number column is
+  plain text, not inside a circle, so it *was* bumped along with the names beside it.
