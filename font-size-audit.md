@@ -415,3 +415,30 @@ matching the gap "Leagues followed" and "My Team" already carry between each oth
 now" and "About" now read as their own sections the same way. No divider was added between any of
 these — matching how Leagues followed/My Team are separated today (spacing alone, no line), not
 introducing a new visual element this screen doesn't otherwise use.
+
+## 14. Settings: section labels and sub-items resized; two league logos tinted white
+
+**Font size.** §13's color flip left Settings' hierarchy backwards — each section's label (white)
+was smaller than its own sub-item(s) (grey) below it, so the "Leagues followed"/"My Team" section
+headers now stand out *less* than their contents, not more. Fixed by moving both ends of the scale
+on request: `SettingRow`'s `label` param ("My Team") and `LeaguesRow`'s "Leagues followed", both
+`Detail (20) → Fine (25)`; `SettingRow`'s `value` (team name/"Not set") and "Forget My Team", both
+`Copy (30) → Detail (20)`. Each league name under "Leagues followed" was already `Detail` and
+needed no change — it was already smaller than its (now-Fine) label. Per the explicit "should all
+be the same font size" request, "Refresh now" and "About" (§13's newly-separated sections, no
+sub-items of their own) also moved `Copy (30) → Fine (25)`, so all four section-level texts
+("Leagues followed", "My Team", "Refresh now", "About") now share one size, with every sub-item one
+step smaller.
+
+**League logo color.** Premier League (id 39) and Ligue 1 (id 61) — see `TRACKED_COMPETITIONS` in
+SoccerModels.kt — ship crest logos that render as dark purple/navy, which reads poorly against this
+app's black backgrounds; requested as an all-white recolor. Since every league logo in this app is
+fetched over the network at runtime (`ApiFootballApi.fetchLeagueLogos`) rather than bundled as a
+local drawable, there's no static asset to swap — a new `leagueLogoColorFilter(leagueId)` helper
+returns a `ColorFilter.tint(Color.White, BlendMode.SrcIn)` for just those two league IDs (null,
+meaning unchanged, for every other league), applied at both places a league logo actually renders
+as an `Image`: Scores' `MatchGroupCard` title icon (via a new `titleLogoTint` parameter, computed
+from the group's own `leagueId` at Scores' call site) and Standings' own header badge (`Standings-
+TableContent` gained a `leagueId` parameter for this). `BlendMode.SrcIn` paints solid white over
+every non-transparent pixel of the source bitmap — a full silhouette recolor, matching "all white"
+literally, not a partial tint that would keep some of the original shading.

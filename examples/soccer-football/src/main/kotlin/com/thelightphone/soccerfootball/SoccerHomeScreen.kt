@@ -29,7 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
@@ -129,6 +131,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
 
                     is ScoreScreenMode.Standings -> {
                         StandingsTableContent(
+                            leagueId = mode.leagueId,
                             leagueName = mode.leagueName,
                             leagueLogoBytes = mode.leagueLogoBytes,
                             rows = mode.rows,
@@ -310,6 +313,22 @@ private fun ResultBadge(result: MatchResult, modifier: Modifier = Modifier) {
     }
 }
 
+// Premier League (39) and Ligue 1 (61) — see TRACKED_COMPETITIONS in SoccerModels.kt — ship real
+// crest logos that read as dark purple/navy on API-Football's CDN, which reads poorly against this
+// app's black backgrounds. Recolored at render time rather than as a bundled replacement asset:
+// this app has no local drawable for any league badge (every logo is fetched over the network, see
+// ApiFootballApi.fetchLeagueLogos), so a runtime tint is what actually reaches every place a league
+// logo is drawn (Scores' MatchGroupCard title icon, Standings' own header) without depending on
+// what that fetch happens to return.
+private val WHITE_TINTED_LEAGUE_IDS = setOf(39, 61)
+
+/** [BlendMode.SrcIn] paints solid white everywhere the source bitmap has any alpha (i.e. the
+ * badge's actual crest shape) and leaves fully-transparent pixels untouched — a plain silhouette
+ * recolor, which is what "all white" was asked for, not a partial tint that would keep some of the
+ * original shading. Returns null (no filter — original colors) for every other league. */
+private fun leagueLogoColorFilter(leagueId: Int): ColorFilter? =
+    if (leagueId in WHITE_TINTED_LEAGUE_IDS) ColorFilter.tint(Color.White, BlendMode.SrcIn) else null
+
 @Composable
 private fun ScoresContent(
     groups: List<CompetitionGroup>,
@@ -356,6 +375,7 @@ private fun ScoresContent(
                     MatchGroupCard(
                         title = group.leagueName.uppercase(),
                         titleLogoBytes = leagueLogos[group.leagueLogo],
+                        titleLogoTint = leagueLogoColorFilter(group.leagueId),
                         matches = group.matches,
                         modifier = Modifier.padding(top = if (index == 0) 0.dp else 0.75f.gridUnitsAsDp()),
                         onMatchClick = onMatchClick,
@@ -397,7 +417,9 @@ private fun ScoresContent(
  * a finished match still prints its "FT"/"Postponed"/etc. label in the row's left slot.
  * [titleLogoBytes] is only ever passed by Scores' competition groups — Fixtures/My Team group by
  * date or a plain "RECENT RESULTS"/"UPCOMING" label, neither of which has a single league badge to
- * show. [highlightTeamId] is only ever passed by My Team's "RECENT RESULTS" card, to color each
+ * show. [titleLogoTint], when set, recolors that logo — see [leagueLogoColorFilter]'s doc comment
+ * for why (only Scores' call site ever passes one, computed from the group's own league ID).
+ * [highlightTeamId] is only ever passed by My Team's "RECENT RESULTS" card, to color each
  * match's left slot by its result for that team instead — see [MatchRow]. [allowKickoffLabelWrap]
  * is only ever passed by Fixtures' per-league list and My Team's "UPCOMING" card — see [MatchRow]. */
 @Composable
@@ -406,6 +428,7 @@ private fun MatchGroupCard(
     matches: List<Fixture>,
     modifier: Modifier = Modifier,
     titleLogoBytes: ByteArray? = null,
+    titleLogoTint: ColorFilter? = null,
     showFinishedStatus: Boolean = true,
     showDate: Boolean = false,
     highlightTeamId: Int? = null,
@@ -431,6 +454,7 @@ private fun MatchGroupCard(
                     bitmap = titleLogoBitmap,
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
+                    colorFilter = titleLogoTint,
                     modifier = Modifier
                         .size(1.4f.gridUnitsAsDp())
                         .padding(end = 0.4f.gridUnitsAsDp()),
@@ -595,12 +619,13 @@ private fun SettingsContent(
             SettingRow(label = "My Team", value = myTeamName ?: "Not set", onClick = onOpenMyTeamSetup)
             if (myTeamName != null) {
                 // Was Copy (30) before the global one-step-down pass shifted it to Detail (20);
-                // reverted back to Copy along with the rest of Settings' text. lighten = true added
-                // on request, matching "My Team"'s value above — both are now My Team's grey
-                // sub-items under its (now brighter) section label.
+                // reverted back to Copy along with the rest of Settings' text — then, on request,
+                // sized down again to Detail (20): the section's grey sub-items (this and the team
+                // name/"Not set" value above) read too large next to "My Team"'s own label, so both
+                // are now Detail instead of Copy, one step below the label's new Fine (25).
                 LightText(
                     text = "Forget My Team",
-                    variant = LightTextVariant.Copy,
+                    variant = LightTextVariant.Detail,
                     lighten = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -610,13 +635,15 @@ private fun SettingsContent(
             }
             // This build's only manual-refresh surface — see SoccerViewModel's class doc comment
             // for why there's no bottom-bar refresh icon. Was Copy (30) before the global
-            // one-step-down pass shifted it to Detail (20); reverted back to Copy. Top padding
-            // bumped from 0.25f to 0.75f on request, so this reads as its own section — the same
-            // gap "Leagues followed" and "My Team" already carry between each other above — rather
-            // than as a continuation of "My Team"/"Forget My Team" right above it.
+            // one-step-down pass shifted it to Detail (20); reverted back to Copy, then to Fine
+            // (25) on request — see this fun's own doc comment on why "Leagues followed"/"My
+            // Team"/"Refresh now"/"About" all share one size now. Top padding bumped from 0.25f to
+            // 0.75f on request, so this reads as its own section — the same gap "Leagues followed"
+            // and "My Team" already carry between each other above — rather than as a continuation
+            // of "My Team"/"Forget My Team" right above it.
             LightText(
                 text = "Refresh now",
-                variant = LightTextVariant.Copy,
+                variant = LightTextVariant.Fine,
                 modifier = Modifier
                     .fillMaxWidth()
                     .lightClickable(onClick = onManualRefresh)
@@ -631,14 +658,16 @@ private fun SettingsContent(
         // AttributionFooter, same ScoreScreenMode.Attribution destination — keeps it reachable
         // regardless of how long the scrollable list above gets.
         // Was Copy (30) before the global one-step-down pass shifted it to Detail (20); reverted
-        // back to Copy along with the rest of Settings' text. Top padding bumped from 0.5f to
-        // 0.75f on request, matching the section-to-section gap above, so this reads as its own
-        // section the same way "Leagues followed"/"My Team" do — on top of already sitting in its
-        // own pinned footer position outside the scrollable list (see this fun's own doc comment
-        // above for why).
+        // back to Copy along with the rest of Settings' text, then to Fine (25) on request so
+        // "Leagues followed"/"My Team"/"Refresh now"/"About" all match — see the doc comment on
+        // SettingRow's label param for the full reasoning. Top padding bumped from 0.5f to 0.75f on
+        // request, matching the section-to-section gap above, so this reads as its own section the
+        // same way "Leagues followed"/"My Team" do — on top of already sitting in its own pinned
+        // footer position outside the scrollable list (see this fun's own doc comment above for
+        // why).
         LightText(
             text = "About",
-            variant = LightTextVariant.Copy,
+            variant = LightTextVariant.Fine,
             modifier = Modifier
                 .fillMaxWidth()
                 .lightClickable(onClick = onOpenAttribution)
@@ -661,12 +690,18 @@ private fun SettingRow(label: String, value: String, onClick: (() -> Unit)?) {
         // (was lighten = true here, value below un-lightened) — the section label now reads as the
         // brighter, primary text, and its value as the secondary/grey one, matching how the "My
         // Team" section's sub-items (its value, and "Forget My Team" below) now read grey too.
-        LightText(text = label, variant = LightTextVariant.Detail)
+        // Bumped one size on request, Detail (20) -> Fine (25) — the label was reading smaller than
+        // its own (Copy-sized) value below it, the opposite of the intended hierarchy; "Leagues
+        // followed"/"Refresh now"/"About" all moved to this same Fine size for consistency, per the
+        // explicit "should all be the same font size" request.
+        LightText(text = label, variant = LightTextVariant.Fine)
         // Was Heading (38), then Copy (30) — see font-size-audit.md recommendation #2 for why
         // Heading was too heavy for a plain settings row. The global one-step-down pass then
         // shifted it to Detail (20); reverted back to Copy, its round-8 size, per the "make
-        // Settings text larger again" request — this view no longer follows the global shift.
-        LightText(text = value, variant = LightTextVariant.Copy, lighten = true)
+        // Settings text larger again" request — this view no longer follows the global shift. Sized
+        // down again on request, Copy (30) -> Detail (20): now smaller than the label above it
+        // (Fine, 25), matching the same relationship "Forget My Team" now has.
+        LightText(text = value, variant = LightTextVariant.Detail, lighten = true)
     }
 }
 
@@ -682,8 +717,10 @@ private fun LeaguesRow(leagueNames: List<String>, onClick: () -> Unit) {
         // reverted back to Detail along with the rest of Settings' text. Colors flipped on request
         // (was lighten = true here, each league name below un-lightened) — the "Leagues followed"
         // label now reads as the brighter, primary text, and each league name below it as the
-        // secondary/grey one.
-        LightText(text = "Leagues followed", variant = LightTextVariant.Detail)
+        // secondary/grey one. Bumped one size on request, Detail (20) -> Fine (25) — see SettingRow's
+        // label doc comment above for the full "should all be the same font size" reasoning; each
+        // league name below stays Detail (20), already smaller, so no change needed there.
+        LightText(text = "Leagues followed", variant = LightTextVariant.Fine)
         // Was Copy, then Detail (see font-size-audit.md recommendation #3 — with up to 15
         // trackable competitions, a user following several gets that many stacked lines, so this
         // matches the label above rather than standing out as heavier). The global one-step-down
@@ -821,6 +858,7 @@ private val STANDINGS_PTS_WEIGHT = 0.13f
 
 @Composable
 private fun StandingsTableContent(
+    leagueId: Int,
     leagueName: String,
     leagueLogoBytes: ByteArray?,
     rows: List<StandingsRow>,
@@ -845,6 +883,7 @@ private fun StandingsTableContent(
                 bitmap = leagueLogoBitmap,
                 contentDescription = "$leagueName badge",
                 contentScale = ContentScale.Fit,
+                colorFilter = leagueLogoColorFilter(leagueId),
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
                     .size(2.2f.gridUnitsAsDp())
