@@ -85,6 +85,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                     is ScoreScreenMode.Scores -> {
                         ScoresContent(
                             groups = mode.groups,
+                            leagueLogos = mode.leagueLogos,
                             lastUpdated = mode.lastUpdated,
                             isRefreshing = mode.isRefreshing,
                             onOpenSettings = viewModel::openSettings,
@@ -132,6 +133,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                     is ScoreScreenMode.Standings -> {
                         StandingsTableContent(
                             leagueName = mode.leagueName,
+                            leagueLogoBytes = mode.leagueLogoBytes,
                             rows = mode.rows,
                             isLoading = mode.isLoading,
                             onBack = viewModel::backFromStandingsTable,
@@ -232,6 +234,7 @@ private val SCORE_COLUMN_WIDTH = 6f
 @Composable
 private fun ScoresContent(
     groups: List<CompetitionGroup>,
+    leagueLogos: Map<String, ByteArray>,
     lastUpdated: Instant?,
     isRefreshing: Boolean,
     onOpenSettings: () -> Unit,
@@ -275,6 +278,7 @@ private fun ScoresContent(
                 groups.forEachIndexed { index, group ->
                     MatchGroupCard(
                         title = group.leagueName.uppercase(),
+                        titleLogoBytes = leagueLogos[group.leagueLogo],
                         matches = group.matches,
                         modifier = Modifier.padding(top = if (index == 0) 0.dp else 0.75f.gridUnitsAsDp()),
                         onMatchClick = onMatchClick,
@@ -313,12 +317,15 @@ private fun ScoresContent(
 /** A rounded card grouping a set of matches under one header — same card-per-group pattern as the
  * ESPN/football-data.org variants of this tool. Used for Scores (grouped by competition),
  * Fixtures (grouped by date), and My Team (upcoming/recent). [showFinishedStatus] controls whether
- * a finished match still prints its "FT"/"Postponed"/etc. label under the score. */
+ * a finished match still prints its "FT"/"Postponed"/etc. label under the score. [titleLogoBytes]
+ * is only ever passed by Scores' competition groups — Fixtures/My Team group by date or a plain
+ * "RECENT RESULTS"/"UPCOMING" label, neither of which has a single league badge to show. */
 @Composable
 private fun MatchGroupCard(
     title: String,
     matches: List<Fixture>,
     modifier: Modifier = Modifier,
+    titleLogoBytes: ByteArray? = null,
     showFinishedStatus: Boolean = true,
     showDate: Boolean = false,
     onMatchClick: (Fixture) -> Unit,
@@ -330,12 +337,25 @@ private fun MatchGroupCard(
             .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f))
             .padding(horizontal = 1f.gridUnitsAsDp(), vertical = 0.75f.gridUnitsAsDp()),
     ) {
-        LightText(
-            text = title,
-            variant = LightTextVariant.Detail,
-            lighten = true,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
-        )
+        ) {
+            val titleLogoBitmap = titleLogoBytes?.let { bytes ->
+                remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+            }
+            if (titleLogoBitmap != null) {
+                Image(
+                    bitmap = titleLogoBitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(1.4f.gridUnitsAsDp())
+                        .padding(end = 0.4f.gridUnitsAsDp()),
+                )
+            }
+            LightText(text = title, variant = LightTextVariant.Detail, lighten = true)
+        }
         matches.forEachIndexed { index, match ->
             if (index > 0) {
                 Box(
@@ -629,6 +649,7 @@ private val STANDINGS_PTS_WEIGHT = 0.13f
 @Composable
 private fun StandingsTableContent(
     leagueName: String,
+    leagueLogoBytes: ByteArray?,
     rows: List<StandingsRow>,
     isLoading: Boolean,
     onBack: () -> Unit,
@@ -636,9 +657,27 @@ private fun StandingsTableContent(
     Column(modifier = Modifier.fillMaxSize()) {
         LightTopBar(
             leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = onBack),
+            // LightTopBarCenter has no image slot (Text/TwoLineDetail only, both vendored SDK
+            // types this app can't extend), so the badge itself renders just below the bar rather
+            // than inline with the title.
             center = LightTopBarCenter.Text(leagueName),
-            modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
+            modifier = Modifier.padding(bottom = if (leagueLogoBytes != null) 0.2f.gridUnitsAsDp() else 0.5f.gridUnitsAsDp()),
         )
+
+        val leagueLogoBitmap = leagueLogoBytes?.let { bytes ->
+            remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+        }
+        if (leagueLogoBitmap != null) {
+            Image(
+                bitmap = leagueLogoBitmap,
+                contentDescription = "$leagueName badge",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .size(2.2f.gridUnitsAsDp())
+                    .padding(bottom = 0.5f.gridUnitsAsDp()),
+            )
+        }
 
         if (isLoading) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {

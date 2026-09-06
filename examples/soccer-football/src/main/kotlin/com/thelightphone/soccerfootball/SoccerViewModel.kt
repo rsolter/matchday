@@ -29,6 +29,11 @@ sealed class ScoreScreenMode {
         val groups: List<CompetitionGroup>,
         val lastUpdated: Instant?,
         val isRefreshing: Boolean,
+        /** Keyed by [CompetitionGroup.leagueLogo] URL, not league ID — a group's own logo URL is
+         * the lookup key a caller already has in hand. Empty until [refresh]'s follow-up fetch
+         * resolves; a group simply renders without a badge until then, same "omit rather than show
+         * broken" convention as every other image on this screen. */
+        val leagueLogos: Map<String, ByteArray> = emptyMap(),
     ) : ScoreScreenMode()
 
     data class Settings(
@@ -49,6 +54,10 @@ sealed class ScoreScreenMode {
         val rows: List<StandingsRow>,
         val isLoading: Boolean,
         val lastUpdated: Instant?,
+        /** Fetched as a follow-up once [rows] resolves, same pattern as [MatchDetailScreen]'s coach
+         * photos — see [StandingsFetchResult] for where the URL comes from. Null while unresolved,
+         * on fetch failure, or if this league had no logo. */
+        val leagueLogoBytes: ByteArray? = null,
     ) : ScoreScreenMode()
 
     /** Only the leagues the user currently follows (see [ScoreScreenMode.LeagueSelection]). */
@@ -237,8 +246,9 @@ class SoccerViewModel(
         result.fold(
             onSuccess = { matches ->
                 cacheMatches(matches)
+                val groups = matches.groupedForDisplay()
                 val mode = ScoreScreenMode.Scores(
-                    groups = matches.groupedForDisplay(),
+                    groups = groups,
                     lastUpdated = Clock.System.now(),
                     isRefreshing = false,
                 )
@@ -248,6 +258,25 @@ class SoccerViewModel(
                         state.copy(mode = mode, errorModal = null)
                     } else {
                         state.copy(errorModal = null)
+                    }
+                }
+                // League badges fetch only now, as a follow-up — same pattern as MatchDetailScreen's
+                // coach photos below: nothing here needs to block the scores themselves rendering.
+                // Silent on failure/blank, same "just render without a badge" convention as the rest
+                // of this app's images.
+                val leagueLogos = api.fetchLeagueLogos(groups.map { it.leagueLogo })
+                if (leagueLogos.isNotEmpty()) {
+                    val modeWithLogos = mode.copy(leagueLogos = leagueLogos)
+                    lastScores = modeWithLogos
+                    updateState { state ->
+                        // Guards against a newer refresh() call having already replaced groups by
+                        // the time this slower logo fetch resolves — don't stamp stale badges onto
+                        // whatever's on screen now.
+                        if (state.mode is ScoreScreenMode.Scores && state.mode.groups == groups) {
+                            state.copy(mode = modeWithLogos)
+                        } else {
+                            state
+                        }
                     }
                 }
             },
@@ -394,7 +423,8 @@ class SoccerViewModel(
         viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
             val result = api.fetchStandings(leagueId)
             result.fold(
-                onSuccess = { rows ->
+                onSuccess = { standingsResult ->
+                    val rows = standingsResult.rows
                     standingsCache[leagueId] = rows
                     updateState { state ->
                         if (state.mode is ScoreScreenMode.Standings && state.mode.leagueId == leagueId) {
@@ -404,6 +434,20 @@ class SoccerViewModel(
                             )
                         } else {
                             state
+                        }
+                    }
+                    // Badge fetch only now, as a follow-up — same pattern as Scores' league logos
+                    // and MatchDetailScreen's coach photos: doesn't block the table itself rendering.
+                    val logoBytes = standingsResult.leagueLogoUrl
+                        .takeIf { it.isNotBlank() }
+                        ?.let { api.fetchLeagueLogos(listOf(it))[it] }
+                    if (logoBytes != null) {
+                        updateState { state ->
+                            if (state.mode is ScoreScreenMode.Standings && state.mode.leagueId == leagueId) {
+                                state.copy(mode = state.mode.copy(leagueLogoBytes = logoBytes))
+                            } else {
+                                state
+                            }
                         }
                     }
                 },
@@ -531,7 +575,8 @@ class SoccerViewModel(
         viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
             val result = api.fetchStandings(leagueId)
             result.fold(
-                onSuccess = { rows ->
+                onSuccess = { standingsResult ->
+                    val rows = standingsResult.rows
                     standingsCache[leagueId] = rows
                     updateState { state ->
                         if (state.mode is ScoreScreenMode.MyTeamTeamPicker && state.mode.leagueId == leagueId) {
@@ -579,8 +624,9 @@ class SoccerViewModel(
         updateState { it.copy(mode = ScoreScreenMode.MyTeam(summary = null, isLoading = true), errorModal = null) }
         viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
             val leagueName = competitionName(leagueId)
-            val standings = standingsCache[leagueId] ?: api.fetchStandings(leagueId).getOrElse { emptyList() }
-                .also { if (it.isNotEmpty()) standingsCache[leagueId] = it }
+            val standings = standingsCache[leagueId]
+                ?: api.fetchStandings(leagueId).getOrElse { StandingsFetchResult(rows = emptyList()) }.rows
+                    .also { if (it.isNotEmpty()) standingsCache[leagueId] = it }
             val result = api.fetchMyTeamSummary(teamId, teamName, leagueId, leagueName, standings)
             result.fold(
                 onSuccess = { summary ->

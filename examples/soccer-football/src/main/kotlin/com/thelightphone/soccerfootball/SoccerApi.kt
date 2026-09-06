@@ -125,13 +125,14 @@ internal class ApiFootballApi {
     // --- Standings -------------------------------------------------------------
 
     /** Current-season (i.e. [currentSeason]) table for one competition — flattened from
-     * API-Football's possibly-grouped shape, see [ApiFootballStandingsLeagueDto.toStandingsRows]. */
-    suspend fun fetchStandings(leagueId: Int): Result<List<StandingsRow>> = runCatching {
+     * API-Football's possibly-grouped shape, see [ApiFootballStandingsLeagueDto.toStandingsRows] —
+     * bundled with the league badge URL from the same response, see [StandingsFetchResult]. */
+    suspend fun fetchStandings(leagueId: Int): Result<StandingsFetchResult> = runCatching {
         val body: ApiFootballStandingsResponse = getChecked("$API_BASE/standings") {
             parameter("league", leagueId)
             parameter("season", currentSeason())
         }
-        body.response.firstOrNull()?.league?.toStandingsRows() ?: emptyList()
+        body.response.firstOrNull()?.league?.toStandingsFetchResult() ?: StandingsFetchResult(rows = emptyList())
     }
 
     // --- Match detail (events, statistics, lineups) -----------------------------
@@ -286,6 +287,20 @@ internal class ApiFootballApi {
         val homeDeferred = async { homePhotoUrl?.takeIf { it.isNotBlank() }?.let { fetchImageBytes(it).getOrNull() } }
         val awayDeferred = async { awayPhotoUrl?.takeIf { it.isNotBlank() }?.let { fetchImageBytes(it).getOrNull() } }
         homeDeferred.await() to awayDeferred.await()
+    }
+
+    /** League badge bytes for one or more league logo URLs (see [ApiFootballFixtureLeagueDto.logo] /
+     * [ApiFootballStandingsLeagueDto.logo]), fetched concurrently and keyed by URL so a caller with
+     * several distinct leagues on screen at once (Scores' competition groups) can look each one up
+     * by the same URL string it already has, rather than this function needing to know about league
+     * IDs at all. A blank or duplicate URL is fetched at most once; a URL whose fetch fails is simply
+     * absent from the result map — same "omit rather than show broken" convention as the other image
+     * fetches on this class. */
+    suspend fun fetchLeagueLogos(urls: Collection<String>): Map<String, ByteArray> = coroutineScope {
+        urls.filter { it.isNotBlank() }.distinct()
+            .map { url -> url to async { fetchImageBytes(url).getOrNull() } }
+            .mapNotNull { (url, deferred) -> deferred.await()?.let { url to it } }
+            .toMap()
     }
 
     /** Fetches a hosted image as raw bytes — used for team crest URLs off [ApiFootballFixtureTeamDto.logo].

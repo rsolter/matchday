@@ -118,6 +118,13 @@ internal data class ApiFootballFixtureLeagueDto(
     val id: Int,
     val name: String = "",
     val round: String = "",
+    /** Hosted PNG league badge — curl-verified present on a real `/fixtures` response this session
+     * (`GET /fixtures?league=39&season=2026&from=2026-08-15&to=2026-09-06`). The same response also
+     * has a `flag` field (a country flag, not the league badge) that's deliberately NOT modeled here:
+     * it's an `.svg` URL, and this app has no SVG decode path — [BitmapFactory] only handles raster
+     * formats, and pulling in an SVG-rendering library isn't an option given the Light SDK's
+     * dependency allow-list. That's a real format limitation, not an oversight. */
+    val logo: String = "",
 )
 
 @Serializable
@@ -153,6 +160,7 @@ internal fun ApiFootballFixtureDto.toFixture(): Fixture = Fixture(
     extraMinutes = fixture.status.extra,
     leagueId = league.id,
     leagueName = league.name,
+    leagueLogo = league.logo,
     round = league.round,
     homeTeamId = teams.home.id,
     homeTeamName = teams.home.name,
@@ -401,6 +409,11 @@ internal data class ApiFootballStandingsLeagueDto(
     val id: Int,
     val name: String = "",
     val standings: List<List<ApiFootballStandingsRowDto>> = emptyList(),
+    /** Same hosted PNG league badge as [ApiFootballFixtureLeagueDto.logo] — curl-verified present
+     * on a real `/standings` response this session too (`GET /standings?league=39&season=2026`),
+     * not just assumed to carry over from the fixtures shape. Same `flag`-is-SVG caveat applies;
+     * see that field's doc comment for why `flag` isn't modeled here either. */
+    val logo: String = "",
 )
 
 @Serializable
@@ -440,6 +453,14 @@ internal fun ApiFootballStandingsLeagueDto.toStandingsRows(): List<StandingsRow>
     val isGrouped = standings.size > 1
     return standings.flatten().map { it.toStandingsRow(isGrouped) }
 }
+
+/** Bundles a standings table with its league badge URL, so [ApiFootballApi.fetchStandings]'s one
+ * call can hand both back to the Standings screen without a second request just for the logo —
+ * see [ApiFootballStandingsLeagueDto.logo]'s doc comment for where that URL comes from. */
+internal data class StandingsFetchResult(val rows: List<StandingsRow>, val leagueLogoUrl: String = "")
+
+internal fun ApiFootballStandingsLeagueDto.toStandingsFetchResult(): StandingsFetchResult =
+    StandingsFetchResult(rows = toStandingsRows(), leagueLogoUrl = logo)
 
 private fun ApiFootballStandingsRowDto.toStandingsRow(isGrouped: Boolean): StandingsRow = StandingsRow(
     position = rank,
@@ -547,6 +568,7 @@ data class Fixture(
     val extraMinutes: Int?,
     val leagueId: Int,
     val leagueName: String,
+    val leagueLogo: String = "",
     val round: String,
     val homeTeamId: Int,
     val homeTeamName: String,
@@ -572,11 +594,25 @@ data class Fixture(
     val hasScore: Boolean get() = statusShort != "NS" && statusShort != "TBD"
 }
 
-data class CompetitionGroup(val leagueId: Int, val leagueName: String, val matches: List<Fixture>)
+data class CompetitionGroup(
+    val leagueId: Int,
+    val leagueName: String,
+    val leagueLogo: String = "",
+    val matches: List<Fixture>,
+)
 
 fun List<Fixture>.groupedForDisplay(): List<CompetitionGroup> = this
     .groupBy { it.leagueId to it.leagueName }
-    .map { (key, matches) -> CompetitionGroup(key.first, key.second, matches.sortedBy { it.utcDate }) }
+    .map { (key, matches) ->
+        CompetitionGroup(
+            leagueId = key.first,
+            leagueName = key.second,
+            // All matches in a group share one leagueId, so they share one league's logo URL too —
+            // any match in the group works as the source, first is just convenient.
+            leagueLogo = matches.first().leagueLogo,
+            matches = matches.sortedBy { it.utcDate },
+        )
+    }
     .sortedBy { COMPETITION_DISPLAY_ORDER[it.leagueId] ?: Int.MAX_VALUE }
 
 data class FixtureDateGroup(val date: LocalDate, val dateLabel: String, val matches: List<Fixture>)
