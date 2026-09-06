@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
@@ -295,21 +296,85 @@ private fun ResultBadge(result: MatchResult, modifier: Modifier = Modifier) {
     }
 }
 
-// Premier League (39) and Ligue 1 (61) — see TRACKED_COMPETITIONS in SoccerModels.kt — ship real
-// crest logos that read as dark purple/navy on API-Football's CDN, which reads poorly against this
-// app's black backgrounds. Recolored at render time rather than as a bundled replacement asset:
-// this app has no local drawable for any league badge (every logo is fetched over the network, see
+// Premier League (39), Ligue 1 (61), and UEFA Champions League (2) — see TRACKED_COMPETITIONS in
+// SoccerModels.kt — ship real crest logos that read as dark purple/navy (or, for UCL, a busy
+// multi-color star pattern) on API-Football's CDN, which reads poorly against this app's black
+// backgrounds. Recolored at render time rather than as a bundled replacement asset: this app has no
+// local drawable for any league badge (every logo is fetched over the network, see
 // ApiFootballApi.fetchLeagueLogos), so a runtime tint is what actually reaches every place a league
-// logo is drawn (Scores' MatchGroupCard title icon, Standings' own header) without depending on
-// what that fetch happens to return.
-private val WHITE_TINTED_LEAGUE_IDS = setOf(39, 61)
+// logo is drawn (Scores' MatchGroupCard title icon, Standings' own header, Results & Fixtures' row
+// crest) without depending on what that fetch happens to return. UEFA Europa League (3) wants a
+// *different* treatment — white except its orange parts — which a stateless ColorFilter can't
+// express at all; see ORANGE_PRESERVE_LEAGUE_IDS/recolorWhiteExceptOrange below for that one.
+private val WHITE_TINTED_LEAGUE_IDS = setOf(39, 61, 2)
 
 /** [BlendMode.SrcIn] paints solid white everywhere the source bitmap has any alpha (i.e. the
  * badge's actual crest shape) and leaves fully-transparent pixels untouched — a plain silhouette
  * recolor, which is what "all white" was asked for, not a partial tint that would keep some of the
- * original shading. Returns null (no filter — original colors) for every other league. */
+ * original shading. Returns null (no filter — original colors) for every other league, including
+ * the Europa League (3), which is handled separately by [recolorWhiteExceptOrange] instead since
+ * this uniform tint has no way to spare one color region. */
 private fun leagueLogoColorFilter(leagueId: Int): ColorFilter? =
     if (leagueId in WHITE_TINTED_LEAGUE_IDS) ColorFilter.tint(Color.White, BlendMode.SrcIn) else null
+
+// Hue range (in degrees, HSV) and minimum saturation/value that count as "orange" below. This is
+// an unverified guess: this app never has a bundled copy of any league crest to look at (every logo
+// is fetched over the network at runtime — see fetchLeagueLogos), so these thresholds were picked
+// from the request's text description alone ("except the orange parts"), not from inspecting the
+// actual Europa League image. Expect to retune after seeing it render on a real device.
+private const val ORANGE_HUE_MIN = 10f
+private const val ORANGE_HUE_MAX = 50f
+private const val ORANGE_MIN_SATURATION = 0.35f
+private const val ORANGE_MIN_VALUE = 0.30f
+
+/** Leagues that need [recolorWhiteExceptOrange] instead of (or as well as) [leagueLogoColorFilter]
+ * — currently just the UEFA Europa League (3). */
+private val ORANGE_PRESERVE_LEAGUE_IDS = setOf(3)
+
+/**
+ * A [ColorFilter] (see [leagueLogoColorFilter]) can only repaint *every* opaque pixel the same
+ * way — it has no way to look at what color a given pixel already is, so it cannot express "white
+ * except the orange parts". This does that instead: it decodes to a mutable [Bitmap], tests each
+ * non-transparent pixel's hue/saturation/value against [ORANGE_HUE_MIN]/[ORANGE_HUE_MAX] and the
+ * two thresholds, and repaints every pixel that doesn't look orange to solid white — preserving
+ * its original alpha exactly, so the crest's silhouette doesn't change — while leaving pixels that
+ * do look orange completely untouched. See [ORANGE_HUE_MIN]'s doc comment for the caveat that this
+ * hue window is a blind guess, not something verified against the real fetched crest.
+ */
+private fun recolorWhiteExceptOrange(source: Bitmap): Bitmap {
+    val width = source.width
+    val height = source.height
+    if (width <= 0 || height <= 0) return source
+    val mutable = source.copy(Bitmap.Config.ARGB_8888, true) ?: return source
+    val pixels = IntArray(width * height)
+    mutable.getPixels(pixels, 0, width, 0, 0, width, height)
+    val hsv = FloatArray(3)
+    for (i in pixels.indices) {
+        val pixel = pixels[i]
+        val alpha = (pixel ushr 24) and 0xFF
+        if (alpha == 0) continue // leave fully-transparent pixels alone
+        android.graphics.Color.colorToHSV(pixel, hsv)
+        val isOrange = hsv[0] in ORANGE_HUE_MIN..ORANGE_HUE_MAX &&
+            hsv[1] >= ORANGE_MIN_SATURATION &&
+            hsv[2] >= ORANGE_MIN_VALUE
+        if (!isOrange) {
+            pixels[i] = (alpha shl 24) or 0x00FFFFFF // same alpha, solid white
+        }
+    }
+    mutable.setPixels(pixels, 0, width, 0, 0, width, height)
+    return mutable
+}
+
+/** Decodes a league crest and, only for [ORANGE_PRESERVE_LEAGUE_IDS] leagues, runs it through
+ * [recolorWhiteExceptOrange] first — every other league is decoded as-is and recolored (if at all)
+ * by the plain [leagueLogoColorFilter] tint applied at the `Image` composable instead. Centralizing
+ * this here means all three places a league logo renders (Scores' title icon, Standings' header,
+ * Results & Fixtures' row crest) automatically pick up the Europa League treatment identically. */
+private fun decodeLeagueLogo(bytes: ByteArray, leagueId: Int): ImageBitmap? {
+    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+    val processed = if (leagueId in ORANGE_PRESERVE_LEAGUE_IDS) recolorWhiteExceptOrange(bitmap) else bitmap
+    return processed.asImageBitmap()
+}
 
 @Composable
 private fun ScoresContent(
@@ -357,6 +422,7 @@ private fun ScoresContent(
                     MatchGroupCard(
                         title = group.leagueName.uppercase(),
                         titleLogoBytes = leagueLogos[group.leagueLogo],
+                        titleLogoLeagueId = group.leagueId,
                         titleLogoTint = leagueLogoColorFilter(group.leagueId),
                         matches = group.matches,
                         modifier = Modifier.padding(top = if (index == 0) 0.dp else 0.75f.gridUnitsAsDp()),
@@ -404,8 +470,12 @@ private fun ScoresContent(
  * a finished match still prints its "FT"/"Postponed"/etc. label in the row's left slot.
  * [titleLogoBytes] is only ever passed by Scores' competition groups — My Team's cards use a plain
  * "RECENT RESULTS"/"UPCOMING" label instead, which has no single league badge to show.
- * [titleLogoTint], when set, recolors that logo — see [leagueLogoColorFilter]'s doc comment
- * for why (only Scores' call site ever passes one, computed from the group's own league ID).
+ * [titleLogoLeagueId], paired with [titleLogoBytes], picks which recolor (if any) that logo gets —
+ * see [decodeLeagueLogo]; only Scores' call site ever passes one, the group's own league ID.
+ * [titleLogoTint], when set, recolors that logo via a plain [ColorFilter] — see
+ * [leagueLogoColorFilter]'s doc comment for why (only Scores' call site ever passes one, computed
+ * from the group's own league ID) — [titleLogoLeagueId]'s bitmap-level recolor and this tint are
+ * mutually exclusive per league, never both applied to the same crest.
  * [onTitleLogoClick], when set (Scores only, and only for leagues with a real table — see
  * `competitionHasStandings` in SoccerModels.kt), makes the title logo itself tappable to jump
  * straight to that league's Standings table; this is now the table's *only* entry point, since the
@@ -422,6 +492,7 @@ private fun MatchGroupCard(
     matches: List<Fixture>,
     modifier: Modifier = Modifier,
     titleLogoBytes: ByteArray? = null,
+    titleLogoLeagueId: Int? = null,
     titleLogoTint: ColorFilter? = null,
     onTitleLogoClick: (() -> Unit)? = null,
     showFinishedStatus: Boolean = true,
@@ -443,7 +514,7 @@ private fun MatchGroupCard(
             modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
         ) {
             val titleLogoBitmap = titleLogoBytes?.let { bytes ->
-                remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+                remember(bytes, titleLogoLeagueId) { decodeLeagueLogo(bytes, titleLogoLeagueId ?: -1) }
             }
             if (titleLogoBitmap != null) {
                 Image(
@@ -885,7 +956,7 @@ private fun StandingsTableContent(
         )
 
         val leagueLogoBitmap = leagueLogoBytes?.let { bytes ->
-            remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+            remember(bytes, leagueId) { decodeLeagueLogo(bytes, leagueId) }
         }
         if (leagueLogoBitmap != null) {
             Image(
@@ -1125,6 +1196,7 @@ private fun FixtureLeagueCard(
             FixtureMatchRow(
                 match = match,
                 leagueLogoBytes = leagueLogoBytes,
+                leagueId = leagueId,
                 leagueColorFilter = leagueId?.let { leagueLogoColorFilter(it) },
                 leagueName = leagueName,
                 suppressTimeLabel = suppressTime,
@@ -1155,6 +1227,7 @@ private fun Fixture.showsFinalOrLiveScore(): Boolean = status == MatchStatus.FIN
 private fun FixtureMatchRow(
     match: Fixture,
     leagueLogoBytes: ByteArray?,
+    leagueId: Int?,
     leagueColorFilter: ColorFilter?,
     leagueName: String,
     suppressTimeLabel: Boolean,
@@ -1172,7 +1245,7 @@ private fun FixtureMatchRow(
             contentAlignment = Alignment.CenterStart,
         ) {
             val leagueLogoBitmap = leagueLogoBytes?.let { bytes ->
-                remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+                remember(bytes, leagueId) { decodeLeagueLogo(bytes, leagueId ?: -1) }
             }
             if (leagueLogoBitmap != null) {
                 Image(

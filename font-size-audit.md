@@ -595,3 +595,56 @@ longer calls either composable; nothing else ever set them. A few doc comments t
 Fixtures as a caller of the shared row/card (and `CompetitionPickerContent`'s "Standings / Fixtures
 / My Team setup" header, stale since round 22 removed the first of those two) were corrected in
 the same pass.
+
+## 18. League crest recolors: UEFA Champions League added, Europa League gets a new "white except orange" treatment
+
+On request: "ucl icon needs the same treatment as EPL (all white). Europa league needs the same
+treatment (except the orange parts)".
+
+**UEFA Champions League (id 2)** was the simple half — just added to the existing
+`WHITE_TINTED_LEAGUE_IDS` set alongside Premier League (39) and Ligue 1 (61), so it now gets the
+same `ColorFilter.tint(Color.White, BlendMode.SrcIn)` silhouette recolor at all three places a
+league crest renders (Scores' title icon, Standings' header badge, Results & Fixtures' row crest).
+No new mechanism needed.
+
+**UEFA Europa League (id 3)** was not: a `ColorFilter` is a stateless, uniform operation — it
+repaints every opaque pixel the same way with no way to look at what color a given pixel already
+is, so it fundamentally cannot express "recolor to white, but leave the orange parts alone". That
+needed real per-pixel image processing, which this codebase had no precedent for (every prior
+recolor, for EPL/Ligue 1, is the same simple `ColorFilter`).
+
+Added `recolorWhiteExceptOrange(source: Bitmap): Bitmap` — decodes to a mutable
+`Bitmap.Config.ARGB_8888` copy, reads its full pixel array, and for every non-transparent pixel
+converts to HSV (`android.graphics.Color.colorToHSV`) and tests hue against a
+`ORANGE_HUE_MIN..ORANGE_HUE_MAX` window (10°–50°) plus minimum saturation (0.35) and value (0.30)
+thresholds; anything that doesn't clear all three is repainted solid white, with its original
+alpha preserved exactly so the crest's silhouette is untouched. Pixels that do look orange are left
+completely alone. Gated by a new `ORANGE_PRESERVE_LEAGUE_IDS = setOf(3)`.
+
+To apply this without duplicating decode logic at all three render sites, added a single
+`decodeLeagueLogo(bytes: ByteArray, leagueId: Int): ImageBitmap?` that decodes the bytes and, only
+for `ORANGE_PRESERVE_LEAGUE_IDS` leagues, runs the result through `recolorWhiteExceptOrange` before
+converting to `ImageBitmap` — every other league decodes as before, with its `ColorFilter` (if any)
+still applied separately at the `Image` composable, unchanged. All three `remember(bytes) {
+BitmapFactory.decodeByteArray(...) }` blocks (Scores' `MatchGroupCard` title icon, Standings'
+header badge, Fixtures' `FixtureMatchRow` crest) now call `decodeLeagueLogo(bytes, leagueId)`
+instead, each keyed on `leagueId` too so recomposition redecodes correctly if it ever changes.
+`MatchGroupCard` gained a new `titleLogoLeagueId: Int?` param (Scores' call site is the only one
+that ever sets it, mirroring `titleLogoTint`) since it previously had no league ID in scope at all
+— only a pre-computed `ColorFilter`. `FixtureMatchRow` gained a plain `leagueId: Int?` param the
+same way, threaded from `FixtureLeagueCard`, which already computed it for its own
+`leagueColorFilter` argument.
+
+**Flagging clearly, not burying it:** this app never has a bundled copy of any league crest to
+look at — every logo is fetched from API-Football's CDN at runtime — so there was no way to
+actually inspect what "the orange parts" of the real Europa League badge look like. The hue/
+saturation/value thresholds above are a blind guess from the text description alone, not something
+verified against the real image. It's entirely plausible the real crest's orange sits outside this
+hue window (real-world "orange" logos commonly range anywhere from ~20° to ~40° hue depending on
+exact pigment and any anti-aliased edge blending toward white or the crest's other colors), or that
+edge/anti-aliasing pixels at this icon's small render size (roughly 1.3–2.2 grid units, i.e.
+whatever that scales to in dp) end up partially desaturated and get classified as white when they
+should stay orange, leaving a slightly ragged edge around the orange region rather than a clean
+one. This is worth checking on a real device once built, and the four constants
+(`ORANGE_HUE_MIN`/`MAX`, `ORANGE_MIN_SATURATION`, `ORANGE_MIN_VALUE`) are named and centralized
+specifically so they're easy to retune without touching the recolor logic itself.
