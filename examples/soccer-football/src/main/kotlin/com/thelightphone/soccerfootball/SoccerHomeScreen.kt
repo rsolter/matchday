@@ -227,7 +227,7 @@ private fun LoadingContent(title: String, message: String) {
 // --- Scores ------------------------------------------------------------------
 
 // Fixed width for MatchRow's leading slot in the common case — a status badge (FT/live-minute), a
-// same-day kickoff time ("3:45 PM", already grouped under a date header so no date prefix needed),
+// same-day kickoff time ("19:45", already grouped under a date header so no date prefix needed),
 // or a My Team result badge. Narrowed on request: at 6.5f (sized for the much longer dated kickoff
 // format below) this left a lot of dead space in front of team names for every row that wasn't
 // using the longest case. Keeping this as a fixed width at all, rather than letting the slot's
@@ -236,7 +236,7 @@ private fun LoadingContent(title: String, message: String) {
 private val LEFT_SLOT_WIDTH = 4.2f
 
 // Wider leading-slot width for the one case that doesn't fit LEFT_SLOT_WIDTH: My Team's "UPCOMING"
-// card, whose kickoff label includes a date prefix ("9/25 3:45 PM") since — unlike Scores/Fixtures —
+// card, whose kickoff label includes a date prefix ("9/25 19:45") since — unlike Scores/Fixtures —
 // it isn't already grouped under a per-day header (see formatKickoffDateAndTime's doc comment in
 // SoccerFormatting.kt). Only ever used for that one card, so it doesn't affect row alignment
 // anywhere else — every other card's rows are internally consistent using LEFT_SLOT_WIDTH.
@@ -505,7 +505,7 @@ private fun MatchRow(
     // Fixture.resultFor/ResultBadge.
     highlightTeamId: Int? = null,
     // Set only by Fixtures' per-league list and My Team's "UPCOMING" card, where the kickoff label
-    // can be a full date + time (e.g. "9/13 2:45 PM") or just a longer local time — letting it wrap
+    // can be a full date + time (e.g. "9/13 19:45") or just a longer local time — letting it wrap
     // to a second line instead of ellipsizing. Left off (default) for Scores, which keeps its
     // original single-line/ellipsis behavior — see the SoccerHomeScreen font-size audit, §9, for
     // why Scores wasn't included even though it can clip the same way.

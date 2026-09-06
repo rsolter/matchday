@@ -9,7 +9,7 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
- * Short status/score text shown next to a match, e.g. "2 - 1 · 37'", "HT", "FT", "7:30 PM".
+ * Short status/score text shown next to a match, e.g. "2 - 1 · 37'", "HT", "FT", "19:30".
  * [Fixture.elapsed]/[Fixture.extraMinutes] build the live minute directly (API-Football sends
  * these as plain numbers, not a pre-formatted string the way ESPN's `displayClock` does).
  */
@@ -32,10 +32,10 @@ fun Fixture.scoreLabel(): String =
     if (hasScore) "${homeGoals ?: 0} - ${awayGoals ?: 0}" else "vs"
 
 fun formatKickoffTime(isoDate: String): String =
-    parseIso(isoDate)?.toLocalDateTime(TimeZone.currentSystemDefault())?.toAmPm() ?: "--:--"
+    parseIso(isoDate)?.toLocalDateTime(TimeZone.currentSystemDefault())?.to24HourTime() ?: "--:--"
 
 fun formatUpdatedAt(instant: Instant): String =
-    instant.toLocalDateTime(TimeZone.currentSystemDefault()).toAmPm()
+    instant.toLocalDateTime(TimeZone.currentSystemDefault()).to24HourTime()
 
 /** Today's date in the device's local timezone. Phase 3 onward, this is used for fixture/season
  * purposes too (see [currentSeason]) — Phase 1's separate frozen-date stand-in (`phase1Today`) is
@@ -62,11 +62,11 @@ fun currentSeason(referenceDate: LocalDate = todayLocalDate()): Int =
 
 /** Kickoff date + time for contexts that aren't already grouped by day, e.g. My Team's flat
  * "UPCOMING" list (unlike Scores/Fixtures, which group matches under a per-day header first, so a
- * bare time there already reads unambiguously). Renders as e.g. "9/25 3:45 PM" — same time format
+ * bare time there already reads unambiguously). Renders as e.g. "9/25 19:45" — same time format
  * [formatKickoffTime] already uses, just prefixed with the short numeric month/day. */
 fun formatKickoffDateAndTime(isoDate: String): String {
     val dateTime = parseIso(isoDate)?.toLocalDateTime(TimeZone.currentSystemDefault()) ?: return "--/-- --:--"
-    return "${dateTime.date.monthNumber}/${dateTime.date.dayOfMonth} ${dateTime.toAmPm()}"
+    return "${dateTime.date.monthNumber}/${dateTime.date.dayOfMonth} ${dateTime.to24HourTime()}"
 }
 
 /** The calendar date (device-local timezone) a fixture's kickoff falls on, or null if
@@ -87,10 +87,13 @@ fun formatFixtureDateHeader(date: LocalDate): String =
 
 private fun parseIso(isoDate: String): Instant? = runCatching { Instant.parse(isoDate) }.getOrNull()
 
-private fun LocalDateTime.toAmPm(): String {
-    val period = if (hour < 12) "AM" else "PM"
-    val twelveHour = hour % 12
-    val displayHour = if (twelveHour == 0) 12 else twelveHour
+// 24-hour ("military"/international) format, e.g. "09:05" or "19:45" — no AM/PM suffix, so this
+// is also a character or two shorter than the old 12-hour format in every slot that shows a
+// kickoff time (Scores, Fixtures, My Team's "UPCOMING"), which was the point of switching: on
+// request, to claw back a bit more of the tight left-hand slot those labels share (see
+// LEFT_SLOT_WIDTH/LEFT_SLOT_WIDTH_DATED and allowKickoffLabelWrap in SoccerHomeScreen.kt).
+private fun LocalDateTime.to24HourTime(): String {
+    val hourStr = hour.toString().padStart(2, '0')
     val minuteStr = minute.toString().padStart(2, '0')
-    return "$displayHour:$minuteStr $period"
+    return "$hourStr:$minuteStr"
 }

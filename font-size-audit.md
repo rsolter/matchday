@@ -309,3 +309,20 @@ Scores uses the identical code path (`formatKickoffTime()`, same `LEFT_SLOT_WIDT
 in a screenshot yet. Left out of this fix deliberately, at the user's choice, after they were told
 the two were the same underlying bug: Scores keeps its original single-line/ellipsis behavior, and
 that latent clipping risk stays unaddressed for now.
+
+## 10. All kickoff/updated times switched to 24-hour format, app-wide
+
+Not a font-size change either, but landed here since it's a direct follow-on to §§7-9: every time
+string in the app went through one private formatter, `SoccerFormatting.kt`'s `toAmPm()`
+("2:45 PM"), which fed `formatKickoffTime()` (Scores/Fixtures/My Team's status label),
+`formatKickoffDateAndTime()` (My Team's "UPCOMING" card), and the now-unused `formatUpdatedAt()`.
+Rewrote it in place as `to24HourTime()` — zero-padded `HH:mm`, e.g. "09:05" or "19:45", no AM/PM
+suffix — so the change applies everywhere a kickoff or updated-at time is shown, with no per-screen
+changes needed.
+
+Requested explicitly to save space. It does: the old format's suffix (" AM"/" PM") is gone, and a
+padded 24-hour hour ("09") is never longer than its 12-hour equivalent ("9"), so every kickoff
+label is now 2-3 characters shorter than before. That's a genuine, if modest, easing of the exact
+clipping problem tracked in §§8-9 — worth knowing if a future round revisits whether Scores still
+needs the same fix Fixtures/My Team's "UPCOMING" got in §9, since the margin for the un-fixed case
+just got a little wider (this does not remove the risk, it only shrinks it).
