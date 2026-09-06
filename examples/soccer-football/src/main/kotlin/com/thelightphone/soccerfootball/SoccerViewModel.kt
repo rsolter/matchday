@@ -100,6 +100,13 @@ sealed class ScoreScreenMode {
          * URL / the fetch failed. */
         val homeTeamLogoBytes: ByteArray? = null,
         val awayTeamLogoBytes: ByteArray? = null,
+        /** Coach headshot bytes for the lineup tab — fetched after [detail] resolves, since a
+         * coach's photo URL lives inside the lineups response itself (see
+         * [ApiFootballApi.fetchCoachPhotos]'s doc comment), unlike the crests above which are
+         * already known from the tapped [Fixture]. Null until that follow-up fetch resolves, or if
+         * a side had no coach/photo. */
+        val homeCoachPhotoBytes: ByteArray? = null,
+        val awayCoachPhotoBytes: ByteArray? = null,
     ) : ScoreScreenMode()
 }
 
@@ -647,6 +654,23 @@ class SoccerViewModel(
                         val current = state.mode as? ScoreScreenMode.MatchDetailScreen
                         if (current != null && current.fixtureId == match.id) {
                             state.copy(mode = current.copy(detail = detail, isLoading = false), errorModal = null)
+                        } else {
+                            state
+                        }
+                    }
+                    // Coach photos fetch only now, not alongside the crests fetch below — their
+                    // URLs live inside detail.lineups itself (see fetchCoachPhotos's doc comment),
+                    // so there's nothing to fetch until this point. Silent on failure, same as the
+                    // crests: a missing headshot just means the "Coach: {name}" line renders
+                    // without one, not something worth an errorModal over.
+                    val (homeCoachBytes, awayCoachBytes) = api.fetchCoachPhotos(
+                        detail.lineups.home?.coachPhotoUrl,
+                        detail.lineups.away?.coachPhotoUrl,
+                    )
+                    updateState { state ->
+                        val current = state.mode as? ScoreScreenMode.MatchDetailScreen
+                        if (current != null && current.fixtureId == match.id) {
+                            state.copy(mode = current.copy(homeCoachPhotoBytes = homeCoachBytes, awayCoachPhotoBytes = awayCoachBytes))
                         } else {
                             state
                         }

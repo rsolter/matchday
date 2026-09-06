@@ -276,6 +276,18 @@ internal class ApiFootballApi {
         homeDeferred.await() to awayDeferred.await()
     }
 
+    /** Home/away coach headshot bytes for the lineup tab — see [TeamLineup.coachPhotoUrl]'s doc
+     * comment for where that URL comes from. Unlike [fetchMatchCrests], the URLs here aren't known
+     * until [fetchMatchDetail]'s lineups section has already resolved (a coach's photo URL only
+     * exists once the lineups response itself has arrived), so this takes nullable URLs rather than
+     * being kicked off alongside the initial fixture tap. Either side is null if that team had no
+     * lineup/coach/photo, or the fetch failed. */
+    suspend fun fetchCoachPhotos(homePhotoUrl: String?, awayPhotoUrl: String?): Pair<ByteArray?, ByteArray?> = coroutineScope {
+        val homeDeferred = async { homePhotoUrl?.takeIf { it.isNotBlank() }?.let { fetchImageBytes(it).getOrNull() } }
+        val awayDeferred = async { awayPhotoUrl?.takeIf { it.isNotBlank() }?.let { fetchImageBytes(it).getOrNull() } }
+        homeDeferred.await() to awayDeferred.await()
+    }
+
     /** Fetches a hosted image as raw bytes — used for team crest URLs off [ApiFootballFixtureTeamDto.logo].
      * Deliberately bypasses [get]/[getChecked] below: there's no JSON body here to run through
      * [apiFootballErrorMessage]'s success/failure check, and the crest URL points at whatever CDN

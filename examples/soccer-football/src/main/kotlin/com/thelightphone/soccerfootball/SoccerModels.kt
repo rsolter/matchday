@@ -345,8 +345,15 @@ internal data class ApiFootballLineupPlayerDto(
     val grid: String? = null,
 )
 
+/** `photo` confirmed present on a real `GET /fixtures/lineups?fixture=1035037` response this
+ * session (curl-verified, at the user's request) as a ready-to-use full URL
+ * (`https://media.api-sports.io/football/coachs/{id}.png`), not something this app needs to
+ * construct from [id] itself. That same curl came back with `colors: null` for this fixture —
+ * API-Football's kit-color field exists in the schema but isn't populated here, so it isn't
+ * modeled; this app's crest-sampled team color (see extractCrestAccentColor in
+ * SoccerHomeScreen.kt) stays the only source for that, not a real one that just wasn't wired up. */
 @Serializable
-internal data class ApiFootballCoachDto(val name: String? = null)
+internal data class ApiFootballCoachDto(val id: Int? = null, val name: String? = null, val photo: String? = null)
 
 internal fun ApiFootballLineupsResponse.toMatchLineups(homeTeamId: Int, awayTeamId: Int): MatchLineups = MatchLineups(
     home = response.firstOrNull { it.team.id == homeTeamId }?.toTeamLineup(),
@@ -359,6 +366,7 @@ private fun ApiFootballTeamLineupDto.toTeamLineup(): TeamLineup = TeamLineup(
     startXI = startXI.map { it.player.toLineupPlayer() },
     substitutes = substitutes.map { it.player.toLineupPlayer() },
     coachName = coach?.name?.takeIf { it.isNotBlank() },
+    coachPhotoUrl = coach?.photo?.takeIf { it.isNotBlank() },
 )
 
 private fun ApiFootballLineupPlayerDto.toLineupPlayer(): LineupPlayer = LineupPlayer(
@@ -633,6 +641,9 @@ data class TeamLineup(
     val startXI: List<LineupPlayer>,
     val substitutes: List<LineupPlayer>,
     val coachName: String?,
+    /** Ready-to-fetch headshot URL — see the doc comment on [ApiFootballCoachDto.photo]. Null if
+     * the coach object was missing or sent no photo. */
+    val coachPhotoUrl: String? = null,
 )
 
 data class MatchLineups(val home: TeamLineup?, val away: TeamLineup?)

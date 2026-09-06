@@ -1092,12 +1092,14 @@ private fun MatchDetailContent(mode: ScoreScreenMode.MatchDetailScreen, onBack: 
                             teamName = mode.homeTeamName,
                             lineup = detail.lineups.home,
                             teamColor = homeTeamColor,
+                            coachPhotoBytes = mode.homeCoachPhotoBytes,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
                         DetailTab.AWAY_LINEUP -> LineupSection(
                             teamName = mode.awayTeamName,
                             lineup = detail.lineups.away,
                             teamColor = awayTeamColor,
+                            coachPhotoBytes = mode.awayCoachPhotoBytes,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
                     }
@@ -1546,6 +1548,7 @@ private fun LineupSection(
     teamName: String,
     lineup: TeamLineup?,
     teamColor: Color?,
+    coachPhotoBytes: ByteArray?,
     modifier: Modifier = Modifier,
 ) {
     if (lineup == null || lineup.startXI.isEmpty()) {
@@ -1606,16 +1609,34 @@ private fun LineupSection(
             }
         }
 
-        lineup.coachName?.let {
-            // Detail, not Fine — see the font-size audit doc: Fine (25sp) is bigger than Detail
-            // (20sp) in this SDK's real type scale despite the name suggesting the opposite, so
-            // this caption was rendering almost as large as the primary player names above it.
-            LightText(
-                text = "Coach: $it",
-                variant = LightTextVariant.Detail,
-                lighten = true,
+        lineup.coachName?.let { coachName ->
+            // Real headshot data, curl-confirmed on this exact endpoint at the user's request —
+            // see the doc comment on ApiFootballCoachDto.photo in SoccerModels.kt. Same
+            // decode-bytes-by-hand pattern as every other image in this app (no AsyncImage
+            // available), and the same "just omit it" fallback when there's no photo (coach not
+            // sent an id/photo, or the fetch failed) rather than a placeholder.
+            val coachBitmap = coachPhotoBytes?.let { bytes ->
+                remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.3f.gridUnitsAsDp()),
                 modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()),
-            )
+            ) {
+                if (coachBitmap != null) {
+                    Image(
+                        bitmap = coachBitmap,
+                        contentDescription = "$coachName headshot",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(1.6f.gridUnitsAsDp()).clip(CircleShape),
+                    )
+                }
+                // Detail, not Fine — see the font-size audit doc: Fine (25sp) is bigger than
+                // Detail (20sp) in this SDK's real type scale despite the name suggesting the
+                // opposite, so this caption was rendering almost as large as the primary player
+                // names above it.
+                LightText(text = "Coach: $coachName", variant = LightTextVariant.Detail, lighten = true)
+            }
         }
 
         if (lineup.substitutes.isNotEmpty()) {
