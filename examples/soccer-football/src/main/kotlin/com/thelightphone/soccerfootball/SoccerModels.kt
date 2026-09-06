@@ -348,10 +348,13 @@ internal data class ApiFootballLineupPlayerDto(
 /** `photo` confirmed present on a real `GET /fixtures/lineups?fixture=1035037` response this
  * session (curl-verified, at the user's request) as a ready-to-use full URL
  * (`https://media.api-sports.io/football/coachs/{id}.png`), not something this app needs to
- * construct from [id] itself. That same curl came back with `colors: null` for this fixture —
- * API-Football's kit-color field exists in the schema but isn't populated here, so it isn't
- * modeled; this app's crest-sampled team color (see extractCrestAccentColor in
- * SoccerHomeScreen.kt) stays the only source for that, not a real one that just wasn't wired up. */
+ * construct from [id] itself. Kit `colors` was checked too, more than once: an initial single-fixture
+ * curl came back `colors: null`, and a follow-up sweep across 6 genuinely finished fixtures
+ * (2 each in Premier League, Serie A, and Champions League) came back `colors: null` for all 12
+ * team entries. This proxy/API tier simply doesn't populate that field for the leagues this app
+ * tracks, so it isn't modeled here; this app's crest-sampled team color (see
+ * extractCrestAccentColor in SoccerHomeScreen.kt) stays the only source for that, not a real one
+ * that just wasn't wired up. */
 @Serializable
 internal data class ApiFootballCoachDto(val id: Int? = null, val name: String? = null, val photo: String? = null)
 
