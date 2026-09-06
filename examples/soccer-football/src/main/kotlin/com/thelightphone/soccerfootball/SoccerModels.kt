@@ -594,6 +594,29 @@ data class Fixture(
     val hasScore: Boolean get() = statusShort != "NS" && statusShort != "TBD"
 }
 
+/** Win/draw/loss outcome of a finished [Fixture] relative to a given team — used for My Team's
+ * colored result badges (see MyTeamStandingBlock/FormRow in SoccerHomeScreen.kt), mirroring the
+ * W/D/L blocks fotmob shows next to a team's recent results and league-table form column. Derived
+ * entirely from fields this app already fetches; no new API call needed. */
+enum class MatchResult { WIN, DRAW, LOSS }
+
+/** Null when the match has no final score yet, or [teamId] isn't one of the two sides — callers
+ * (My Team's "RECENT RESULTS" list) only ever pass a team that is actually in the fixture, but this
+ * stays defensive rather than throwing. */
+fun Fixture.resultFor(teamId: Int): MatchResult? {
+    if (!hasScore) return null
+    val home = homeGoals ?: return null
+    val away = awayGoals ?: return null
+    val isHome = when (teamId) {
+        homeTeamId -> true
+        awayTeamId -> false
+        else -> return null
+    }
+    if (home == away) return MatchResult.DRAW
+    val teamWon = if (isHome) home > away else away > home
+    return if (teamWon) MatchResult.WIN else MatchResult.LOSS
+}
+
 data class CompetitionGroup(
     val leagueId: Int,
     val leagueName: String,

@@ -12,20 +12,28 @@ values will differ slightly per phone. There's no Android SDK in the sandbox thi
 in, so none of this was checked against a running build — it's a static read of the type-scale
 source plus every call site in the app, cross-referenced.
 
+**This file's history, briefly:** §3 records a request to shift every text element in the app down
+one step. §4 records three standardization recommendations made just before that shift (their
+specific sizes are superseded by §3, but the reasoning still holds). §5 records a later request to
+undo that global shift, but only for the Scores/Fixtures/My Team match-row list and for Settings
+(+ its child pages) — everywhere else in the app still reflects §3's global shift. **§2 below is a
+live snapshot of the current (post-§5) state, not a history** — read §3/§5 for how each screen got
+here.
+
 ## 1. The real type scale, smallest to largest
 
 | Variant | Design size | Where else it lands |
 |---|---|---|
 | Micro | 8 | not used anywhere in this app |
-| **Superfine** | **16** | the app's default "label / secondary" size, as of the global shift below |
-| Detail | 20 | the app's default "primary content" size, as of the global shift below |
-| Paragraph | 24.5 | not used in this app as of the global shift below |
+| **Superfine** | **16** | secondary-label size on screens still under the global shift (§3) |
+| Detail | 20 | primary-content size on screens still under the global shift; secondary-label size on the screens reverted in §5 |
+| Paragraph | 24.5 | About screen's body paragraph, after being reverted in §5 |
 | **Fine** | **25** | see finding below |
 | ParagraphWide | 25 | not used in this app |
 | Subheading | 30 | not used in this app |
-| Copy | 30 | score labels, "My Team" position/points, as of the global shift below |
+| Copy | 30 | primary-content size on the screens reverted in §5, plus the two "hero stat" numbers everywhere (match score in Match Detail, My Team's `#{pos} · {pts} pts`) |
 | Button | 30 | not used directly by this app (LightTopBar's own buttons use it) |
-| Heading | 38 | not used in this app as of the global shift below |
+| Heading | 38 | not used anywhere in this app (see §3 — both former uses became `Copy`) |
 | Subtitle | 52 | not used in this app |
 | Title | 115 | not used in this app (removed from the match header in an earlier session) |
 
@@ -36,47 +44,52 @@ specifically to get a smaller, de-emphasized caption under something else, and a
 rendering *larger* than the label or number next to them instead: the "Injured"/"Suspended" reason
 text on My Team, the lineup screen's "Coach: {name}" line, and (in a design that's since been
 replaced) a player surname under each jersey-number circle. All three were fixed to `Detail` in an
-earlier pass — and have since moved again to `Superfine`, along with everything else, in the global
-one-step-down pass described in §3.
+earlier pass, then moved again to `Superfine` in §3's global shift — and, being on My Team's own
+labels rather than its shared match rows, weren't touched by §5's revert.
 
 Also worth knowing, though it's in the vendored SDK and not this app's code to change:
 `LightTopBar`'s screen title and header buttons both use `Fine` (25) — every screen's title
-("Settings," "Standings," "Match," etc.) now renders *larger* than this app's own primary content
-(`Detail`, 20, post-shift), the reverse of how it compared before this round. That's outside this
-app's control (vendored SDK styling), but worth knowing if a screen's title starts looking oddly
-dominant compared to the shrunk content beneath it.
+("Settings," "Standings," "Match," etc.) renders larger than most of this app's own content that's
+still under the global shift (`Superfine`/`Detail`, 16/20), but smaller than the screens §5
+reverted back to `Copy` (30). That's outside this app's control (vendored SDK styling).
 
 ## 2. Every current usage, by screen
 
 "Role" is my read of what the text is doing, not anything in the code. Sizes are the design-unit
-value from the table above, reflecting the state **after** §3's global one-step-down pass — this
-section is a live snapshot, not a history.
+value from the table above, reflecting the **current** state (global shift per §3, then the
+Scores/Fixtures/My-Team-match-rows/Settings revert per §5) — this section is a live snapshot, not a
+history.
 
-### Scores (today's matches)
+### Scores (today's matches) — reverted in §5
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| "No matches today..." empty state | Detail | 20 | message |
-| Competition group header (+ league badge) | Superfine (lighten) | 16 | section label |
-| "{home} vs {away}" | Detail | 20 | primary content |
-| Score ("2 - 1") | Detail | 20 | primary content |
-| Live/finished/kickoff status | Superfine | 16 | secondary label |
+| "No matches today..." empty state | Copy | 30 | message |
+| Competition group header (+ league badge) | Detail (lighten) | 20 | section label |
+| Status/kickoff-time (leading slot, left of team names) | Detail | 20 | secondary label |
+| "{home} vs {away}" | Copy | 30 | primary content |
+| Score ("2 - 1", trailing slot) | Copy | 30 | primary content |
 
-### Settings
+### Settings — reverted in §5
 | Element | Variant | Size | Role |
 |---|---|---|---|
-| "My Team" row label | Superfine (lighten) | 16 | label |
-| "My Team" row value ("Not set" / team name) | Detail | 20 | value |
-| "Forget My Team" / "Refresh now" / "About" rows | Detail | 20 | clickable row |
-| "Leagues followed" label | Superfine (lighten) | 16 | label |
-| Each followed league name | Superfine | 16 | list item |
-| About screen body paragraph | Detail | 20 | reading text |
+| "My Team" row label | Detail (lighten) | 20 | label |
+| "My Team" row value ("Not set" / team name) | Copy | 30 | value |
+| "Forget My Team" / "Refresh now" / "About" rows | Copy | 30 | clickable row |
+| "Leagues followed" label | Detail (lighten) | 20 | label |
+| Each followed league name | Detail | 20 | list item |
+| About screen body paragraph | Paragraph | 24.5 | reading text |
 
-### League selection / competition pickers (Standings, Fixtures, My Team setup)
+### League selection (Settings' own child page) — reverted in §5
+| Element | Variant | Size | Role |
+|---|---|---|---|
+| League row name (toggle list) | Copy | 30 | list item |
+
+### Competition pickers (Standings / Fixtures / My Team setup — not Settings pages, still under §3)
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | League row name | Detail | 20 | list item |
 
-### Standings
+### Standings — still under the global shift (§3), not touched by §5
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | Loading / empty state | Detail | 20 | message |
@@ -85,25 +98,30 @@ section is a live snapshot, not a history.
 | Every data cell in every row | Superfine | 16 | table data |
 
 ### Fixtures
-Same `MatchGroupCard`/`MatchRow` as Scores above, plus:
+Same `MatchGroupCard`/`MatchRow` as Scores above (so the match-row list is at §5's larger sizes
+too), plus its own screen-level text, still under §3:
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | Loading / empty state | Detail | 20 | message |
 
 ### My Team
+Its own labels/messages are still under §3; its shared "RECENT RESULTS"/"UPCOMING" match rows are
+at §5's larger sizes (same `MatchGroupCard`/`MatchRow` as Scores/Fixtures) and "RECENT RESULTS" now
+shows a colored win/draw/loss badge per match instead of a blank leading slot (see §6):
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | Loading / empty / no-data messages | Detail | 20 | message |
 | League name label | Superfine (lighten) | 16 | label |
 | "#{pos} · {pts} pts" | Copy | 30 | hero stat |
-| "{W}W {D}D {L}L · {GD} GD · form {X}" | Superfine (lighten) | 16 | secondary summary |
+| Form badges (W/D/L blocks, next to the line above) | Superfine (badge text) | 16 | hero stat, see §6 |
+| "{W}W {D}D {L}L · {GD} GD" | Superfine (lighten) | 16 | secondary summary |
 | "UNAVAILABLE FOR NEXT MATCH" header | Superfine (lighten) | 16 | section label |
 | "Injured"/"Suspended" group label | Superfine (lighten) | 16 | label |
 | Player name | Detail | 20 | primary content |
 | "Out"/"Doubtful" | Superfine (lighten) | 16 | label |
 | Reason text | Superfine (lighten) | 16 | caption |
 
-### Match detail — header (all tabs)
+### Match detail — header (all tabs) — still under §3
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | Team name under crest | Superfine | 16 | label |
@@ -111,13 +129,13 @@ Same `MatchGroupCard`/`MatchRow` as Scores above, plus:
 | Live/status label | Superfine | 16 | secondary label |
 | Goal scorer lines | Superfine (lighten) | 16 | secondary content |
 
-### Match detail — Stats tab
+### Match detail — Stats tab — still under §3
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | Home/away stat value | Detail | 20 | primary content |
 | Stat label (center column) | Superfine (lighten) | 16 | label |
 
-### Match detail — Events tab
+### Match detail — Events tab — still under §3
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | Goal/substitution glyph icon | Superfine | 16 | icon (renders as text glyph) |
@@ -125,10 +143,10 @@ Same `MatchGroupCard`/`MatchRow` as Scores above, plus:
 | Event headline | Superfine | 16 | primary content |
 | Team + subtext line | Superfine (lighten) | 16 | secondary content |
 
-### Match detail — Home/Away lineup tab
+### Match detail — Home/Away lineup tab — still under §3
 A vertical pitch (number-only dots, keeper at the bottom) beside a numbered name list, rather than
-named dots in horizontal columns — the redesign this audit originally documented; nothing about the
-layout itself changed in this round, only every size below it.
+named dots in horizontal columns — a layout from an earlier redesign round; nothing about the
+layout itself has changed since, only sizes.
 
 | Element | Variant | Size | Role |
 |---|---|---|---|
@@ -141,7 +159,7 @@ layout itself changed in this round, only every size below it.
 | Substitute number / name | Superfine | 16 | primary content |
 | Substitute position | Superfine (lighten) | 16 | label |
 
-### Tab row (Stats / Events / Home / Away)
+### Tab row (Stats / Events / Home / Away) — still under §3
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | Tab label | Superfine | 16 | button label |
@@ -164,36 +182,81 @@ Two consequences worth flagging rather than leaving implicit:
 
 - **Copy and Heading collapsed together.** Before this pass, `Heading` (38) was reserved for the two
   genuinely "hero stat" numbers in the app — the match score and My Team's `#{pos} · {pts} pts`
-  line — one visual size larger than everything else, including regular `Copy` body text. Both now
-  render at `Copy`'s size (30), the same as ordinary primary content elsewhere on those same
-  screens. That's an intentional flattening of hierarchy, not a bug, but it does mean a match score
-  no longer visually dominates the row it's in the way it used to.
+  line — one visual size larger than everything else, including regular `Copy` body text. Both
+  rendered at `Copy`'s size (30) after this pass, the same as ordinary primary content elsewhere on
+  those same screens. Neither was touched by §5's later revert (both are outside Scores/Settings),
+  so both are still at `Copy` today.
 
-- **Superfine (16) is a new floor for this app.** Nothing here used it before. It's now the landing
-  spot for every element that was `Detail` (the app's entire "secondary label" layer, plus most of
-  what recently became "primary content" too, e.g. Standings' data cells and the whole lineup tab).
-  16 design-units is the smallest text this app has ever shipped with — worth an actual look on a
-  real device before assuming it's still comfortably readable, since nothing here was checked
-  against a running build.
+- **Superfine (16) was a new floor for this app.** Nothing had used it before this pass. It became
+  the landing spot for every element that was `Detail` (the app's entire "secondary label" layer,
+  plus most of what had recently become "primary content" too, e.g. Standings' data cells and the
+  whole lineup tab). §5 later moved the Scores/Fixtures/My-Team-match-row and Settings occurrences
+  back up to `Detail`, but everywhere else (Standings, Match Detail's every tab, My Team's own
+  labels) is still at this floor — worth an actual look on a real device, since nothing here was
+  checked against a running build.
 
-`About` screen body text (`Paragraph`, was 24.5) now renders at `Detail`'s size (20) rather than its
-own dedicated reading-text size — reading paragraphs and UI labels are now the same size everywhere
-in the app.
+`About` screen body text (`Paragraph`, was 24.5) rendered at `Detail`'s size (20) after this pass;
+§5 reverted it back to `Paragraph`.
 
-## 4. Standardization — applied (superseded by §3 above)
+## 4. Standardization — applied before §3, superseded by it
 
 The three recommendations below were written against the *pre-§3* scale and applied in an earlier
-round; they're kept here for history, but every specific size they mention has since shifted again
-per §3. The underlying reasoning (why each was singled out) still holds even though the resulting
-variant/size does not:
+round; they're kept here for history, but every specific size they mention was superseded by §3's
+global shift, and one (#2) was reverted again by §5. The underlying reasoning (why each was singled
+out) still holds even though the resulting variant/size doesn't:
 
 1. **Standings table data cells: `Copy` (30) → `Detail` (20).** Matched the column headers, which
    already used `Detail`, giving the densest layout in the app (7 columns) more breathing room.
-   (Now both are `Superfine`, 16, per §3.)
+   (Now both are `Superfine`, 16, per §3 — Standings wasn't touched by §5.)
 
 2. **Settings row value: `Heading` (38) → `Copy` (30).** "My Team"'s value previously matched a
-   match score's weight, heavier than a plain settings row needed. (Now `Detail`, 20, per §3.)
+   match score's weight, heavier than a plain settings row needed. (§3 shifted this to `Detail`, 20;
+   §5 reverted it back to `Copy`, 30 — landing exactly back on this recommendation's own result.)
 
 3. **Followed league names in Settings: `Copy` (30) → `Detail` (20).** Matches the "value list
    under a label" treatment `LeaguesRow`'s own label already used, relevant given this app can track
-   up to 15 competitions. (Now `Superfine`, 16, per §3.)
+   up to 15 competitions. (§3 shifted this to `Superfine`, 16; §5 reverted it back to `Detail`, 20 —
+   landing exactly back on this recommendation's own result.)
+
+## 5. Per-view revert of the global shift (Scores/Fixtures/My Team match rows + Settings)
+
+Applied on request, after using the app for a while at §3's sizes: "revert font sizes in this view
+[Scores] to the larger format from before... Same goes for settings view and its child pages. all
+text can be larger in these views." Interpreted narrowly — as undoing §3's shift specifically for
+these views, landing back at their §3-and-earlier (§4-recommendation) sizes, not reopening §4's own
+recommendations (e.g. Settings' row value goes back to `Copy`, not all the way to `Heading`).
+
+Two scope decisions worth being explicit about:
+
+- **`MatchRow`/`MatchGroupCard` are shared** by Scores, Fixtures, and My Team's "RECENT
+  RESULTS"/"UPCOMING" cards. The request named "this view" (Scores/home page), but reverting a
+  shared composable's own text sizes necessarily reverts it everywhere it's used — there's no way to
+  make one caller's match rows bigger without doing it for all three screens' match rows. Fixtures'
+  and My Team's own screen-level text (loading/empty messages, My Team's labels/hero stat) is
+  untouched and stays at §3's sizes; only the shared match-row list itself got bigger everywhere.
+
+- **"Settings and its child pages"** was read as Settings itself, the "Leagues followed" toggle
+  list (`LeagueSelectionContent`), and the About screen (`AttributionContent`) — the three screens
+  actually reachable from Settings' own navigation. The Standings/Fixtures/My-Team-setup competition
+  pickers (`CompetitionPickerContent`) are a separate shared picker reached from the bottom bar, not
+  a Settings child page, so they weren't touched.
+
+See §2 for the resulting per-element sizes on each affected screen.
+
+## 6. My Team colored win/draw/loss badges
+
+Applied on request, matching the fotmob reference screenshots: a small colored block per match
+result (green win / grey draw / red loss, each a single-letter "W"/"D"/"L" on a solid background —
+see `ResultBadge`), derived from already-fetched fixture data via `Fixture.resultFor(teamId)` (no
+new API call). Two places:
+
+- **My Team's own header**, next to the "#{pos} · {pts} pts" line — a `FormRow` parses
+  `StandingsRow.form` (API-Football's recent-form string, e.g. "WWDLW", most recent result last)
+  into a row of badges. This replaces the old plain "· form WWDLW" text tail.
+- **My Team's "RECENT RESULTS" card**, one badge per match, in the same leading slot `MatchRow`
+  otherwise uses for a live-minute or "FT" badge (blank there before, since "RECENT RESULTS" passes
+  `showFinishedStatus = false` to suppress the plain FT label it would otherwise show for every
+  entry in a card that's *entirely* finished matches).
+
+Scores/Fixtures and My Team's "UPCOMING" card don't pass a team to highlight, so they're unaffected
+— this is opt-in per `MatchGroupCard`/`MatchRow` call site via the new `highlightTeamId` parameter.

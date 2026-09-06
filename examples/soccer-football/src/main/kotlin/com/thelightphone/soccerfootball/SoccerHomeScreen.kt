@@ -229,16 +229,16 @@ private fun LoadingContent(title: String, message: String) {
 
 // --- Scores ------------------------------------------------------------------
 
-// Widened from 6f: the score and its FT/live-minute label used to stack in a Column (two lines
-// tall per match row); now they sit side by side in a Row (see MatchRow) and need the extra room
-// to not crowd each other or wrap.
-private val SCORE_COLUMN_WIDTH = 9f
+// Fixed width for MatchRow's leading slot (status badge, live minute, kickoff time, or a My Team
+// result badge) — sized to comfortably fit the widest common case, My Team's "9/25 3:45 PM"
+// kickoff date+time. Keeping this constant, rather than letting the slot's content size itself, is
+// what keeps every row's team names starting at the same x position regardless of what leads them.
+private val LEFT_SLOT_WIDTH = 6.5f
 
-// Fixed width for the FT/live-minute badge slot in MatchRow — sized to comfortably fit the widest
-// common case ("45+2'") without needing to grow or shrink per row. Keeping this constant, rather
-// than letting the badge size itself and packing it flush against the score, is what keeps the
-// score's own right edge at the same x position on every row regardless of which badge follows it.
-private val STATUS_SLOT_WIDTH = 2.6f
+// Fixed width for MatchRow's trailing score slot — the badge/kickoff-time content that used to
+// live here moved to the left slot above (see MatchRow's doc comment), so this only ever holds a
+// plain score ("2 - 1", or blank before kickoff) and can stay narrower than the old combined slot.
+private val SCORE_SLOT_WIDTH = 4f
 
 // A light, legible green for a live match's minute-counter text — matches the reference (fotmob)
 // screenshot's live-indicator hue. Used for text color only (see MatchStatusBadge); the badge's
@@ -249,7 +249,8 @@ private val LIVE_STATUS_GREEN = Color(0xFF4ADE80)
 /** Small rounded badge for a match's status — FT (or Postponed/Cancelled/Suspended) and a live
  * minute counter now share the same pill shape, matching the reference fotmob screenshot's FT
  * badge; only the live case gets green text ([LIVE_STATUS_GREEN]) to set it apart from a finished
- * match. Always sized to [STATUS_SLOT_WIDTH]'s slot via the caller, not by this composable. */
+ * match. Sized by its own content — the caller (MatchRow) places it inside [LEFT_SLOT_WIDTH]'s
+ * fixed-width slot rather than sizing it directly. */
 @Composable
 private fun MatchStatusBadge(text: String, isLive: Boolean, modifier: Modifier = Modifier) {
     Box(
@@ -258,15 +259,71 @@ private fun MatchStatusBadge(text: String, isLive: Boolean, modifier: Modifier =
             .background(LightThemeTokens.colors.content.copy(alpha = 0.12f))
             .padding(horizontal = 0.4f.gridUnitsAsDp(), vertical = 0.05f.gridUnitsAsDp()),
     ) {
+        // Was Superfine (16) before this round's font-size revert — see font-size-audit.md's
+        // Detail→Superfine bucket, this text predates the badge chrome round 12 wrapped it in.
+        // Reverted to Detail (20) along with the rest of the Scores/Fixtures/My Team match rows.
         LightText(
             text = text,
-            variant = LightTextVariant.Superfine,
+            variant = LightTextVariant.Detail,
             align = TextAlign.End,
             lighten = !isLive,
             color = if (isLive) LIVE_STATUS_GREEN else null,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+// Win/draw/loss badge colors for My Team's "RECENT RESULTS" list and its form-summary row (see
+// ResultBadge/FormRow) — plain hardcoded colors, following the same pattern CARD_YELLOW/CARD_RED
+// already use for the match-events tab rather than pulling from the Light theme's own palette.
+private val RESULT_WIN_COLOR = Color(0xFF4CAF50)
+private val RESULT_DRAW_COLOR = Color(0xFF9E9E9E)
+private val RESULT_LOSS_COLOR = Color(0xFFD32F2F)
+
+/** Small colored block badge for one match's result relative to My Team's followed team — mirrors
+ * the fotmob reference screenshot's Form-column blocks. Used two ways: inline per match in
+ * [MatchRow]'s left slot (My Team's "RECENT RESULTS" card only — see [Fixture.resultFor]), and
+ * repeated in [FormRow] for the league-form summary string on My Team's own header. */
+@Composable
+private fun ResultBadge(result: MatchResult, modifier: Modifier = Modifier) {
+    val (background, label) = when (result) {
+        MatchResult.WIN -> RESULT_WIN_COLOR to "W"
+        MatchResult.DRAW -> RESULT_DRAW_COLOR to "D"
+        MatchResult.LOSS -> RESULT_LOSS_COLOR to "L"
+    }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(0.4f.gridUnitsAsDp()))
+            .background(background)
+            .padding(horizontal = 0.35f.gridUnitsAsDp(), vertical = 0.1f.gridUnitsAsDp()),
+        contentAlignment = Alignment.Center,
+    ) {
+        LightText(text = label, variant = LightTextVariant.Superfine, color = Color.White)
+    }
+}
+
+/** Row of [ResultBadge]s parsed from [StandingsRow.form] (e.g. "WWDLW", most recent result last
+ * per API-Football's own ordering) — the "block W, L, D icons along the top of the view" the
+ * fotmob reference shows next to a team's position/points line. Unrecognized characters are
+ * skipped rather than crashing; API-Football hasn't been observed sending anything but W/D/L here. */
+@Composable
+private fun FormRow(form: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.3f.gridUnitsAsDp()),
+    ) {
+        form.forEach { char ->
+            val result = when (char) {
+                'W' -> MatchResult.WIN
+                'D' -> MatchResult.DRAW
+                'L' -> MatchResult.LOSS
+                else -> null
+            }
+            if (result != null) {
+                ResultBadge(result)
+            }
+        }
     }
 }
 
@@ -299,9 +356,11 @@ private fun ScoresContent(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
+                // Was Copy (30) before the global one-step-down pass shifted it to Detail (20);
+                // reverted back to Copy along with the rest of this view's text.
                 LightText(
                     text = "No matches today in your leagues.",
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Copy,
                     align = TextAlign.Center,
                     lighten = true,
                     modifier = Modifier.padding(horizontal = 2f.gridUnitsAsDp()),
@@ -356,9 +415,11 @@ private fun ScoresContent(
 /** A rounded card grouping a set of matches under one header — same card-per-group pattern as the
  * ESPN/football-data.org variants of this tool. Used for Scores (grouped by competition),
  * Fixtures (grouped by date), and My Team (upcoming/recent). [showFinishedStatus] controls whether
- * a finished match still prints its "FT"/"Postponed"/etc. label under the score. [titleLogoBytes]
- * is only ever passed by Scores' competition groups — Fixtures/My Team group by date or a plain
- * "RECENT RESULTS"/"UPCOMING" label, neither of which has a single league badge to show. */
+ * a finished match still prints its "FT"/"Postponed"/etc. label in the row's left slot.
+ * [titleLogoBytes] is only ever passed by Scores' competition groups — Fixtures/My Team group by
+ * date or a plain "RECENT RESULTS"/"UPCOMING" label, neither of which has a single league badge to
+ * show. [highlightTeamId] is only ever passed by My Team's "RECENT RESULTS" card, to color each
+ * match's left slot by its result for that team instead — see [MatchRow]. */
 @Composable
 private fun MatchGroupCard(
     title: String,
@@ -367,6 +428,7 @@ private fun MatchGroupCard(
     titleLogoBytes: ByteArray? = null,
     showFinishedStatus: Boolean = true,
     showDate: Boolean = false,
+    highlightTeamId: Int? = null,
     onMatchClick: (Fixture) -> Unit,
 ) {
     Column(
@@ -393,7 +455,9 @@ private fun MatchGroupCard(
                         .padding(end = 0.4f.gridUnitsAsDp()),
                 )
             }
-            LightText(text = title, variant = LightTextVariant.Superfine, lighten = true)
+            // Was Detail (20) before the global one-step-down pass shifted it to Superfine (16);
+            // reverted back to Detail along with the rest of Scores/Fixtures/My Team's match rows.
+            LightText(text = title, variant = LightTextVariant.Detail, lighten = true)
         }
         matches.forEachIndexed { index, match ->
             if (index > 0) {
@@ -404,11 +468,23 @@ private fun MatchGroupCard(
                         .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
                 )
             }
-            MatchRow(match, showFinishedStatus = showFinishedStatus, showDate = showDate, onClick = { onMatchClick(match) })
+            MatchRow(
+                match,
+                showFinishedStatus = showFinishedStatus,
+                showDate = showDate,
+                highlightTeamId = highlightTeamId,
+                onClick = { onMatchClick(match) },
+            )
         }
     }
 }
 
+/** One match's row: a leading fixed-width slot ([LEFT_SLOT_WIDTH]) for its status — live minute,
+ * "FT", a kickoff time, or (My Team's "RECENT RESULTS" only) a colored [ResultBadge] — then the
+ * team names, then a trailing score slot ([SCORE_SLOT_WIDTH]). The status used to trail the score
+ * on the right instead; moved to lead the row instead, matching the reference fotmob layout, and
+ * incidentally removing the old score-drift problem for free — the score now sits in its own fixed
+ * slot with nothing else competing for its space, so it isn't affected by what leads the row. */
 @Composable
 private fun MatchRow(
     match: Fixture,
@@ -417,70 +493,76 @@ private fun MatchRow(
     // header (unlike Scores/Fixtures), so a bare kickoff time there could be mistaken for today's
     // game — see formatKickoffDateAndTime's doc comment in SoccerFormatting.kt.
     showDate: Boolean = false,
+    // Set only by My Team's "RECENT RESULTS" card (showFinishedStatus = false there, so the FT
+    // badge that would otherwise occupy this slot is already suppressed) — shows a colored W/D/L
+    // result badge for this specific team in the same left-hand slot instead. See
+    // Fixture.resultFor/ResultBadge.
+    highlightTeamId: Int? = null,
     onClick: () -> Unit,
 ) {
     Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .lightClickable(onClick = onClick)
             .padding(vertical = 0.65f.gridUnitsAsDp()),
     ) {
-        LightText(
-            text = "${match.homeTeamName} vs ${match.awayTeamName}",
-            variant = LightTextVariant.Detail,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        // Score and its FT/live-minute badge used to stack in a Column (score, then status
-        // underneath) — that made every match with a score two lines tall. Side by side instead,
-        // so a match row is one line regardless of status. The badge sits in its own fixed-width
-        // slot (STATUS_SLOT_WIDTH) rather than being packed flush against the score: a live pill
-        // ("45+2'") is wider than "FT", so packing them together end-aligned made the score's own
-        // right edge drift left on live rows relative to FT rows — the exact misalignment the
-        // screenshots this was built against were showing. Fixing the slot width means the score
-        // always ends at the same x position regardless of which badge (or none) sits after it.
-        if (match.hasScore) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.3f.gridUnitsAsDp()),
-                modifier = Modifier.width(SCORE_COLUMN_WIDTH.gridUnitsAsDp()),
-            ) {
-                LightText(
-                    text = match.scoreLabel(),
-                    variant = LightTextVariant.Detail,
-                    align = TextAlign.End,
-                    modifier = Modifier.weight(1f),
-                )
-                Box(
-                    modifier = Modifier.width(STATUS_SLOT_WIDTH.gridUnitsAsDp()),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
-                    if (match.status.isLive) {
-                        MatchStatusBadge(text = match.statusLabel(), isLive = true)
-                    } else if (showFinishedStatus) {
-                        MatchStatusBadge(text = match.statusLabel(), isLive = false)
+        Box(
+            modifier = Modifier.width(LEFT_SLOT_WIDTH.gridUnitsAsDp()),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (match.hasScore) {
+                if (match.status.isLive) {
+                    MatchStatusBadge(text = match.statusLabel(), isLive = true)
+                } else if (showFinishedStatus) {
+                    MatchStatusBadge(text = match.statusLabel(), isLive = false)
+                } else {
+                    val result = highlightTeamId?.let { match.resultFor(it) }
+                    if (result != null) {
+                        ResultBadge(result)
                     }
                 }
-            }
-        } else {
-            // Upcoming match, no score yet — nothing to keep aligned with, so this stays a plain
-            // full-width label (unaffected by the slot-width fix above) rather than a badge; a
-            // kickoff date/time can run longer than STATUS_SLOT_WIDTH comfortably fits.
-            val label = if (showDate && match.status == MatchStatus.SCHEDULED) {
-                formatKickoffDateAndTime(match.utcDate)
             } else {
-                match.statusLabel()
+                // Upcoming match, no score yet — nothing to color-code, just the kickoff label.
+                val label = if (showDate && match.status == MatchStatus.SCHEDULED) {
+                    formatKickoffDateAndTime(match.utcDate)
+                } else {
+                    match.statusLabel()
+                }
+                // Was Superfine (16) before this round's font-size revert (see font-size-audit.md's
+                // Detail→Superfine bucket); reverted back to Detail (20).
+                LightText(
+                    text = label,
+                    variant = LightTextVariant.Detail,
+                    lighten = true,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            LightText(
-                text = label,
-                variant = LightTextVariant.Superfine,
-                align = TextAlign.End,
-                lighten = true,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(SCORE_COLUMN_WIDTH.gridUnitsAsDp()),
-            )
+        }
+        // Was Copy (30) before the global one-step-down pass shifted it to Detail (20); reverted
+        // back to Copy along with the rest of this view's text.
+        LightText(
+            text = "${match.homeTeamName} vs ${match.awayTeamName}",
+            variant = LightTextVariant.Copy,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(start = 0.5f.gridUnitsAsDp()),
+        )
+        Box(
+            modifier = Modifier.width(SCORE_SLOT_WIDTH.gridUnitsAsDp()),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            if (match.hasScore) {
+                // Was Detail (20) post-shift, Copy (30) before it — reverted back to Copy.
+                LightText(
+                    text = match.scoreLabel(),
+                    variant = LightTextVariant.Copy,
+                    align = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -515,9 +597,11 @@ private fun SettingsContent(
             LeaguesRow(leagueNames = selectedLeagueNames, onClick = onOpenLeagueSelection)
             SettingRow(label = "My Team", value = myTeamName ?: "Not set", onClick = onOpenMyTeamSetup)
             if (myTeamName != null) {
+                // Was Copy (30) before the global one-step-down pass shifted it to Detail (20);
+                // reverted back to Copy along with the rest of Settings' text.
                 LightText(
                     text = "Forget My Team",
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Copy,
                     modifier = Modifier
                         .fillMaxWidth()
                         .lightClickable(onClick = onClearMyTeam)
@@ -525,10 +609,11 @@ private fun SettingsContent(
                 )
             }
             // This build's only manual-refresh surface — see SoccerViewModel's class doc comment
-            // for why there's no bottom-bar refresh icon.
+            // for why there's no bottom-bar refresh icon. Was Copy (30) before the global
+            // one-step-down pass shifted it to Detail (20); reverted back to Copy.
             LightText(
                 text = "Refresh now",
-                variant = LightTextVariant.Detail,
+                variant = LightTextVariant.Copy,
                 modifier = Modifier
                     .fillMaxWidth()
                     .lightClickable(onClick = onManualRefresh)
@@ -542,9 +627,11 @@ private fun SettingsContent(
         // missing entirely. Pinning it here — a plain row, not the old centered/underlined
         // AttributionFooter, same ScoreScreenMode.Attribution destination — keeps it reachable
         // regardless of how long the scrollable list above gets.
+        // Was Copy (30) before the global one-step-down pass shifted it to Detail (20); reverted
+        // back to Copy along with the rest of Settings' text.
         LightText(
             text = "About",
-            variant = LightTextVariant.Detail,
+            variant = LightTextVariant.Copy,
             modifier = Modifier
                 .fillMaxWidth()
                 .lightClickable(onClick = onOpenAttribution)
@@ -562,11 +649,14 @@ private fun SettingRow(label: String, value: String, onClick: (() -> Unit)?) {
             .let { if (onClick != null) it.lightClickable(onClick = onClick) else it }
             .padding(vertical = 0.75f.gridUnitsAsDp()),
     ) {
-        LightText(text = label, variant = LightTextVariant.Superfine, lighten = true)
+        // Was Detail (20) before the global one-step-down pass shifted it to Superfine (16);
+        // reverted back to Detail along with the rest of Settings' text.
+        LightText(text = label, variant = LightTextVariant.Detail, lighten = true)
         // Was Heading (38), then Copy (30) — see font-size-audit.md recommendation #2 for why
-        // Heading was too heavy for a plain settings row. Now Detail (20) after the global
-        // one-step-down pass; still reads as "the value" against the (also-shifted) label above.
-        LightText(text = value, variant = LightTextVariant.Detail)
+        // Heading was too heavy for a plain settings row. The global one-step-down pass then
+        // shifted it to Detail (20); reverted back to Copy, its round-8 size, per the "make
+        // Settings text larger again" request — this view no longer follows the global shift.
+        LightText(text = value, variant = LightTextVariant.Copy)
     }
 }
 
@@ -578,13 +668,16 @@ private fun LeaguesRow(leagueNames: List<String>, onClick: () -> Unit) {
             .lightClickable(onClick = onClick)
             .padding(vertical = 0.75f.gridUnitsAsDp()),
     ) {
-        LightText(text = "Leagues followed", variant = LightTextVariant.Superfine, lighten = true)
+        // Was Detail (20) before the global one-step-down pass shifted it to Superfine (16);
+        // reverted back to Detail along with the rest of Settings' text.
+        LightText(text = "Leagues followed", variant = LightTextVariant.Detail, lighten = true)
         // Was Copy, then Detail (see font-size-audit.md recommendation #3 — with up to 15
         // trackable competitions, a user following several gets that many stacked lines, so this
-        // matches the label above rather than standing out as heavier). Now Superfine after the
-        // global one-step-down pass, same size as that label once again.
+        // matches the label above rather than standing out as heavier). The global one-step-down
+        // pass then shifted it to Superfine (16); reverted back to Detail here — recommendation #3
+        // still holds (matching the label above), this just undoes the global shift on top of it.
         leagueNames.forEach { name ->
-            LightText(text = name, variant = LightTextVariant.Superfine, modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()))
+            LightText(text = name, variant = LightTextVariant.Detail, modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()))
         }
     }
 }
@@ -605,6 +698,9 @@ private fun AttributionContent(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 1.5f.gridUnitsAsDp()),
         ) {
+            // Was Paragraph (24.5) — this app's own dedicated reading-text size — before the global
+            // one-step-down pass shifted it to Detail (20); reverted back to Paragraph along with
+            // the rest of Settings' (and its child pages') text.
             LightText(
                 text = "Scores are provided by API-Football (api-football.com), a paid football " +
                     "data API. This tool covers the Premier League, Serie A, and the UEFA " +
@@ -613,7 +709,7 @@ private fun AttributionContent(onBack: () -> Unit) {
                     "the API-Football key and absorbs the request load — there's nothing to set " +
                     "up or configure here. Scores, fixtures, and standings are live, " +
                     "current-season data.",
-                variant = LightTextVariant.Detail,
+                variant = LightTextVariant.Paragraph,
             )
         }
     }
@@ -645,7 +741,9 @@ private fun LeagueSelectionContent(
                         .lightClickable(onClick = { onToggle(row.id) })
                         .padding(vertical = 0.85f.gridUnitsAsDp()),
                 ) {
-                    LightText(text = row.name, variant = LightTextVariant.Detail, modifier = Modifier.weight(1f))
+                    // Was Copy (30) before the global one-step-down pass shifted it to Detail (20);
+                    // reverted back to Copy — this is a Settings child page, same treatment.
+                    LightText(text = row.name, variant = LightTextVariant.Copy, modifier = Modifier.weight(1f))
                     LightIcon(
                         icon = if (row.selected) LightIcons.TOGGLE_STATE_ON else LightIcons.TOGGLE_STATE_OFF,
                         size = 2f,
@@ -1001,6 +1099,7 @@ private fun MyTeamContent(
                         matches = summary.recentFixtures,
                         modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
                         showFinishedStatus = false,
+                        highlightTeamId = summary.teamId,
                         onMatchClick = onMatchClick,
                     )
                 }
@@ -1039,14 +1138,19 @@ private fun MyTeamContent(
 private fun MyTeamStandingBlock(leagueName: String, row: StandingsRow, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth().padding(top = 0.5f.gridUnitsAsDp(), bottom = 0.25f.gridUnitsAsDp())) {
         LightText(text = leagueName.uppercase(), variant = LightTextVariant.Superfine, lighten = true)
-        LightText(
-            text = "#${row.position} · ${row.points} pts",
-            variant = LightTextVariant.Copy,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.6f.gridUnitsAsDp()),
             modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()),
-        )
+        ) {
+            LightText(text = "#${row.position} · ${row.points} pts", variant = LightTextVariant.Copy)
+            // The "block W, L, D icons along the top of the view" from the fotmob reference —
+            // replaces the old plain "· form WWDLW" text tail below with the same colored badges
+            // ResultBadge draws per match in RECENT RESULTS, so the two reinforce each other.
+            row.form?.let { FormRow(it) }
+        }
         LightText(
-            text = "${row.win}W ${row.draw}D ${row.lose}L · ${row.goalDifferenceLabel()} GD" +
-                (row.form?.let { " · form $it" } ?: ""),
+            text = "${row.win}W ${row.draw}D ${row.lose}L · ${row.goalDifferenceLabel()} GD",
             variant = LightTextVariant.Superfine,
             lighten = true,
             modifier = Modifier.padding(top = 0.15f.gridUnitsAsDp()),
