@@ -234,6 +234,42 @@ private fun LoadingContent(title: String, message: String) {
 // to not crowd each other or wrap.
 private val SCORE_COLUMN_WIDTH = 9f
 
+// Fixed width for the FT/live-minute badge slot in MatchRow — sized to comfortably fit the widest
+// common case ("45+2'") without needing to grow or shrink per row. Keeping this constant, rather
+// than letting the badge size itself and packing it flush against the score, is what keeps the
+// score's own right edge at the same x position on every row regardless of which badge follows it.
+private val STATUS_SLOT_WIDTH = 2.6f
+
+// A light, legible green for a live match's minute-counter text — matches the reference (fotmob)
+// screenshot's live-indicator hue. Used for text color only (see MatchStatusBadge); the badge's
+// own pill background stays the same neutral translucent fill FT uses, so "live" reads as a color
+// change on familiar UI rather than an entirely different shape.
+private val LIVE_STATUS_GREEN = Color(0xFF4ADE80)
+
+/** Small rounded badge for a match's status — FT (or Postponed/Cancelled/Suspended) and a live
+ * minute counter now share the same pill shape, matching the reference fotmob screenshot's FT
+ * badge; only the live case gets green text ([LIVE_STATUS_GREEN]) to set it apart from a finished
+ * match. Always sized to [STATUS_SLOT_WIDTH]'s slot via the caller, not by this composable. */
+@Composable
+private fun MatchStatusBadge(text: String, isLive: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50.dp))
+            .background(LightThemeTokens.colors.content.copy(alpha = 0.12f))
+            .padding(horizontal = 0.4f.gridUnitsAsDp(), vertical = 0.05f.gridUnitsAsDp()),
+    ) {
+        LightText(
+            text = text,
+            variant = LightTextVariant.Superfine,
+            align = TextAlign.End,
+            lighten = !isLive,
+            color = if (isLive) LIVE_STATUS_GREEN else null,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 @Composable
 private fun ScoresContent(
     groups: List<CompetitionGroup>,
@@ -396,43 +432,55 @@ private fun MatchRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        // Score and its FT/live-minute label used to stack in a Column (score, then status
-        // underneath) — that made every match with a score two lines tall. Side by side in a Row
-        // instead, so a match row is one line regardless of status.
-        Row(
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.width(SCORE_COLUMN_WIDTH.gridUnitsAsDp()),
-        ) {
-            if (match.hasScore) {
-                LightText(text = match.scoreLabel(), variant = LightTextVariant.Detail, align = TextAlign.End)
-            }
-            if (match.status.isLive) {
-                Box(
-                    modifier = Modifier
-                        .padding(start = 0.4f.gridUnitsAsDp())
-                        .clip(RoundedCornerShape(50.dp))
-                        .background(LightThemeTokens.colors.content.copy(alpha = 0.12f))
-                        .padding(horizontal = 0.4f.gridUnitsAsDp(), vertical = 0.05f.gridUnitsAsDp()),
-                ) {
-                    LightText(text = match.statusLabel(), variant = LightTextVariant.Superfine, align = TextAlign.End)
-                }
-            } else if (!match.hasScore || showFinishedStatus) {
-                val label = if (showDate && match.status == MatchStatus.SCHEDULED) {
-                    formatKickoffDateAndTime(match.utcDate)
-                } else {
-                    match.statusLabel()
-                }
+        // Score and its FT/live-minute badge used to stack in a Column (score, then status
+        // underneath) — that made every match with a score two lines tall. Side by side instead,
+        // so a match row is one line regardless of status. The badge sits in its own fixed-width
+        // slot (STATUS_SLOT_WIDTH) rather than being packed flush against the score: a live pill
+        // ("45+2'") is wider than "FT", so packing them together end-aligned made the score's own
+        // right edge drift left on live rows relative to FT rows — the exact misalignment the
+        // screenshots this was built against were showing. Fixing the slot width means the score
+        // always ends at the same x position regardless of which badge (or none) sits after it.
+        if (match.hasScore) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.3f.gridUnitsAsDp()),
+                modifier = Modifier.width(SCORE_COLUMN_WIDTH.gridUnitsAsDp()),
+            ) {
                 LightText(
-                    text = label,
-                    variant = LightTextVariant.Superfine,
+                    text = match.scoreLabel(),
+                    variant = LightTextVariant.Detail,
                     align = TextAlign.End,
-                    lighten = true,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = if (match.hasScore) Modifier.padding(start = 0.4f.gridUnitsAsDp()) else Modifier,
+                    modifier = Modifier.weight(1f),
                 )
+                Box(
+                    modifier = Modifier.width(STATUS_SLOT_WIDTH.gridUnitsAsDp()),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    if (match.status.isLive) {
+                        MatchStatusBadge(text = match.statusLabel(), isLive = true)
+                    } else if (showFinishedStatus) {
+                        MatchStatusBadge(text = match.statusLabel(), isLive = false)
+                    }
+                }
             }
+        } else {
+            // Upcoming match, no score yet — nothing to keep aligned with, so this stays a plain
+            // full-width label (unaffected by the slot-width fix above) rather than a badge; a
+            // kickoff date/time can run longer than STATUS_SLOT_WIDTH comfortably fits.
+            val label = if (showDate && match.status == MatchStatus.SCHEDULED) {
+                formatKickoffDateAndTime(match.utcDate)
+            } else {
+                match.statusLabel()
+            }
+            LightText(
+                text = label,
+                variant = LightTextVariant.Superfine,
+                align = TextAlign.End,
+                lighten = true,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(SCORE_COLUMN_WIDTH.gridUnitsAsDp()),
+            )
         }
     }
 }
