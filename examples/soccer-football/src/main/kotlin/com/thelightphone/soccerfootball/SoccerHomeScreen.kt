@@ -1,5 +1,6 @@
 package com.thelightphone.soccerfootball
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -456,18 +457,23 @@ private fun SettingsContent(
                     .lightClickable(onClick = onManualRefresh)
                     .padding(top = 0.25f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
             )
-            // A plain row like the others above, not the separate centered footnote this used to
-            // be (AttributionFooter, now removed) — same destination (ScoreScreenMode.Attribution,
-            // titled "About" there), just no longer visually set apart from the rest of Settings.
-            LightText(
-                text = "About",
-                variant = LightTextVariant.Copy,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .lightClickable(onClick = onOpenAttribution)
-                    .padding(top = 0.25f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
-            )
         }
+
+        // Deliberately outside the scrollable Column above, not its last item: with a longer
+        // leagues list ("Leagues followed" can grow to several lines) the previous placement put
+        // "About" below the fold with no visual hint there was more to scroll to, so it read as
+        // missing entirely. Pinning it here — a plain row, not the old centered/underlined
+        // AttributionFooter, same ScoreScreenMode.Attribution destination — keeps it reachable
+        // regardless of how long the scrollable list above gets.
+        LightText(
+            text = "About",
+            variant = LightTextVariant.Copy,
+            modifier = Modifier
+                .fillMaxWidth()
+                .lightClickable(onClick = onOpenAttribution)
+                .padding(horizontal = 1f.gridUnitsAsDp())
+                .padding(top = 0.5f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
+        )
     }
 }
 
@@ -982,9 +988,13 @@ private fun UnavailableGroup(label: String, players: List<UnavailablePlayer>, mo
                     align = TextAlign.End,
                 )
             }
+            // Detail, not Fine: despite the name, Fine (25sp) renders larger than Detail (20sp) in
+            // this SDK's real type scale — see the font-size audit doc — so Fine was actually
+            // making this secondary reason text bigger than the "Out"/"Doubtful" label above it,
+            // the opposite of the intended caption-sized, de-emphasized treatment.
             LightText(
                 text = player.reason,
-                variant = LightTextVariant.Fine,
+                variant = LightTextVariant.Detail,
                 lighten = true,
                 modifier = Modifier.padding(top = 0.05f.gridUnitsAsDp()),
             )
@@ -1004,6 +1014,15 @@ private enum class DetailTab(val label: String) {
 @Composable
 private fun MatchDetailContent(mode: ScoreScreenMode.MatchDetailScreen, onBack: () -> Unit) {
     var selectedTab by remember(mode.fixtureId) { mutableStateOf(DetailTab.STATS) }
+
+    // No team-colors dataset exists anywhere in this app (API-Football's crest/logo field is the
+    // only per-team visual data it sends — kit colors aren't part of that response), so this reads
+    // a representative color straight from the crest pixels already fetched for the header above.
+    // See extractCrestAccentColor's doc comment for what that approximates and where it can't match
+    // a shirt color a crest wouldn't reflect (e.g. a badge that's mostly white with a colored
+    // crest mark, worn with a colored shirt).
+    val homeTeamColor = rememberCrestAccentColor(mode.homeTeamLogoBytes)
+    val awayTeamColor = rememberCrestAccentColor(mode.awayTeamLogoBytes)
 
     Column(modifier = Modifier.fillMaxSize()) {
         LightTopBar(
@@ -1073,12 +1092,14 @@ private fun MatchDetailContent(mode: ScoreScreenMode.MatchDetailScreen, onBack: 
                             teamName = mode.homeTeamName,
                             lineup = detail.lineups.home,
                             mirrored = false,
+                            teamColor = homeTeamColor,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
                         DetailTab.AWAY_LINEUP -> LineupSection(
                             teamName = mode.awayTeamName,
                             lineup = detail.lineups.away,
                             mirrored = true,
+                            teamColor = awayTeamColor,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
                     }
@@ -1183,6 +1204,105 @@ private fun MatchDetailTeamBlock(name: String, logoBytes: ByteArray?, modifier: 
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/** Decodes [logoBytes] once per byte-array identity and samples a representative color from it —
+ * see [extractCrestAccentColor] for the sampling itself. Returns null while bytes haven't arrived,
+ * on a decode failure, or when the crest has no qualifying pixels (extractCrestAccentColor's own
+ * fallback case). */
+@Composable
+private fun rememberCrestAccentColor(logoBytes: ByteArray?): Color? = remember(logoBytes) {
+    logoBytes?.let { bytes ->
+        runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
+            .getOrNull()
+            ?.let { extractCrestAccentColor(it) }
+    }
+}
+
+/**
+ * A representative "team color" sampled directly from a crest bitmap's pixels. There's no
+ * team-colors dataset anywhere in this app, and none is practical to maintain by hand across the
+ * 15 competitions this build tracks (see the competition list in SoccerModels.kt) — API-Football's
+ * crest/logo URL is the only per-team visual data it sends at all, so this reads the color from
+ * that image instead of a lookup table.
+ *
+ * This approximates a crest's dominant *badge* color, not necessarily the team's actual kit
+ * color — the two usually match closely enough to read as "the team's color" (a mostly-red badge
+ * usually belongs to a team that wears red), but not always: a badge that's mostly a neutral shield
+ * shape with one small colored crest mark, worn by a team in an unrelated kit color, is a case this
+ * can't get right without real kit-color data this app has no source for. Flagging this honestly
+ * rather than presenting it as authoritative.
+ *
+ * Implementation: samples a bounded grid of pixels (not every pixel — a few hundred reads is
+ * plenty for a crest-sized image and keeps this cheap), skips near-white/near-black/low-saturation
+ * pixels (crest backgrounds, outline strokes, shading — not the badge's identifying color), buckets
+ * the rest by coarsened RGB so antialiased edge pixels of the same underlying color count together,
+ * and returns the most common bucket's average color. Returns null for a crest with no qualifying
+ * pixels (e.g. a genuinely monochrome black/white badge) — callers fall back to the neutral dot
+ * color this used before team colors existed.
+ */
+private fun extractCrestAccentColor(bitmap: Bitmap): Color? {
+    val width = bitmap.width
+    val height = bitmap.height
+    if (width <= 0 || height <= 0) return null
+
+    // ~40 samples per axis keeps this to well under a thousand pixel reads even for a few-hundred-
+    // pixel crest image, rather than reading every pixel.
+    val strideX = (width / 40).coerceAtLeast(1)
+    val strideY = (height / 40).coerceAtLeast(1)
+
+    data class BucketAccum(var count: Int = 0, var r: Int = 0, var g: Int = 0, var b: Int = 0)
+    val buckets = HashMap<Int, BucketAccum>()
+
+    var y = 0
+    while (y < height) {
+        var x = 0
+        while (x < width) {
+            val pixel = bitmap.getPixel(x, y)
+            val alpha = (pixel ushr 24) and 0xFF
+            if (alpha >= 128) {
+                val r = (pixel ushr 16) and 0xFF
+                val g = (pixel ushr 8) and 0xFF
+                val b = pixel and 0xFF
+                val max = maxOf(r, g, b)
+                val min = minOf(r, g, b)
+                val saturation = if (max == 0) 0f else (max - min).toFloat() / max
+                val brightness = max / 255f
+                // Saturation/brightness bounds exclude near-white, near-black, and near-gray
+                // pixels — the crest's background and outline strokes, not its identifying color.
+                if (saturation > 0.25f && brightness in 0.15f..0.95f) {
+                    // 5 bits/channel (32 buckets/channel) groups near-identical antialiased shades
+                    // together instead of splitting their vote across many almost-equal colors.
+                    val bucketKey = ((r shr 3) shl 10) or ((g shr 3) shl 5) or (b shr 3)
+                    val accum = buckets.getOrPut(bucketKey) { BucketAccum() }
+                    accum.count++
+                    accum.r += r
+                    accum.g += g
+                    accum.b += b
+                }
+            }
+            x += strideX
+        }
+        y += strideY
+    }
+
+    val winner = buckets.values.maxByOrNull { it.count } ?: return null
+    // .toFloat() before dividing by count — plain Int division here would truncate each channel's
+    // average (e.g. 100/3 == 33, not 33.3) before it's even scaled down to Color's 0f..1f range.
+    return Color(
+        red = (winner.r.toFloat() / winner.count) / 255f,
+        green = (winner.g.toFloat() / winner.count) / 255f,
+        blue = (winner.b.toFloat() / winner.count) / 255f,
+    )
+}
+
+/** Black or white, whichever contrasts better against [background] — used for text drawn on top of
+ * a per-team accent color (see [PitchPlayerChip]), since that color is arbitrary (whatever a real
+ * crest's dominant hue turns out to be) and the theme's default text color can't be assumed to
+ * read against it the way it does against the app's own neutral surfaces. */
+private fun legibleTextColorOn(background: Color): Color {
+    val luminance = 0.299f * background.red + 0.587f * background.green + 0.114f * background.blue
+    return if (luminance > 0.6f) Color.Black else Color.White
 }
 
 /** A compact, persistent goalscorer line shown under the score/status in [MatchDetailHeader],
@@ -1415,7 +1535,13 @@ private fun NoDataForTab(text: String) {
  * each name gets the column's full width instead of splitting it with row-mates.
  */
 @Composable
-private fun LineupSection(teamName: String, lineup: TeamLineup?, mirrored: Boolean, modifier: Modifier = Modifier) {
+private fun LineupSection(
+    teamName: String,
+    lineup: TeamLineup?,
+    mirrored: Boolean,
+    teamColor: Color?,
+    modifier: Modifier = Modifier,
+) {
     if (lineup == null || lineup.startXI.isEmpty()) {
         NoDataForTab(text = "No lineup available for $teamName yet.")
         return
@@ -1465,15 +1591,18 @@ private fun LineupSection(teamName: String, lineup: TeamLineup?, mirrored: Boole
                     modifier = Modifier.weight(1f),
                     verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.7f.gridUnitsAsDp()),
                 ) {
-                    column.forEach { player -> PitchPlayerChip(player, modifier = Modifier.fillMaxWidth()) }
+                    column.forEach { player -> PitchPlayerChip(player, dotColor = teamColor, modifier = Modifier.fillMaxWidth()) }
                 }
             }
         }
 
         lineup.coachName?.let {
+            // Detail, not Fine — see the font-size audit doc: Fine (25sp) is bigger than Detail
+            // (20sp) in this SDK's real type scale despite the name suggesting the opposite, so
+            // this caption was rendering almost as large as the primary player names above it.
             LightText(
                 text = "Coach: $it",
-                variant = LightTextVariant.Fine,
+                variant = LightTextVariant.Detail,
                 lighten = true,
                 modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()),
             )
@@ -1486,23 +1615,32 @@ private fun LineupSection(teamName: String, lineup: TeamLineup?, mirrored: Boole
 }
 
 @Composable
-private fun PitchPlayerChip(player: LineupPlayer, modifier: Modifier = Modifier) {
+private fun PitchPlayerChip(player: LineupPlayer, dotColor: Color?, modifier: Modifier = Modifier) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier.padding(vertical = 0.1f.gridUnitsAsDp()),
     ) {
+        // A saturated dotColor needs its own text color to stay legible — the theme's default
+        // content color assumes the neutral, low-alpha background this dot had before team colors
+        // existed, and can end up light-on-light or dark-on-dark against a real team hue.
+        val numberColor = dotColor?.let { legibleTextColorOn(it) }
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(2.3f.gridUnitsAsDp())
                 .clip(CircleShape)
-                .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.22f)),
+                .background(dotColor?.copy(alpha = 0.55f) ?: LightThemeTokens.colors.contentSecondary.copy(alpha = 0.22f)),
         ) {
-            LightText(text = player.number?.toString() ?: "-", variant = LightTextVariant.Detail)
+            LightText(text = player.number?.toString() ?: "-", variant = LightTextVariant.Detail, color = numberColor)
         }
+        // Superfine, not Fine — see the font-size audit doc: Fine (25sp) is bigger than Detail
+        // (20sp), which sits right above this in the jersey-number circle, so this surname caption
+        // was rendering nearly Copy-sized under a smaller number. Superfine (16sp) also buys a
+        // little more room before the truncation this doc comment on LineupSection already
+        // expects ("Walukiew…", "McKen…") kicks in.
         LightText(
             text = player.name.substringAfterLast(' '),
-            variant = LightTextVariant.Fine,
+            variant = LightTextVariant.Superfine,
             lighten = true,
             align = TextAlign.Center,
             maxLines = 1,

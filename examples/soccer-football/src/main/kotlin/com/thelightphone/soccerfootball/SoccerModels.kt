@@ -1,6 +1,7 @@
 package com.thelightphone.soccerfootball
 
 import kotlinx.datetime.LocalDate
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -408,7 +409,20 @@ internal data class ApiFootballStandingsStatsDto(
     val win: Int = 0,
     val draw: Int = 0,
     val lose: Int = 0,
-    val goals: ApiFootballGoalsDto = ApiFootballGoalsDto(),
+    val goals: ApiFootballStandingsGoalsDto = ApiFootballStandingsGoalsDto(),
+)
+
+/** Standings' own `goals` shape — `{"for": N, "against": N}`, a season total — which is NOT the
+ * same shape as [ApiFootballGoalsDto] (`{"home": N, "away": N}`, one fixture's final score). This
+ * row's `all.goals` was wrongly typed as [ApiFootballGoalsDto] previously: `ignoreUnknownKeys`
+ * silently accepted the response instead of failing to parse, and `home`/`away` both stayed null
+ * (defaulting to 0) since neither key exists in a standings goals object — which is why GF/GA
+ * showed 0 for every team rather than a genuine API limitation. "for" is a Kotlin keyword, hence
+ * the [SerialName] mapping rather than a backticked property name. */
+@Serializable
+internal data class ApiFootballStandingsGoalsDto(
+    @SerialName("for") val goalsFor: Int = 0,
+    val against: Int = 0,
 )
 
 internal fun ApiFootballStandingsLeagueDto.toStandingsRows(): List<StandingsRow> {
@@ -424,8 +438,8 @@ private fun ApiFootballStandingsRowDto.toStandingsRow(isGrouped: Boolean): Stand
     win = all.win,
     draw = all.draw,
     lose = all.lose,
-    goalsFor = all.goals.home ?: 0,
-    goalsAgainst = all.goals.away ?: 0,
+    goalsFor = all.goals.goalsFor,
+    goalsAgainst = all.goals.against,
     goalDifference = goalsDiff,
     points = points,
     form = form?.takeIf { it.isNotBlank() },
