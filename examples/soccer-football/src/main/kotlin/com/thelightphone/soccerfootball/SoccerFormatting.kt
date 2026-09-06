@@ -60,6 +60,15 @@ fun todayLocalDateString(): String = todayLocalDate().toString()
 fun currentSeason(referenceDate: LocalDate = todayLocalDate()): Int =
     if (referenceDate.month.number >= 7) referenceDate.year else referenceDate.year - 1
 
+/** Kickoff date + time for contexts that aren't already grouped by day, e.g. My Team's flat
+ * "UPCOMING" list (unlike Scores/Fixtures, which group matches under a per-day header first, so a
+ * bare time there already reads unambiguously). Renders as e.g. "9/25 3:45 PM" — same time format
+ * [formatKickoffTime] already uses, just prefixed with the short numeric month/day. */
+fun formatKickoffDateAndTime(isoDate: String): String {
+    val dateTime = parseIso(isoDate)?.toLocalDateTime(TimeZone.currentSystemDefault()) ?: return "--/-- --:--"
+    return "${dateTime.date.monthNumber}/${dateTime.date.dayOfMonth} ${dateTime.toAmPm()}"
+}
+
 /** The calendar date (device-local timezone) a fixture's kickoff falls on, or null if
  * [Fixture.utcDate] couldn't be parsed. API-Football sends full ISO-8601 with an explicit offset
  * (e.g. "2023-08-11T19:00:00+00:00"), so unlike the ESPN variant of this tool, no padding/repair

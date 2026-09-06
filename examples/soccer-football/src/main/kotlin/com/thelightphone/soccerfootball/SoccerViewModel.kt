@@ -94,6 +94,12 @@ sealed class ScoreScreenMode {
         val isLive: Boolean,
         val detail: MatchDetail?,
         val isLoading: Boolean,
+        /** Team crest bytes for the header's team icons — fetched separately from [detail] (see
+         * [openMatchDetail]) so a slow/failed stats-events-lineups fetch never blocks the crests
+         * from appearing, and vice versa. Null until that fetch resolves, or if a side had no logo
+         * URL / the fetch failed. */
+        val homeTeamLogoBytes: ByteArray? = null,
+        val awayTeamLogoBytes: ByteArray? = null,
     ) : ScoreScreenMode()
 }
 
@@ -267,11 +273,18 @@ class SoccerViewModel(
         }
     }
 
+    // Only a genuine Kind.NETWORK failure (timeout, no connection, the proxy itself unreachable)
+    // shows NETWORK_ERROR_MESSAGE — everything else surfaces its own real message instead of being
+    // masked as a network problem. Previously any unclassified error (a 403 whitelist rejection, a
+    // bad league id, an unexpected response shape) fell through to the generic "requires a network
+    // connection" text, which was actively misleading for e.g. the MLS standings bug: the request
+    // was reaching the proxy fine, it just wasn't a connectivity issue at all.
     private fun apiErrorMessage(error: Throwable): String = when {
         error is ApiFootballApiException && error.kind == ApiFootballApiException.Kind.RATE_LIMITED ->
             "Too many requests — try again in a minute."
-        error is ApiFootballApiException && error.kind == ApiFootballApiException.Kind.PLAN_RESTRICTED ->
-            error.message ?: NETWORK_ERROR_MESSAGE
+        error is ApiFootballApiException && error.kind == ApiFootballApiException.Kind.NETWORK ->
+            NETWORK_ERROR_MESSAGE
+        error is ApiFootballApiException -> error.message ?: NETWORK_ERROR_MESSAGE
         else -> NETWORK_ERROR_MESSAGE
     }
 
@@ -651,6 +664,22 @@ class SoccerViewModel(
                     }
                 },
             )
+        }
+        // Crests fetch independently of stats/events/lineups above — see the doc comment on
+        // MatchDetailScreen.homeTeamLogoBytes for why this is a separate launch rather than folded
+        // into fetchMatchDetail's result. A failure here is silent (no errorModal): a missing crest
+        // just means the header renders without an icon, not something worth interrupting the user
+        // over the way a failed stats/events fetch is.
+        viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
+            val (homeBytes, awayBytes) = api.fetchMatchCrests(match.homeTeamLogo, match.awayTeamLogo)
+            updateState { state ->
+                val current = state.mode as? ScoreScreenMode.MatchDetailScreen
+                if (current != null && current.fixtureId == match.id) {
+                    state.copy(mode = current.copy(homeTeamLogoBytes = homeBytes, awayTeamLogoBytes = awayBytes))
+                } else {
+                    state
+                }
+            }
         }
     }
 

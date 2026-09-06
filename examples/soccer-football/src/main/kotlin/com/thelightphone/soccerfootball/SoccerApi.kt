@@ -228,8 +228,13 @@ internal class ApiFootballApi {
         val recent = fixtures.filter { it.localDate()?.let { d -> d < today } == true }.reversed()
 
         val referenceFixtureId = upcoming.firstOrNull()?.id ?: recent.firstOrNull()?.id
+        // distinctBy: a real /injuries response has been observed repeating the same player row
+        // (confirmed by a user report of duplicated "Unavailable" entries) — API-Football's own
+        // docs don't explain why, so this dedupes defensively by player name rather than assuming
+        // a specific cause. Keeps whichever row for that name came first.
         val unavailable = referenceFixtureId
             ?.let { fetchUnavailableForFixture(it).getOrElse { emptyList() } }
+            ?.distinctBy { it.playerName }
             ?: emptyList()
 
         // No standalone "team" endpoint call for this — the crest URL rides along on every fixture's
@@ -257,6 +262,18 @@ internal class ApiFootballApi {
             unavailable = unavailable,
             teamLogoBytes = teamLogoBytes,
         )
+    }
+
+    /** Home/away crest bytes for the match detail header's team icons. Sourced from the tapped
+     * [Fixture]'s own [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] — already present on every
+     * fixture response (see [ApiFootballFixtureTeamDto.logo]), so this needs no extra "team"
+     * lookup, just the two image fetches themselves, run concurrently the same way
+     * [fetchMatchDetail]'s three sections are. Either side is null if its URL was blank or the
+     * fetch failed — the header simply omits that crest rather than showing a broken image. */
+    suspend fun fetchMatchCrests(homeLogoUrl: String, awayLogoUrl: String): Pair<ByteArray?, ByteArray?> = coroutineScope {
+        val homeDeferred = async { homeLogoUrl.takeIf { it.isNotBlank() }?.let { fetchImageBytes(it).getOrNull() } }
+        val awayDeferred = async { awayLogoUrl.takeIf { it.isNotBlank() }?.let { fetchImageBytes(it).getOrNull() } }
+        homeDeferred.await() to awayDeferred.await()
     }
 
     /** Fetches a hosted image as raw bytes — used for team crest URLs off [ApiFootballFixtureTeamDto.logo].
@@ -323,6 +340,10 @@ internal class ApiFootballApi {
             402 -> throw ApiFootballApiException(
                 "This data isn't available on the current plan.",
                 ApiFootballApiException.Kind.PLAN_RESTRICTED,
+            )
+            403 -> throw ApiFootballApiException(
+                "This league isn't turned on for Soccer Pro yet — try again once the proxy is updated.",
+                ApiFootballApiException.Kind.UNKNOWN,
             )
             502 -> throw ApiFootballApiException(
                 "The proxy couldn't reach API-Football — try again shortly.",

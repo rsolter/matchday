@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
@@ -318,6 +319,7 @@ private fun MatchGroupCard(
     matches: List<Fixture>,
     modifier: Modifier = Modifier,
     showFinishedStatus: Boolean = true,
+    showDate: Boolean = false,
     onMatchClick: (Fixture) -> Unit,
 ) {
     Column(
@@ -342,13 +344,21 @@ private fun MatchGroupCard(
                         .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
                 )
             }
-            MatchRow(match, showFinishedStatus = showFinishedStatus, onClick = { onMatchClick(match) })
+            MatchRow(match, showFinishedStatus = showFinishedStatus, showDate = showDate, onClick = { onMatchClick(match) })
         }
     }
 }
 
 @Composable
-private fun MatchRow(match: Fixture, showFinishedStatus: Boolean = true, onClick: () -> Unit) {
+private fun MatchRow(
+    match: Fixture,
+    showFinishedStatus: Boolean = true,
+    // My Team's "UPCOMING" card is the one caller that isn't already grouped under a per-day
+    // header (unlike Scores/Fixtures), so a bare kickoff time there could be mistaken for today's
+    // game — see formatKickoffDateAndTime's doc comment in SoccerFormatting.kt.
+    showDate: Boolean = false,
+    onClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -380,8 +390,13 @@ private fun MatchRow(match: Fixture, showFinishedStatus: Boolean = true, onClick
                     LightText(text = match.statusLabel(), variant = LightTextVariant.Detail, align = TextAlign.End)
                 }
             } else if (!match.hasScore || showFinishedStatus) {
+                val label = if (showDate && match.status == MatchStatus.SCHEDULED) {
+                    formatKickoffDateAndTime(match.utcDate)
+                } else {
+                    match.statusLabel()
+                }
                 LightText(
-                    text = match.statusLabel(),
+                    text = label,
                     variant = LightTextVariant.Detail,
                     align = TextAlign.End,
                     lighten = true,
@@ -441,9 +456,18 @@ private fun SettingsContent(
                     .lightClickable(onClick = onManualRefresh)
                     .padding(top = 0.25f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
             )
+            // A plain row like the others above, not the separate centered footnote this used to
+            // be (AttributionFooter, now removed) — same destination (ScoreScreenMode.Attribution,
+            // titled "About" there), just no longer visually set apart from the rest of Settings.
+            LightText(
+                text = "About",
+                variant = LightTextVariant.Copy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .lightClickable(onClick = onOpenAttribution)
+                    .padding(top = 0.25f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
+            )
         }
-
-        AttributionFooter(onClick = onOpenAttribution)
     }
 }
 
@@ -472,25 +496,6 @@ private fun LeaguesRow(leagueNames: List<String>, onClick: () -> Unit) {
         leagueNames.forEach { name ->
             LightText(text = name, variant = LightTextVariant.Copy, modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()))
         }
-    }
-}
-
-@Composable
-private fun AttributionFooter(onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .lightClickable(onClick = onClick)
-            .padding(vertical = 1f.gridUnitsAsDp(), horizontal = 1f.gridUnitsAsDp()),
-        contentAlignment = Alignment.Center,
-    ) {
-        LightText(
-            text = "Scores from API-Football — learn more",
-            variant = LightTextVariant.Fine,
-            align = TextAlign.Center,
-            lighten = true,
-            underline = true,
-        )
     }
 }
 
@@ -597,10 +602,15 @@ private fun CompetitionPickerContent(
 
 // --- Standings ------------------------------------------------------------------
 
-private val STANDINGS_POS_WEIGHT = 0.13f
-private val STANDINGS_TEAM_WEIGHT = 0.48f
-private val STANDINGS_MP_WEIGHT = 0.13f
-private val STANDINGS_GD_WEIGHT = 0.13f
+// POS narrowed from 0.13 to 0.08 (it only ever holds 1-2 digits) so TEAM starts further left,
+// closing up the blank gap that used to sit in front of team names; the width that frees up plus
+// TEAM's own reduction from 0.48 makes room for the new GF/GA columns below.
+private val STANDINGS_POS_WEIGHT = 0.08f
+private val STANDINGS_TEAM_WEIGHT = 0.34f
+private val STANDINGS_MP_WEIGHT = 0.11f
+private val STANDINGS_GF_WEIGHT = 0.11f
+private val STANDINGS_GA_WEIGHT = 0.11f
+private val STANDINGS_GD_WEIGHT = 0.12f
 private val STANDINGS_PTS_WEIGHT = 0.13f
 
 @Composable
@@ -651,14 +661,24 @@ private fun StandingsTableContent(
                 modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
             ) {
                 var currentGroup: String? = null
-                rows.forEach { row ->
-                    if (showGroupHeaders && row.group != null && row.group != currentGroup) {
+                rows.forEachIndexed { index, row ->
+                    val startsNewGroup = showGroupHeaders && row.group != null && row.group != currentGroup
+                    if (startsNewGroup) {
                         currentGroup = row.group
                         LightText(
                             text = row.group.uppercase(),
                             variant = LightTextVariant.Detail,
                             lighten = true,
                             modifier = Modifier.padding(top = 0.75f.gridUnitsAsDp(), bottom = 0.25f.gridUnitsAsDp()),
+                        )
+                    } else if (index > 0) {
+                        // Skipped right under a fresh group header — that header already reads as
+                        // its own separator, so a divider directly beneath it would be redundant.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
                         )
                     }
                     StandingsTableRow(row)
@@ -674,6 +694,8 @@ private fun StandingsHeaderRow() {
         LightText(text = "#", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
         LightText(text = "TEAM", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT))
         LightText(text = "MP", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
+        LightText(text = "GF", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
+        LightText(text = "GA", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
         LightText(text = "GD", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
         LightText(text = "PTS", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
@@ -694,6 +716,8 @@ private fun StandingsTableRow(row: StandingsRow) {
             modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT),
         )
         LightText(text = row.played.toString(), variant = LightTextVariant.Copy, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
+        LightText(text = row.goalsFor.toString(), variant = LightTextVariant.Copy, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
+        LightText(text = row.goalsAgainst.toString(), variant = LightTextVariant.Copy, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
         LightText(text = row.goalDifferenceLabel(), variant = LightTextVariant.Copy, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
         LightText(text = row.points.toString(), variant = LightTextVariant.Copy, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
@@ -872,6 +896,7 @@ private fun MyTeamContent(
                         title = "UPCOMING",
                         matches = summary.upcomingFixtures,
                         modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
+                        showDate = true,
                         onMatchClick = onMatchClick,
                     )
                 }
@@ -971,9 +996,9 @@ private fun UnavailableGroup(label: String, players: List<UnavailablePlayer>, mo
 
 private enum class DetailTab(val label: String) {
     STATS("Stats"),
-    TIMELINE("Timeline"),
-    HOME_LINEUP("Home Lineup"),
-    AWAY_LINEUP("Away Lineup"),
+    TIMELINE("Events"),
+    HOME_LINEUP("Home"),
+    AWAY_LINEUP("Away"),
 }
 
 @Composable
@@ -993,6 +1018,8 @@ private fun MatchDetailContent(mode: ScoreScreenMode.MatchDetailScreen, onBack: 
             MatchDetailHeader(
                 homeTeamName = mode.homeTeamName,
                 awayTeamName = mode.awayTeamName,
+                homeTeamLogoBytes = mode.homeTeamLogoBytes,
+                awayTeamLogoBytes = mode.awayTeamLogoBytes,
                 scoreLabel = mode.scoreLabel,
                 statusLabel = mode.statusLabel,
                 isLive = mode.isLive,
@@ -1068,6 +1095,8 @@ private fun MatchDetail.isEmpty(): Boolean =
 private fun MatchDetailHeader(
     homeTeamName: String,
     awayTeamName: String,
+    homeTeamLogoBytes: ByteArray?,
+    awayTeamLogoBytes: ByteArray?,
     scoreLabel: String,
     statusLabel: String,
     isLive: Boolean,
@@ -1075,31 +1104,17 @@ private fun MatchDetailHeader(
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(top = 0.5f.gridUnitsAsDp(), bottom = 0.25f.gridUnitsAsDp())) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            // Detail (20sp), not Copy (30sp): the API doesn't give us a short/abbreviated team
-            // name (see the doc comment above this composable), so the only lever we have to stop
-            // long names ("Manchester City", "FC Copenhagen") from wrapping mid-word is a smaller
-            // font. maxLines/Ellipsis stays as a safety net for names this still doesn't fit.
-            LightText(
-                text = homeTeamName,
-                variant = LightTextVariant.Detail,
-                align = TextAlign.End,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+            MatchDetailTeamBlock(name = homeTeamName, logoBytes = homeTeamLogoBytes, modifier = Modifier.weight(1f))
+            // Heading (24sp), not Title (34sp) — the crest icons beside each team name below need
+            // the horizontal room this used to take up; shrinking the score is the deliberate
+            // trade-off (still the visually dominant element on the row, just not oversized).
             LightText(
                 text = scoreLabel,
-                variant = LightTextVariant.Title,
+                variant = LightTextVariant.Heading,
                 align = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 0.75f.gridUnitsAsDp()),
+                modifier = Modifier.padding(horizontal = 0.5f.gridUnitsAsDp()),
             )
-            LightText(
-                text = awayTeamName,
-                variant = LightTextVariant.Detail,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+            MatchDetailTeamBlock(name = awayTeamName, logoBytes = awayTeamLogoBytes, modifier = Modifier.weight(1f))
         }
 
         if (isLive) {
@@ -1130,6 +1145,43 @@ private fun MatchDetailHeader(
                 modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()),
             )
         }
+    }
+}
+
+/** One team's crest + name for [MatchDetailHeader], stacked and centered within its half of the
+ * row. No AsyncImage available here — same constraint as [MyTeamContent]'s own crest (the Light
+ * SDK's dependency allow-list rejects every third-party image loader) — so this hand-decodes the
+ * bytes [SoccerViewModel.openMatchDetail] already fetched via [ApiFootballApi.fetchMatchCrests].
+ * Renders name-only, same as before this feature existed, if [logoBytes] hasn't arrived yet (it's
+ * fetched separately from the rest of the header, see that fetch's own doc comment) or the fetch
+ * failed — a missing crest was never a reason to hide the name. */
+@Composable
+private fun MatchDetailTeamBlock(name: String, logoBytes: ByteArray?, modifier: Modifier = Modifier) {
+    val logoBitmap = logoBytes?.let { bytes ->
+        remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
+        if (logoBitmap != null) {
+            Image(
+                bitmap = logoBitmap,
+                contentDescription = "$name crest",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .size(2f.gridUnitsAsDp())
+                    .padding(bottom = 0.2f.gridUnitsAsDp()),
+            )
+        }
+        // Detail (20sp), not Copy (30sp): the API doesn't give us a short/abbreviated team name,
+        // so the only lever we have to stop long names ("Manchester City", "FC Copenhagen") from
+        // wrapping mid-word is a smaller font. maxLines/Ellipsis stays as a safety net for names
+        // this still doesn't fit.
+        LightText(
+            text = name,
+            variant = LightTextVariant.Detail,
+            align = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -1233,6 +1285,42 @@ private fun EventTimelineSection(events: List<MatchEvent>, modifier: Modifier = 
     }
 }
 
+/** Small per-type marker shown next to each [EventTimelineRow], mirroring the icon column common
+ * match-center UIs (e.g. FotMob) show beside goals/cards/subs — this project has no third-party
+ * icon library or image loader available (see [MyTeamContent]'s doc comment on why), so every
+ * marker here is either a plain Unicode glyph (renders through the system font, no asset needed)
+ * or a small Compose-drawn shape, rather than a bitmap/vector icon asset. Card color is inferred
+ * from [MatchEvent.headline] (it always leads with the raw "Yellow Card"/"Red Card"/"Second Yellow
+ * card" detail text — see [ApiFootballEventDto.toMatchEvent]'s "Card" branch in SoccerModels.kt)
+ * since the domain model doesn't carry a separate structured card-color field. */
+@Composable
+private fun MatchEventIcon(event: MatchEvent, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.size(1.4f.gridUnitsAsDp()), contentAlignment = Alignment.Center) {
+        when (event.type) {
+            MatchEventType.GOAL -> LightText(text = "⚽", variant = LightTextVariant.Copy, align = TextAlign.Center)
+            MatchEventType.SUBSTITUTION -> LightText(text = "⇄", variant = LightTextVariant.Copy, align = TextAlign.Center)
+            MatchEventType.CARD -> {
+                val isRed = event.headline.contains("red", ignoreCase = true)
+                Box(
+                    modifier = Modifier
+                        .size(width = 0.75f.gridUnitsAsDp(), height = 1.05f.gridUnitsAsDp())
+                        .clip(RoundedCornerShape(0.12f.gridUnitsAsDp()))
+                        .background(if (isRed) CARD_RED else CARD_YELLOW),
+                )
+            }
+            MatchEventType.VAR, MatchEventType.OTHER -> Box(
+                modifier = Modifier
+                    .size(0.5f.gridUnitsAsDp())
+                    .clip(CircleShape)
+                    .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.4f)),
+            )
+        }
+    }
+}
+
+private val CARD_YELLOW = Color(0xFFFBC02D)
+private val CARD_RED = Color(0xFFD32F2F)
+
 @Composable
 private fun EventTimelineRow(event: MatchEvent) {
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 0.5f.gridUnitsAsDp())) {
@@ -1241,6 +1329,10 @@ private fun EventTimelineRow(event: MatchEvent) {
             variant = LightTextVariant.Detail,
             lighten = true,
             modifier = Modifier.width(2.4f.gridUnitsAsDp()),
+        )
+        MatchEventIcon(
+            event = event,
+            modifier = Modifier.align(Alignment.CenterVertically).padding(end = 0.5f.gridUnitsAsDp()),
         )
         Column(modifier = Modifier.weight(1f)) {
             LightText(text = event.headline, variant = LightTextVariant.Copy, maxLines = 2, overflow = TextOverflow.Ellipsis)
