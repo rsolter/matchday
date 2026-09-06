@@ -486,7 +486,11 @@ private fun SettingRow(label: String, value: String, onClick: (() -> Unit)?) {
             .padding(vertical = 0.75f.gridUnitsAsDp()),
     ) {
         LightText(text = label, variant = LightTextVariant.Detail, lighten = true)
-        LightText(text = value, variant = LightTextVariant.Heading)
+        // Heading (38) matched a match score or the My Team position/points line — both places
+        // where a big number is genuinely the point of the screen. In a plain settings list that
+        // read as heavier than the row needs; Copy still reads as "the value" against the smaller
+        // label above it. See font-size-audit.md recommendation #2.
+        LightText(text = value, variant = LightTextVariant.Copy)
     }
 }
 
@@ -499,8 +503,11 @@ private fun LeaguesRow(leagueNames: List<String>, onClick: () -> Unit) {
             .padding(vertical = 0.75f.gridUnitsAsDp()),
     ) {
         LightText(text = "Leagues followed", variant = LightTextVariant.Detail, lighten = true)
+        // Detail, not Copy: with up to 15 trackable competitions, a user following several gets
+        // that many lines stacked under the label above — sized to match a value list under a
+        // label, same as the label itself one size up. See font-size-audit.md recommendation #3.
         leagueNames.forEach { name ->
-            LightText(text = name, variant = LightTextVariant.Copy, modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()))
+            LightText(text = name, variant = LightTextVariant.Detail, modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()))
         }
     }
 }
@@ -713,19 +720,22 @@ private fun StandingsTableRow(row: StandingsRow) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(vertical = 0.4f.gridUnitsAsDp()),
     ) {
-        LightText(text = row.position.toString(), variant = LightTextVariant.Copy, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
+        // Sized to match the column headers above (also Detail) — see font-size-audit.md
+        // recommendation #1: this is the densest row in the app (7 columns), and matching the
+        // header size gives the data more room before a long team name has to ellipsize.
+        LightText(text = row.position.toString(), variant = LightTextVariant.Detail, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
         LightText(
             text = row.teamName,
-            variant = LightTextVariant.Copy,
+            variant = LightTextVariant.Detail,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT),
         )
-        LightText(text = row.played.toString(), variant = LightTextVariant.Copy, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
-        LightText(text = row.goalsFor.toString(), variant = LightTextVariant.Copy, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
-        LightText(text = row.goalsAgainst.toString(), variant = LightTextVariant.Copy, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
-        LightText(text = row.goalDifferenceLabel(), variant = LightTextVariant.Copy, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
-        LightText(text = row.points.toString(), variant = LightTextVariant.Copy, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
+        LightText(text = row.played.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
+        LightText(text = row.goalsFor.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
+        LightText(text = row.goalsAgainst.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
+        LightText(text = row.goalDifferenceLabel(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
+        LightText(text = row.points.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
 }
 

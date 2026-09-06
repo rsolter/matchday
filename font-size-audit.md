@@ -74,10 +74,10 @@ value from the table above.
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | "My Team" row label | Detail (lighten) | 20 | label |
-| **My Team row value** ("Not set" / team name) | **Heading** | **38** | value — see recommendation |
+| **My Team row value** ("Not set" / team name) | ~~Heading~~ → **Copy** *(applied)* | 30 | value |
 | "Forget My Team" / "Refresh now" / "About" rows | Copy | 30 | clickable row |
 | "Leagues followed" label | Detail (lighten) | 20 | label |
-| Each followed league name | Copy | 30 | list item — see recommendation |
+| Each followed league name | ~~Copy~~ → **Detail** *(applied)* | 20 | list item |
 | About screen body paragraph | Paragraph | 24.5 | reading text |
 
 ### League selection / competition pickers (Standings, Fixtures, My Team setup)
@@ -91,7 +91,7 @@ value from the table above.
 | Loading / empty state | Copy | 30 | message |
 | Group header (Champions League groups) | Detail (lighten) | 20 | section label |
 | Column headers (#, TEAM, MP, GF, GA, GD, PTS) | Detail (lighten) | 20 | table header |
-| **Every data cell in every row** | **Copy** | **30** | table data — see recommendation |
+| **Every data cell in every row** | ~~Copy~~ → **Detail** *(applied)* | 20 | table data |
 
 ### Fixtures
 Same `MatchGroupCard`/`MatchRow` as Scores above, plus:
@@ -165,33 +165,35 @@ across the whole tab, rather than the starters looking smaller than the substitu
 |---|---|---|---|
 | Tab label | Detail | 20 | button label |
 
-## 3. Recommendations for standardization
+## 3. Standardization — applied
 
 The app already mostly follows a consistent two-tier pattern — **`Copy` (30) for primary
 content, `Detail` (20, usually `lighten = true`) for secondary labels** — and it's a reasonable
 pattern to keep as the standard going forward; most of the app already matches it. Three places
-depart from it in ways worth a second look. These are recommendations, not applied changes:
+departed from it in ways worth a second look; all three have now been applied (not just
+recommended):
 
-1. **Standings table data cells (`Copy`, 30) — candidate to shrink to `Detail` (20).** This is the
-   densest layout in the app: seven columns (#, TEAM, MP, GF, GA, GD, PTS) sharing one row, several
-   of them already narrowed to make room for GF/GA in the last round of changes. The column headers
-   already use `Detail` at 20 — sizing the data rows to match would give the table more breathing
-   room and let a longer team name run further before eliding, at the cost of the data being the
-   same size as its own header (distinguishable today only by the header's `lighten = true`).
+1. **Standings table data cells: `Copy` (30) → `Detail` (20).** This is the densest layout in the
+   app: seven columns (#, TEAM, MP, GF, GA, GD, PTS) sharing one row, several of them already
+   narrowed to make room for GF/GA in an earlier round of changes. The column headers already used
+   `Detail` at 20; sizing the data rows to match gives the table more breathing room and lets a
+   longer team name run further before eliding. Data and header are now the same size, distinguished
+   only by the header's `lighten = true` — a deliberate tradeoff, made because the density gain
+   outweighed keeping them visually distinct by size too.
 
-2. **Settings row value (`Heading`, 38) — candidate to shrink.** "My Team" 's value ("Not set" or
-   the team name) renders at the same size as a match score or the My Team position/points line —
-   both places where a big number is genuinely the point of the screen. In a plain settings list,
-   that's arguably heavier than the row needs; `Subheading`/`Copy`/`Button` (all 30) would still
-   read as the "value" against the smaller label above it, just without matching a scoreline.
+2. **Settings row value: `Heading` (38) → `Copy` (30).** "My Team" 's value ("Not set" or the team
+   name) previously rendered at the same size as a match score or the My Team position/points
+   line — both places where a big number is genuinely the point of the screen. In a plain settings
+   list that read as heavier than the row needed; `Copy` still reads clearly as "the value" against
+   the smaller `Detail` label above it, just without matching a scoreline.
 
-3. **Followed league names in Settings (`Copy`, 30) — candidate to shrink to `Detail` (20) if this
-   list tends to run long.** With this app now tracking up to 15 competitions, a user following
-   several of them gets that many full-`Copy`-sized lines stacked under "Leagues followed." If
-   that's a common case for you, `Detail` would match the same "value list under a label" treatment
-   `LeaguesRow`'s own label already uses one size up from.
+3. **Followed league names in Settings: `Copy` (30) → `Detail` (20).** With this app now tracking
+   up to 15 competitions, a user following several of them gets that many lines stacked under
+   "Leagues followed." `Detail` matches the same "value list under a label" treatment `LeaguesRow`'s
+   own label already uses one size up from — relevant regardless of how many leagues any one user
+   follows, since the list is unbounded in principle.
 
-None of these three are broken the way the three `Fine` cases were — they're consistent, readable,
-and match the letter of the app's own two-tier pattern (primary vs. secondary). They're just the
-places where "could this be smaller" has a real, arguable case for it. Happy to apply any or all of
-these if you want them changed.
+None of these three were broken the way the three `Fine` cases were — they were consistent,
+readable, and matched the letter of the app's own two-tier pattern (primary vs. secondary). They
+were just the places where "could this be smaller" had a real, arguable case for it, and that case
+has now been acted on.
