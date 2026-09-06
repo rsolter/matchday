@@ -595,10 +595,13 @@ private fun SettingsContent(
             SettingRow(label = "My Team", value = myTeamName ?: "Not set", onClick = onOpenMyTeamSetup)
             if (myTeamName != null) {
                 // Was Copy (30) before the global one-step-down pass shifted it to Detail (20);
-                // reverted back to Copy along with the rest of Settings' text.
+                // reverted back to Copy along with the rest of Settings' text. lighten = true added
+                // on request, matching "My Team"'s value above — both are now My Team's grey
+                // sub-items under its (now brighter) section label.
                 LightText(
                     text = "Forget My Team",
                     variant = LightTextVariant.Copy,
+                    lighten = true,
                     modifier = Modifier
                         .fillMaxWidth()
                         .lightClickable(onClick = onClearMyTeam)
@@ -607,14 +610,17 @@ private fun SettingsContent(
             }
             // This build's only manual-refresh surface — see SoccerViewModel's class doc comment
             // for why there's no bottom-bar refresh icon. Was Copy (30) before the global
-            // one-step-down pass shifted it to Detail (20); reverted back to Copy.
+            // one-step-down pass shifted it to Detail (20); reverted back to Copy. Top padding
+            // bumped from 0.25f to 0.75f on request, so this reads as its own section — the same
+            // gap "Leagues followed" and "My Team" already carry between each other above — rather
+            // than as a continuation of "My Team"/"Forget My Team" right above it.
             LightText(
                 text = "Refresh now",
                 variant = LightTextVariant.Copy,
                 modifier = Modifier
                     .fillMaxWidth()
                     .lightClickable(onClick = onManualRefresh)
-                    .padding(top = 0.25f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
+                    .padding(top = 0.75f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
             )
         }
 
@@ -625,7 +631,11 @@ private fun SettingsContent(
         // AttributionFooter, same ScoreScreenMode.Attribution destination — keeps it reachable
         // regardless of how long the scrollable list above gets.
         // Was Copy (30) before the global one-step-down pass shifted it to Detail (20); reverted
-        // back to Copy along with the rest of Settings' text.
+        // back to Copy along with the rest of Settings' text. Top padding bumped from 0.5f to
+        // 0.75f on request, matching the section-to-section gap above, so this reads as its own
+        // section the same way "Leagues followed"/"My Team" do — on top of already sitting in its
+        // own pinned footer position outside the scrollable list (see this fun's own doc comment
+        // above for why).
         LightText(
             text = "About",
             variant = LightTextVariant.Copy,
@@ -633,7 +643,7 @@ private fun SettingsContent(
                 .fillMaxWidth()
                 .lightClickable(onClick = onOpenAttribution)
                 .padding(horizontal = 1f.gridUnitsAsDp())
-                .padding(top = 0.5f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
+                .padding(top = 0.75f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
         )
     }
 }
@@ -647,13 +657,16 @@ private fun SettingRow(label: String, value: String, onClick: (() -> Unit)?) {
             .padding(vertical = 0.75f.gridUnitsAsDp()),
     ) {
         // Was Detail (20) before the global one-step-down pass shifted it to Superfine (16);
-        // reverted back to Detail along with the rest of Settings' text.
-        LightText(text = label, variant = LightTextVariant.Detail, lighten = true)
+        // reverted back to Detail along with the rest of Settings' text. Colors flipped on request
+        // (was lighten = true here, value below un-lightened) — the section label now reads as the
+        // brighter, primary text, and its value as the secondary/grey one, matching how the "My
+        // Team" section's sub-items (its value, and "Forget My Team" below) now read grey too.
+        LightText(text = label, variant = LightTextVariant.Detail)
         // Was Heading (38), then Copy (30) — see font-size-audit.md recommendation #2 for why
         // Heading was too heavy for a plain settings row. The global one-step-down pass then
         // shifted it to Detail (20); reverted back to Copy, its round-8 size, per the "make
         // Settings text larger again" request — this view no longer follows the global shift.
-        LightText(text = value, variant = LightTextVariant.Copy)
+        LightText(text = value, variant = LightTextVariant.Copy, lighten = true)
     }
 }
 
@@ -666,15 +679,23 @@ private fun LeaguesRow(leagueNames: List<String>, onClick: () -> Unit) {
             .padding(vertical = 0.75f.gridUnitsAsDp()),
     ) {
         // Was Detail (20) before the global one-step-down pass shifted it to Superfine (16);
-        // reverted back to Detail along with the rest of Settings' text.
-        LightText(text = "Leagues followed", variant = LightTextVariant.Detail, lighten = true)
+        // reverted back to Detail along with the rest of Settings' text. Colors flipped on request
+        // (was lighten = true here, each league name below un-lightened) — the "Leagues followed"
+        // label now reads as the brighter, primary text, and each league name below it as the
+        // secondary/grey one.
+        LightText(text = "Leagues followed", variant = LightTextVariant.Detail)
         // Was Copy, then Detail (see font-size-audit.md recommendation #3 — with up to 15
         // trackable competitions, a user following several gets that many stacked lines, so this
         // matches the label above rather than standing out as heavier). The global one-step-down
         // pass then shifted it to Superfine (16); reverted back to Detail here — recommendation #3
         // still holds (matching the label above), this just undoes the global shift on top of it.
         leagueNames.forEach { name ->
-            LightText(text = name, variant = LightTextVariant.Detail, modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()))
+            LightText(
+                text = name,
+                variant = LightTextVariant.Detail,
+                lighten = true,
+                modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()),
+            )
         }
     }
 }

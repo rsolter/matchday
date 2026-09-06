@@ -388,3 +388,30 @@ possible, since today's fixture is now routed to the featured placeholder instea
 header and `UnavailableGroup`'s "Injured"/"Suspended" label and "Out"/"Doubtful" text and reason
 line all `Superfine (16) → Detail (20)`; `player.playerName` `Detail (20) → Fine (25)` — same
 relative-sizing pattern as §11's Stats tab, preserved rather than flattened to one size.
+
+## 13. Settings: label/value colors flipped, "Refresh now"/"About" given their own section gap
+
+Not a font-size change (no variant changed), but a color and spacing change to the same rows §5
+already covers — tracked here for continuity.
+
+**Colors flipped, on request**, in both of Settings' label-above-content rows:
+
+- `LeaguesRow`: "Leagues followed" was `lighten = true` (grey/secondary), each league name below it
+  wasn't (white/primary). Flipped — the label is now the brighter, primary text; each league name
+  below it is now the secondary/grey one.
+- `SettingRow` ("My Team"): same flip — "My Team" itself un-lightened (now white), its value
+  (team name or "Not set") now `lighten = true` (grey). "Forget My Team", the section's other
+  sub-item, was already `Copy` un-lightened (white) and is now `lighten = true` (grey) too, so both
+  of My Team's sub-items read the same secondary color under its now-brighter label.
+
+`SettingRow`/`LeaguesRow` are each only called once in this app (for "My Team" and "Leagues
+followed" respectively), so flipping their internal color assignment directly was safe — no other
+caller relies on the old lighten/un-lightened split.
+
+**Section separation, on request:** "Refresh now" and "About" used to sit close under whatever
+preceded them (0.25f and 0.5f top padding respectively) — visually reading as trailing off the
+"My Team" section above rather than standing as their own. Both bumped to 0.75f top padding,
+matching the gap "Leagues followed" and "My Team" already carry between each other, so "Refresh
+now" and "About" now read as their own sections the same way. No divider was added between any of
+these — matching how Leagues followed/My Team are separated today (spacing alone, no line), not
+introducing a new visual element this screen doesn't otherwise use.
