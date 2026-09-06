@@ -229,7 +229,10 @@ private fun LoadingContent(title: String, message: String) {
 
 // --- Scores ------------------------------------------------------------------
 
-private val SCORE_COLUMN_WIDTH = 6f
+// Widened from 6f: the score and its FT/live-minute label used to stack in a Column (two lines
+// tall per match row); now they sit side by side in a Row (see MatchRow) and need the extra room
+// to not crowd each other or wrap.
+private val SCORE_COLUMN_WIDTH = 9f
 
 @Composable
 private fun ScoresContent(
@@ -393,8 +396,12 @@ private fun MatchRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Column(
-            horizontalAlignment = Alignment.End,
+        // Score and its FT/live-minute label used to stack in a Column (score, then status
+        // underneath) — that made every match with a score two lines tall. Side by side in a Row
+        // instead, so a match row is one line regardless of status.
+        Row(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.width(SCORE_COLUMN_WIDTH.gridUnitsAsDp()),
         ) {
             if (match.hasScore) {
@@ -403,7 +410,7 @@ private fun MatchRow(
             if (match.status.isLive) {
                 Box(
                     modifier = Modifier
-                        .padding(top = 0.15f.gridUnitsAsDp())
+                        .padding(start = 0.4f.gridUnitsAsDp())
                         .clip(RoundedCornerShape(50.dp))
                         .background(LightThemeTokens.colors.content.copy(alpha = 0.12f))
                         .padding(horizontal = 0.4f.gridUnitsAsDp(), vertical = 0.05f.gridUnitsAsDp()),
@@ -421,7 +428,9 @@ private fun MatchRow(
                     variant = LightTextVariant.Superfine,
                     align = TextAlign.End,
                     lighten = true,
-                    modifier = if (match.hasScore) Modifier.padding(top = 0.15f.gridUnitsAsDp()) else Modifier,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = if (match.hasScore) Modifier.padding(start = 0.4f.gridUnitsAsDp()) else Modifier,
                 )
             }
         }
