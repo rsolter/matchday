@@ -140,15 +140,20 @@ The lineup was redesigned in the same session this audit was fixed for — it's 
 horizontal columns. That redesign changed what's below; the row for "player surname under the
 circle" this table used to have is gone along with the element itself, not just relabeled.
 
+The roster list's number/name briefly shipped at `Copy` (30), one size up from the team
+name/formation row and "Coach: {name}" immediately around it — sized down to `Detail` (20) the next
+round to match, and the substitutes list brought down to `Detail` too for one consistent size
+across the whole tab, rather than the starters looking smaller than the substitutes below them.
+
 | Element | Variant | Size | Role |
 |---|---|---|---|
 | Team name + formation | Detail (lighten) | 20 | label |
 | Jersey number (in circle, on the pitch) | Detail | 20 | primary content (small, by design — it's inside a 2.3-grid-unit circle) |
-| Roster list: number | Copy (lighten) | 30 | label, beside the matching name |
-| Roster list: player name | Copy | 30 | primary content |
-| "Coach: {name}" | ~~Fine~~ → **Detail** *(fixed the prior pass)* | 20 | caption |
+| Roster list: number | Detail (lighten) | 20 | label, beside the matching name |
+| Roster list: player name | Detail | 20 | primary content |
+| "Coach: {name}" | Detail (lighten) | 20 | caption |
 | "SUBSTITUTES" header | Detail (lighten) | 20 | section label |
-| Substitute number / name | Copy | 30 | primary content |
+| Substitute number / name | Detail | 20 | primary content |
 | Substitute position | Detail (lighten) | 20 | label |
 
 ### Tab row (Stats / Events / Home / Away)

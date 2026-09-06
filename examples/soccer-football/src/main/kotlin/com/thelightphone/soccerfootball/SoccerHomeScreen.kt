@@ -1643,15 +1643,17 @@ private fun LineupRosterList(pitchRows: List<List<LineupPlayer>>, modifier: Modi
                         .fillMaxWidth()
                         .padding(top = topPadding, bottom = 0.15f.gridUnitsAsDp()),
                 ) {
+                    // Detail, not Copy — matches the team name/formation row and "Coach: {name}"
+                    // above and below this list, rather than standing out as noticeably bigger.
                     LightText(
                         text = player.number?.toString() ?: "-",
-                        variant = LightTextVariant.Copy,
+                        variant = LightTextVariant.Detail,
                         lighten = true,
-                        modifier = Modifier.width(1.8f.gridUnitsAsDp()),
+                        modifier = Modifier.width(1.6f.gridUnitsAsDp()),
                     )
                     LightText(
                         text = player.name,
-                        variant = LightTextVariant.Copy,
+                        variant = LightTextVariant.Detail,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
@@ -1685,15 +1687,18 @@ private fun SubstitutesBlock(substitutes: List<LineupPlayer>, modifier: Modifier
         LightText(text = "SUBSTITUTES", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.padding(bottom = 0.4f.gridUnitsAsDp()))
         substitutes.forEach { player ->
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 0.1f.gridUnitsAsDp())) {
+                // Detail, not Copy — matches the starting XI roster list above (and the team
+                // name/coach line), for one consistent size across the whole lineup tab rather
+                // than the starters' names being smaller than the substitutes' own.
                 LightText(
                     text = player.number?.toString() ?: "-",
-                    variant = LightTextVariant.Copy,
+                    variant = LightTextVariant.Detail,
                     lighten = true,
-                    modifier = Modifier.width(2f.gridUnitsAsDp()),
+                    modifier = Modifier.width(1.6f.gridUnitsAsDp()),
                 )
                 LightText(
                     text = player.name,
-                    variant = LightTextVariant.Copy,
+                    variant = LightTextVariant.Detail,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
