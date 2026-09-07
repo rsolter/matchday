@@ -447,6 +447,12 @@ private const val MY_TEAM_FIXTURE_LIMIT = 5
  * FIXTURE_LIMIT below was already 5, so the cap wasn't the bottleneck, the fetch window was: 30
  * days of a ~weekly domestic schedule (plus the odd cup week off) lands on 4 played matches about
  * as often as 5. Bumped to 45 for enough buffer that a normal schedule reliably clears 5, without
- * fetching a whole season's worth of history. */
+ * fetching a whole season's worth of history. [MY_TEAM_WINDOW_FUTURE_DAYS] gets the identical fix
+ * here, on request, after a real screenshot showed only 3 "UPCOMING" fixtures for a team — same
+ * root cause as the past-days fix above (MY_TEAM_FIXTURE_LIMIT was already 5, so again the fetch
+ * window, not the cap, was the bottleneck), diagnosed by direct analogy rather than confirmed
+ * against real fixture data for that specific team, since this sandbox has no way to hit the live
+ * API and see the actual schedule. Matched to MY_TEAM_WINDOW_PAST_DAYS's 45 rather than picked
+ * independently, since nothing about "upcoming" vs. "recent" suggests they need different widths. */
 private const val MY_TEAM_WINDOW_PAST_DAYS = 45
-private const val MY_TEAM_WINDOW_FUTURE_DAYS = 30
+private const val MY_TEAM_WINDOW_FUTURE_DAYS = 45

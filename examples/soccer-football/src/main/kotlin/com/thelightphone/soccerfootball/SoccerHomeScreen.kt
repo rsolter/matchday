@@ -176,6 +176,19 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                         MatchDetailContent(
                             mode = mode,
                             onBack = viewModel::backFromMatchDetail,
+                            onTeamClick = viewModel::openTeamDetail,
+                        )
+                    }
+
+                    is ScoreScreenMode.TeamDetail -> {
+                        // Same MyTeamContent rendering "My Team" itself uses — see
+                        // ScoreScreenMode.TeamDetail's doc comment for why this is its own mode
+                        // with its own back target rather than reusing MyTeam's.
+                        MyTeamContent(
+                            summary = mode.summary,
+                            isLoading = mode.isLoading,
+                            onBack = viewModel::backFromTeamDetail,
+                            onMatchClick = viewModel::openMatchDetail,
                         )
                     }
                 }
@@ -1700,7 +1713,11 @@ private enum class DetailTab(val label: String) {
 }
 
 @Composable
-private fun MatchDetailContent(mode: ScoreScreenMode.MatchDetailScreen, onBack: () -> Unit) {
+private fun MatchDetailContent(
+    mode: ScoreScreenMode.MatchDetailScreen,
+    onBack: () -> Unit,
+    onTeamClick: (teamId: Int, teamName: String, leagueId: Int) -> Unit,
+) {
     var selectedTab by remember(mode.fixtureId) { mutableStateOf(DetailTab.STATS) }
 
     // No team-colors dataset exists anywhere in this app (API-Football's crest/logo field is the
@@ -1725,12 +1742,16 @@ private fun MatchDetailContent(mode: ScoreScreenMode.MatchDetailScreen, onBack: 
             MatchDetailHeader(
                 homeTeamName = mode.homeTeamName,
                 awayTeamName = mode.awayTeamName,
+                homeTeamId = mode.homeTeamId,
+                awayTeamId = mode.awayTeamId,
+                leagueId = mode.leagueId,
                 homeTeamLogoBytes = mode.homeTeamLogoBytes,
                 awayTeamLogoBytes = mode.awayTeamLogoBytes,
                 scoreLabel = mode.scoreLabel,
                 statusLabel = mode.statusLabel,
                 isLive = mode.isLive,
                 goalEvents = mode.detail?.events?.filter { it.type == MatchEventType.GOAL } ?: emptyList(),
+                onTeamClick = onTeamClick,
             )
 
             val detail = mode.detail
@@ -1804,16 +1825,25 @@ private fun MatchDetail.isEmpty(): Boolean =
 private fun MatchDetailHeader(
     homeTeamName: String,
     awayTeamName: String,
+    homeTeamId: Int,
+    awayTeamId: Int,
+    leagueId: Int,
     homeTeamLogoBytes: ByteArray?,
     awayTeamLogoBytes: ByteArray?,
     scoreLabel: String,
     statusLabel: String,
     isLive: Boolean,
     goalEvents: List<MatchEvent> = emptyList(),
+    onTeamClick: (teamId: Int, teamName: String, leagueId: Int) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(top = 0.5f.gridUnitsAsDp(), bottom = 0.25f.gridUnitsAsDp())) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            MatchDetailTeamBlock(name = homeTeamName, logoBytes = homeTeamLogoBytes, modifier = Modifier.weight(1f))
+            MatchDetailTeamBlock(
+                name = homeTeamName,
+                logoBytes = homeTeamLogoBytes,
+                onClick = { onTeamClick(homeTeamId, homeTeamName, leagueId) },
+                modifier = Modifier.weight(1f),
+            )
             // Was Title, shrunk to Heading (38, design units) in an earlier session — the crest
             // icons beside each team name below need the horizontal room Title used to take up.
             // Now Copy (30) after this round's global one-step-down pass; still the visually
@@ -1824,7 +1854,12 @@ private fun MatchDetailHeader(
                 align = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 0.5f.gridUnitsAsDp()),
             )
-            MatchDetailTeamBlock(name = awayTeamName, logoBytes = awayTeamLogoBytes, modifier = Modifier.weight(1f))
+            MatchDetailTeamBlock(
+                name = awayTeamName,
+                logoBytes = awayTeamLogoBytes,
+                onClick = { onTeamClick(awayTeamId, awayTeamName, leagueId) },
+                modifier = Modifier.weight(1f),
+            )
         }
 
         if (isLive) {
@@ -1864,13 +1899,17 @@ private fun MatchDetailHeader(
  * bytes [SoccerViewModel.openMatchDetail] already fetched via [ApiFootballApi.fetchMatchCrests].
  * Renders name-only, same as before this feature existed, if [logoBytes] hasn't arrived yet (it's
  * fetched separately from the rest of the header, see that fetch's own doc comment) or the fetch
- * failed — a missing crest was never a reason to hide the name. */
+ * failed — a missing crest was never a reason to hide the name. Tapping anywhere on the block
+ * (crest or name) opens that team's own page — see [onClick]/[SoccerViewModel.openTeamDetail]. */
 @Composable
-private fun MatchDetailTeamBlock(name: String, logoBytes: ByteArray?, modifier: Modifier = Modifier) {
+private fun MatchDetailTeamBlock(name: String, logoBytes: ByteArray?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val logoBitmap = logoBytes?.let { bytes ->
         remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
     }
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.lightClickable(onClick = onClick),
+    ) {
         if (logoBitmap != null) {
             Image(
                 bitmap = logoBitmap,

@@ -99,6 +99,18 @@ sealed class ScoreScreenMode {
         val isLoading: Boolean,
     ) : ScoreScreenMode()
 
+    /** Reachable by tapping either team's badge on [MatchDetailScreen] — renders with the exact
+     * same content [MyTeam] does (same [MyTeamSummary] shape, same [MyTeamContent] composable),
+     * but for whichever team was tapped rather than the user's own saved team. Kept as its own
+     * mode instead of reusing [MyTeam] directly: [MyTeam]'s back button always returns to Scores
+     * (see [backFromMyTeam]), which would be wrong here — a badge tapped from a match detail
+     * screen should return to that same match detail screen (see [openTeamDetail]/
+     * [backFromTeamDetail]), not skip past it to Scores. */
+    data class TeamDetail(
+        val summary: MyTeamSummary?,
+        val isLoading: Boolean,
+    ) : ScoreScreenMode()
+
     /** Reachable by tapping a match row from either Scores or Fixtures. [detail] is null while
      * [isLoading] is true, and stays null on a failed fetch — the header (teams/score/status)
      * still has everything it needs from the tapped [Fixture] itself. Named `MatchDetailScreen`
@@ -109,6 +121,15 @@ sealed class ScoreScreenMode {
         val awayTeamId: Int,
         val homeTeamName: String,
         val awayTeamName: String,
+        /** The tapped fixture's own league id — used as the "league" for a per-team detail lookup
+         * when either team's badge is tapped (see [openTeamDetail]). Applied identically to both
+         * the home and away team since this app has no separate "each team's home league" concept
+         * anywhere else — an approximation that can be technically wrong for a cross-league cup
+         * tie (e.g. a Premier League side visiting a Championship side in the FA Cup), though
+         * low-risk in practice: [MyTeamContent] (reused for [TeamDetail]) doesn't render any
+         * standings-position block a wrong-league lookup could visibly get wrong (see
+         * [MyTeamSummary.standingsRow]'s doc comment). */
+        val leagueId: Int,
         val scoreLabel: String,
         val statusLabel: String,
         val isLive: Boolean,
@@ -174,6 +195,7 @@ class SoccerViewModel(
     private var modeBeforeAttribution: ScoreScreenMode? = null
     private var modeBeforeMatchDetail: ScoreScreenMode? = null
     private var modeBeforeMyTeamSetup: ScoreScreenMode? = null
+    private var modeBeforeTeamDetail: ScoreScreenMode? = null
 
     private var myTeamId: Int? = null
     private var myTeamName: String? = null
@@ -650,14 +672,23 @@ class SoccerViewModel(
         }
     }
 
+    /** Standings-cache-or-fetch, then [ApiFootballApi.fetchMyTeamSummary] — the fetch logic shared
+     * by [loadMyTeamSummary] (the user's own saved team) and [openTeamDetail] (an arbitrary tapped
+     * team). Deliberately returns just the [Result] rather than also updating state: the two
+     * callers write into different [ScoreScreenMode]s ([ScoreScreenMode.MyTeam] vs.
+     * [ScoreScreenMode.TeamDetail]), so the state-update half stays separate in each. */
+    private suspend fun fetchTeamSummary(teamId: Int, teamName: String, leagueId: Int): Result<MyTeamSummary> {
+        val leagueName = competitionName(leagueId)
+        val standings = standingsCache[leagueId]
+            ?: api.fetchStandings(leagueId).getOrElse { StandingsFetchResult(rows = emptyList()) }.rows
+                .also { if (it.isNotEmpty()) standingsCache[leagueId] = it }
+        return api.fetchMyTeamSummary(teamId, teamName, leagueId, leagueName, standings)
+    }
+
     private fun loadMyTeamSummary(teamId: Int, teamName: String, leagueId: Int) {
         updateState { it.copy(mode = ScoreScreenMode.MyTeam(summary = null, isLoading = true), errorModal = null) }
         viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
-            val leagueName = competitionName(leagueId)
-            val standings = standingsCache[leagueId]
-                ?: api.fetchStandings(leagueId).getOrElse { StandingsFetchResult(rows = emptyList()) }.rows
-                    .also { if (it.isNotEmpty()) standingsCache[leagueId] = it }
-            val result = api.fetchMyTeamSummary(teamId, teamName, leagueId, leagueName, standings)
+            val result = fetchTeamSummary(teamId, teamName, leagueId)
             result.fold(
                 onSuccess = { summary ->
                     updateState { state ->
@@ -684,6 +715,48 @@ class SoccerViewModel(
 
     fun backFromMyTeam() {
         updateState { it.copy(mode = lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE), errorModal = null) }
+    }
+
+    // --- Team detail (arbitrary team, reached from a match's badge) ------------------
+
+    /** Opens a read-only team page for whichever team's badge was tapped on [ScoreScreenMode.
+     * MatchDetailScreen] — same [MyTeamContent] rendering "My Team" itself uses, populated for
+     * [teamId] instead of the user's own saved team. See [ScoreScreenMode.TeamDetail]'s doc
+     * comment for why this is a separate mode/back-target rather than reusing [ScoreScreenMode.
+     * MyTeam] and [backFromMyTeam] directly. */
+    fun openTeamDetail(teamId: Int, teamName: String, leagueId: Int) {
+        modeBeforeTeamDetail = _uiState.value.mode
+        updateState { it.copy(mode = ScoreScreenMode.TeamDetail(summary = null, isLoading = true), errorModal = null) }
+        viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
+            val result = fetchTeamSummary(teamId, teamName, leagueId)
+            result.fold(
+                onSuccess = { summary ->
+                    updateState { state ->
+                        if (state.mode is ScoreScreenMode.TeamDetail) {
+                            state.copy(mode = ScoreScreenMode.TeamDetail(summary, isLoading = false), errorModal = null)
+                        } else {
+                            state
+                        }
+                    }
+                },
+                onFailure = { error ->
+                    updateState { state ->
+                        val fallback = if (state.mode is ScoreScreenMode.TeamDetail) {
+                            ScoreScreenMode.TeamDetail(summary = null, isLoading = false)
+                        } else {
+                            state.mode
+                        }
+                        state.copy(mode = fallback, errorModal = apiErrorMessage(error))
+                    }
+                },
+            )
+        }
+    }
+
+    fun backFromTeamDetail() {
+        val previous = modeBeforeTeamDetail ?: lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE)
+        modeBeforeTeamDetail = null
+        updateState { it.copy(mode = previous, errorModal = null) }
     }
 
     fun clearMyTeam() {
@@ -715,6 +788,7 @@ class SoccerViewModel(
             awayTeamId = match.awayTeamId,
             homeTeamName = match.homeTeamName,
             awayTeamName = match.awayTeamName,
+            leagueId = match.leagueId,
             scoreLabel = match.scoreLabel(),
             statusLabel = match.statusLabel(),
             isLive = match.status.isLive,

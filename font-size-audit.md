@@ -758,3 +758,68 @@ longer "9/13 19:45" dated kickoff label) — not shown in the reported screensho
 font-size drop already gives it more breathing room at its current width rather than less, so
 there was no matching complaint to act on there. `ResultBadge` (My Team's W/D/L blocks) also
 untouched — a different indicator from "FT/Min/Time", not mentioned in the request.
+
+## 22. My Team's UPCOMING widened to 5; a new Team Detail page reachable from any match
+
+Two asks in one message, both implemented.
+
+**UPCOMING fixture count.** The user counted 3 upcoming fixtures on a real Juventus screenshot and
+asked for 5. `MY_TEAM_FIXTURE_LIMIT` (`SoccerApi.kt`) was already 5 for both `upcomingFixtures` and
+`recentFixtures` — confirmed by grep that nothing else in the app slices either list further before
+it reaches `MyTeamContent`. The actual bottleneck, by direct analogy to an earlier round's identical
+fix for `recentFixtures`, is almost certainly the fetch window: `MY_TEAM_WINDOW_FUTURE_DAYS` was
+still 30 (the past-days twin, `MY_TEAM_WINDOW_PAST_DAYS`, was already widened to 45 for the same
+symptom on the "recent results" side). Widened `MY_TEAM_WINDOW_FUTURE_DAYS` to 45 to match. Flagging
+plainly: this is a diagnosis by analogy, not a confirmed root cause — this sandbox has no way to hit
+the live API and see Juventus's actual upcoming schedule, so if 5 still doesn't show up on a real
+device, the window width is the thing to widen further (or check whether a team's schedule genuinely
+doesn't have 5 fixtures in the next 45 days, e.g. an early-season lull).
+
+**Team Detail page.** New ask: from any match detail screen (reached by tapping a match row from
+Scores, Fixtures, or My Team), tapping either team's crest/name now opens a page that looks exactly
+like My Team's own page, populated for that tapped team instead of the user's saved team.
+
+Implementation, in order:
+
+- `ScoreScreenMode.MatchDetailScreen` gained a `leagueId: Int` field, sourced from the tapped
+  `Fixture.leagueId` (already a plain existing field) at `openMatchDetail()`'s call site. Needed
+  because a per-team summary fetch (`ApiFootballApi.fetchMyTeamSummary`) takes a league id, and the
+  match detail screen previously had no notion of which league its match belonged to.
+- New `ScoreScreenMode.TeamDetail(summary: MyTeamSummary?, isLoading: Boolean)` — deliberately a
+  separate mode from `ScoreScreenMode.MyTeam` rather than reusing it directly, because `MyTeam`'s
+  own back button (`backFromMyTeam`) always returns to Scores, which would be wrong here: tapping a
+  badge from a match detail screen should return to that same match detail screen, not skip past it
+  to Scores. New `modeBeforeTeamDetail` var plus `openTeamDetail(teamId, teamName, leagueId)` /
+  `backFromTeamDetail()` functions follow the same "remember where I came from" pattern already used
+  for match detail, attribution, and My Team setup.
+- The standings-cache-or-fetch-then-`fetchMyTeamSummary` logic that `loadMyTeamSummary` already had
+  was pulled out into a small shared `fetchTeamSummary(teamId, teamName, leagueId)` helper, reused by
+  both `loadMyTeamSummary` and the new `openTeamDetail` — the fetch mechanics are identical between
+  "my own team" and "an arbitrary tapped team"; only which `ScoreScreenMode` gets written with the
+  result differs, so that half stays separate in each caller.
+- `MatchDetailTeamBlock` (the crest+name block on the match detail header, one per side) gained an
+  `onClick` and is now wrapped in `lightClickable`, same pattern every other tappable row in this
+  file already uses. The tap handler is threaded down from a new `onTeamClick: (teamId, teamName,
+  leagueId) -> Unit` param on `MatchDetailHeader` and `MatchDetailContent`, wired at the top-level
+  dispatch to `viewModel::openTeamDetail`.
+- The new `is ScoreScreenMode.TeamDetail` dispatch branch reuses `MyTeamContent` directly (confirmed
+  by reading it: the composable takes only `summary`/`isLoading`/`onBack`/`onMatchClick`, nothing
+  that assumes "this is the user's own saved team") — so this page is genuinely the same UI code as
+  My Team, not a duplicate.
+
+**Flagged caveat, not fully resolved:** `MatchDetailScreen.leagueId` is the tapped fixture's own
+league, applied identically to *both* teams' detail pages. For almost every match this is correct
+(both teams share the match's league), but it's technically wrong for a cross-league cup tie — e.g.
+a Premier League club visiting a Championship club in the FA Cup — where the away team's own actual
+league differs from the fixture's. Judged low-risk rather than fixed properly: `MyTeamContent` (and
+now `TeamDetail`, since it reuses that same composable) doesn't render any standings-position block
+at all, so a technically-wrong-league standings lookup wouldn't currently show anything visibly
+incorrect on screen — but it's worth knowing about if a future ask brings a standings block back.
+
+**Also not addressed:** whether the new Team Detail page should itself allow drilling further (e.g.
+tapping *its own* featured-match's team badges) — it does, actually, for free: `MyTeamContent`'s
+featured-match tap already goes through `onMatchClick` → `openMatchDetail`, and that screen's badges
+now always call `openTeamDetail` regardless of which mode led there, so recursive team-hopping falls
+out of the existing "remember where I came from" pattern rather than needing new code. Not verified
+on a real device, but worth knowing this wasn't a deliberate scope decision — it's just what the
+shared plumbing does.
