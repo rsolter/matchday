@@ -969,3 +969,13 @@ this list and can piggyback a follow-up" moment the way Scores' `refresh()` does
 user to confirm whether it's worth doing there too, rather than assumed.
 
 No compiler in this sandbox — verified by manual diff review and balance_check.py only.
+
+## 26. Lineup check window narrowed from 2 hours to 1 hour
+
+Follow-up to §25: the 2-hour `LINEUP_CHECK_WINDOW` was an unverified margin-of-safety guess made
+without a real source for API-Football's actual lineup-posting timing. On correction — lineups only
+ever post within an hour of kickoff — narrowed `LINEUP_CHECK_WINDOW` to `1.hours` exactly, no added
+buffer on top. Since this constant only bounds which still-scheduled matches get an extra
+`/fixtures/lineups` check per refresh (never affects whether the check itself is correct), this
+change only reduces wasted API calls on scheduled matches more than an hour out — it can't cause a
+match to show the wrong label.

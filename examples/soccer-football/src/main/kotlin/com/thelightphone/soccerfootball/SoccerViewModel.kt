@@ -192,16 +192,14 @@ private const val FIXTURES_FUTURE_DAYS = 21
 /** How far ahead of kickoff [refresh] starts spending an extra API call per still-scheduled match
  * to check whether its lineup has been posted yet (see [ApiFootballApi.fetchLineupAvailability]).
  * This is a real per-fixture check, not a guess at exact posting time — a fixture outside this
- * window just never gets checked (kickoff time keeps showing), it's never told the wrong thing. The
- * width is a judgment call, not something confirmed against a real response this session: the user
- * who asked for this guessed lineups appear "maybe ~10 min" before kickoff, but confirmed lineups
- * for top leagues are commonly reported (industry-wide, not specifically verified for
- * API-Football's own timing) as posted closer to 60 minutes out. 2 hours gives real margin on
- * either side, and this app has no poll loop (see this class's doc comment) — refresh only happens
- * on first load and the bottom bar's Refresh tap — so a tighter window would risk the whole gap
- * between "posted" and "next manual refresh" landing on a match this never got to check. Worth
- * narrowing later if it turns out to add real load on the proxy. */
-private val LINEUP_CHECK_WINDOW = 2.hours
+ * window just never gets checked (kickoff time keeps showing), it's never told the wrong thing.
+ * Set to 1 hour per the user's own confirmation that lineups only ever post within an hour of
+ * kickoff (this project has no independent API-Football source for that timing) — was 2 hours the
+ * round this was built, as an unverified margin-of-safety guess; narrowed on request now that
+ * there's an actual answer. Since this only bounds which fixtures get checked (not when lineups
+ * actually appear), a real narrowing done for the wrong reason would only ever cost a late "Lineups"
+ * label on the rare match that leaks past an hour — never a wrong one. */
+private val LINEUP_CHECK_WINDOW = 1.hours
 
 /**
  * Phase 3: this app talks to its own caching proxy (`ApiFootballApi`'s `API_BASE`), not
