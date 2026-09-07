@@ -93,6 +93,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             onOpenMyTeam = viewModel::openMyTeam,
                             onOpenStandingsTable = viewModel::openStandingsTable,
                             onOpenFixtures = viewModel::openFixtures,
+                            onManualRefresh = viewModel::manualRefresh,
                             onMatchClick = viewModel::openMatchDetail,
                         )
                     }
@@ -106,7 +107,6 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             onOpenLeagueSelection = viewModel::openLeagueSelection,
                             onOpenMyTeamSetup = viewModel::openMyTeamSetup,
                             onClearMyTeam = viewModel::clearMyTeam,
-                            onManualRefresh = viewModel::manualRefresh,
                         )
                     }
 
@@ -412,15 +412,16 @@ private fun ScoresContent(
     onOpenMyTeam: () -> Unit,
     onOpenStandingsTable: (Int, String) -> Unit,
     onOpenFixtures: () -> Unit,
+    onManualRefresh: () -> Unit,
     onMatchClick: (Fixture) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // Was "Updating…" / "Updated {time}" / "Today" depending on refresh state — simplified to
-        // always read "Today" on request. ScoreScreenMode.Scores.lastUpdated/isRefreshing (and
-        // formatUpdatedAt in SoccerFormatting.kt) are unused by this screen now but left in place
-        // in case a future refresh indicator wants them again.
+        // Header text removed on request (this screen, My Team, and Results & Fixtures all dropped
+        // theirs together) — a bare LightTopBar still reserves its usual height, just with nothing
+        // in the center. ScoreScreenMode.Scores.lastUpdated/isRefreshing (and formatUpdatedAt in
+        // SoccerFormatting.kt) are unused by this screen now but left in place in case a future
+        // refresh indicator wants them again.
         LightTopBar(
-            center = LightTopBarCenter.Text(text = "Today"),
             modifier = Modifier.padding(bottom = 0.25f.gridUnitsAsDp()),
         )
 
@@ -441,10 +442,16 @@ private fun ScoresContent(
             }
         } else {
             LightScrollView(
+                // start-only: LightScrollView's own content Column already reserves 2 grid units on
+                // the END for its scrollbar gutter (see scrollBarGutterUnits/LightScrollView.kt) —
+                // stacking a symmetric horizontal padding on top of that gave every LightScrollView
+                // screen in this app 1(ours)+2(SDK's) = 3 units on the right vs. 1 on the left, a
+                // very visible dead gap on a real device (reported: cards not using the space to the
+                // right). Fixed at every LightScrollView call site in this file, not just this one.
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 1f.gridUnitsAsDp()),
+                    .padding(start = 1f.gridUnitsAsDp()),
             ) {
                 groups.forEachIndexed { index, group ->
                     MatchGroupCard(
@@ -467,11 +474,18 @@ private fun ScoresContent(
             }
         }
 
-        // Bottom bar order (left to right): Settings, My Team, Fixtures — deliberately no Refresh
-        // icon here, see SoccerViewModel's class doc comment for why (free-tier quota + frozen
-        // historical data in Phase 1). Manual refresh lives in Settings instead. Standings used to
-        // have its own button here too; it's gone now — the table is reached only by tapping a
-        // league's logo above (see MatchGroupCard's onTitleLogoClick).
+        // Bottom bar order (left to right): Settings, My Team, Fixtures, Refresh. Refresh moved back
+        // here from Settings on request — it used to live only as a "Refresh now" text row in
+        // Settings (the doc comment used to explain why: free-tier quota + frozen historical data in
+        // Phase 1 made a one-tap refresh from the main screen not very useful), but now that Phase 3
+        // is live (a real proxy, real current data), quick access to refresh belongs on the main
+        // screen again. Reuses LightIcons.REFRESH — the SDK's own built-in icon, same LightIcon
+        // pattern as Settings' gear, rather than a custom drawable like My Team/Fixtures — since this
+        // app never had its own bespoke refresh glyph. onManualRefresh is the exact same
+        // viewModel::manualRefresh function Settings' row used to call; Settings' own row is removed
+        // (see SettingsContent). Standings used to have its own button here too; it's gone now — the
+        // table is reached only by tapping a league's logo above (see MatchGroupCard's
+        // onTitleLogoClick).
         LightBottomBar(
             items = listOf(
                 LightBarButton.LightIcon(
@@ -487,6 +501,11 @@ private fun ScoresContent(
                     onClick = onOpenFixtures,
                     contentDescription = "Fixtures",
                 ) { SoccerBarIcon(R.drawable.ic_calendar_dot_white, "Fixtures") },
+                LightBarButton.LightIcon(
+                    icon = LightIcons.REFRESH,
+                    onClick = onManualRefresh,
+                    contentDescription = "Refresh",
+                ),
             ),
         )
     }
@@ -842,7 +861,6 @@ private fun SettingsContent(
     onOpenLeagueSelection: () -> Unit,
     onOpenMyTeamSetup: () -> Unit,
     onClearMyTeam: () -> Unit,
-    onManualRefresh: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         LightTopBar(
@@ -876,22 +894,9 @@ private fun SettingsContent(
                         .padding(top = 0.25f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
                 )
             }
-            // This build's only manual-refresh surface — see SoccerViewModel's class doc comment
-            // for why there's no bottom-bar refresh icon. Was Copy (30) before the global
-            // one-step-down pass shifted it to Detail (20); reverted back to Copy, then to Fine
-            // (25) on request — see this fun's own doc comment on why "Leagues followed"/"My
-            // Team"/"Refresh now"/"About" all share one size now. Top padding bumped from 0.25f to
-            // 0.75f on request, so this reads as its own section — the same gap "Leagues followed"
-            // and "My Team" already carry between each other above — rather than as a continuation
-            // of "My Team"/"Forget My Team" right above it.
-            LightText(
-                text = "Refresh now",
-                variant = LightTextVariant.Fine,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .lightClickable(onClick = onManualRefresh)
-                    .padding(top = 0.75f.gridUnitsAsDp(), bottom = 0.75f.gridUnitsAsDp()),
-            )
+            // "Refresh now" used to live here as this build's only manual-refresh surface — moved to
+            // a bottom-bar icon on the main Scores screen instead (see ScoresContent's LightBottomBar
+            // doc comment for why), so there's nothing left for this row to do.
         }
 
         // Deliberately outside the scrollable Column above, not its last item: with a longer
@@ -1030,7 +1035,7 @@ private fun LeagueSelectionContent(
         )
 
         LightScrollView(
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
         ) {
             rows.forEach { row ->
                 Row(
@@ -1094,7 +1099,7 @@ private fun CompetitionPickerContent(
         )
 
         LightScrollView(
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
         ) {
             leagues.forEach { league ->
                 LightText(
@@ -1189,7 +1194,7 @@ private fun StandingsTableContent(
                 StandingsHeaderRow()
             }
             LightScrollView(
-                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
             ) {
                 var currentGroup: String? = null
                 rows.forEachIndexed { index, row ->
@@ -1274,9 +1279,9 @@ private fun FixturesContent(
     onMatchClick: (Fixture) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
+        // Header text removed on request, along with Today/My Team's — just the back button remains.
         LightTopBar(
             leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = onBack),
-            center = LightTopBarCenter.Text("Results & Fixtures"),
             modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
         )
 
@@ -1303,7 +1308,7 @@ private fun FixturesContent(
             LaunchedEffect(groups, today) { bringIntoViewRequester.bringIntoView() }
 
             LightScrollView(
-                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
             ) {
                 // Two levels of grouping, same as before: a plain-text day header, then one
                 // FixtureLeagueCard per competition that has a match that day (same per-league
@@ -1464,7 +1469,7 @@ private fun MyTeamTeamPickerContent(
             }
         } else {
             LightScrollView(
-                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
             ) {
                 teams.sortedBy { it.teamName }.forEach { team ->
                     LightText(
@@ -1489,9 +1494,15 @@ private fun MyTeamContent(
     onMatchClick: (Fixture) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
+        // Header text removed on request, along with Today/Results & Fixtures' — this used to show
+        // summary?.teamName (the actual team's name, not a literal "My Team" label) once loaded,
+        // which was also this screen's only on-screen indicator of *which* team you're looking at
+        // when reused for ScoreScreenMode.TeamDetail (an arbitrary tapped team, not necessarily the
+        // user's own saved one — see that mode's doc comment). Flagged, not solved here: with the
+        // header gone, Team Detail and My Team now render identically with no in-page way to tell
+        // them apart or see which team Team Detail is showing.
         LightTopBar(
             leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = onBack),
-            center = LightTopBarCenter.Text(summary?.teamName ?: "My Team"),
             modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
         )
 
@@ -1511,7 +1522,7 @@ private fun MyTeamContent(
             }
         } else {
             LightScrollView(
-                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
             ) {
                 // Crest + today/next-match placeholder, moved inside the scroll view on request so
                 // this row scrolls away with the rest of the content instead of staying pinned at
@@ -1758,7 +1769,7 @@ private fun MatchDetailContent(
         )
 
         LightScrollView(
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
         ) {
             MatchDetailHeader(
                 homeTeamName = mode.homeTeamName,

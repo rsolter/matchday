@@ -871,3 +871,53 @@ construction: `SoccerViewModel.selectedIds` is read from persisted prefs and fil
 `TRACKED_COMPETITIONS` (`.filter { it.id in selectedIds }`) everywhere it's used, so a device that
 had MLS selected before this change just silently stops seeing it on next launch — no migration
 code needed, nothing left dangling.
+
+## 24. Refresh icon moved back to bottom bar; headers removed from Today/My Team/Fixtures; scrollbar-gutter double-padding fixed
+
+Three asks from a round of on-device testing (two real-device screenshots of the Today screen
+showed cards not using the full width on the right).
+
+**Refresh relocated.** "Refresh now" removed from Settings (was a `LightText` row, `SettingsContent`)
+and re-added as a 4th `LightBottomBar` icon on the main Scores screen, using `LightIcons.REFRESH` —
+a built-in SDK icon that already existed but had never been used anywhere in this app. This reverses
+an earlier round's deliberate call to keep refresh off the main bottom bar (that call was made back
+in the free-tier/frozen-data Phase 1 era, when a one-tap refresh from the main screen wasn't very
+useful; Phase 3's real proxy and live data make it worth having there again). `onManualRefresh` wired
+through to the exact same `viewModel::manualRefresh` Settings' row used to call — no new ViewModel
+code needed.
+
+**Headers removed — Today, My Team, Fixtures & Results only.** Each of these three screens' center
+`LightTopBar` title was dropped, leaving a bare top bar (still its usual height, just nothing in the
+middle, or just the back button on My Team/Fixtures). This was scoped to exactly the three screens
+the user named as examples; **Settings, About, Leagues, Standings, Match Detail, and both picker
+screens (League/Competition and My Team's team picker) were deliberately left with their headers**,
+since none were named and each of those titles is either static navigational chrome the user didn't
+call out or a dynamic label (league name, team-picker's league name) that's still doing real work.
+Flagging this as a scope judgment call, not a certainty about what was wanted — worth confirming.
+
+**One regression this surfaced, not fixed here:** My Team's header used to render
+`summary?.teamName` — the actual team's name — once loaded. That was also the *only* on-screen
+indicator of which team you're looking at on the round-30 Team Detail page, since Team Detail reuses
+`MyTeamContent` verbatim for an arbitrary tapped team, not necessarily your own saved one. With the
+header gone, My Team and Team Detail (for any team) now render pixel-identical with no in-page way
+to tell them apart, or to see whose team you're looking at when it's not your own. This is a real
+usability loss that came out of a request that didn't mention Team Detail at all — left as-is
+pending the user's call on whether it needs a fix (e.g. restoring just the team name label, even
+with the rest of the header gone).
+
+**Scrollbar-gutter double-padding — the actual cause of #3.** `LightScrollView` (SDK component)
+unconditionally reserves 2 grid units of padding on the right (`end`) side of its own content
+column for a scrollbar gutter, regardless of whether a scrollbar thumb is actually visible — this is
+a documented SDK convention, not a bug in the SDK. This app's own code was *also* adding a symmetric
+`padding(horizontal = 1f.gridUnitsAsDp())` around every `LightScrollView` call, so every one of these
+screens ended up with 1 unit of padding on the left but 1(ours)+2(SDK's) = 3 units on the right — a
+visibly lopsided dead zone on the real device, exactly matching the reported screenshots. Fixed at
+all 8 call sites in this file (Today, League Selection, Competition Picker, Standings, Fixtures, My
+Team's team picker, My Team/Team Detail, Match Detail) by changing to `padding(start = 1f.gridUnitsAsDp())`
+only, so the SDK's own gutter is the sole right-side inset (net 1 unit left / 2 units right — a much
+smaller asymmetry, and one that's inherent to leaving room for a scrollbar rather than an accident).
+`SettingsContent`'s own separate `verticalScroll` Column was already correct and untouched — it isn't
+a `LightScrollView`, so it never had the SDK's extra gutter to double up on.
+
+No compiler available in this sandbox — verified only by full manual re-read of the diff and the
+usual brace/paren balance-check script; not run through a real Kotlin/Gradle build.
