@@ -1,11 +1,13 @@
 # Soccer Pro
 
 A Light Phone III tool sourced from [API-Football](https://www.api-football.com) (api-football.com,
-`v3.football.api-sports.io`) — 15 competitions across England (Premier League, Championship, FA Cup,
+`v3.football.api-sports.io`) — 14 competitions across England (Premier League, Championship, FA Cup,
 EFL Cup), Italy (Serie A, Coppa Italia), Spain (La Liga, Copa del Rey), Germany (Bundesliga,
-DFB-Pokal), France (Ligue 1, Coupe de France), Europe (UEFA Champions League, UEFA Europa League),
-and the US (MLS) — with Settings, Scores, Fixtures, Standings, and a "My Team" screen (league
-position, upcoming/recent fixtures, and who's unavailable for the next match).
+DFB-Pokal), France (Ligue 1, Coupe de France), and Europe (UEFA Champions League, UEFA Europa
+League) — with Settings, Scores, Fixtures, Standings, and a "My Team" screen (league position,
+upcoming/recent fixtures, and who's unavailable for the next match). MLS was tracked through an
+earlier round and dropped on request — see `SoccerModels.kt`'s doc comment on
+`TRACKED_COMPETITIONS`.
 
 This module landed on API-Football after evaluating a few other free/unofficial data sources
 (football-data.org, ESPN's unofficial site API, FotMob's unofficial API) that either had tighter
@@ -58,8 +60,7 @@ per-endpoint doc comments for the full shape and gotchas found in each):
   inference needed here, unlike the ESPN variant of this tool.
 - `GET /standings` — flat table for domestic leagues (confirmed: Premier League, 20 teams in one
   array), split into multiple group arrays for UEFA competitions (confirmed: Champions League,
-  8 groups of 4 in `standings: [[...], [...], ...]`); MLS is assumed to split into Eastern/Western
-  Conference tables the same way, not independently confirmed. The six knockout cups tracked by
+  8 groups of 4 in `standings: [[...], [...], ...]`). The six knockout cups tracked by
   this build (FA Cup, EFL Cup, Coppa Italia, Copa del Rey, DFB-Pokal, Coupe de France) have no
   standings response at all — no code change needed for that, since `Competition.hasStandings`
   keeps them out of the Standings and My Team league pickers in the first place (see "What it
@@ -81,15 +82,17 @@ the whitelist that has to match it):
   listing API-Football's commonly-used IDs) but not curl-tested against a live response: 140
   (La Liga), 135 (Serie A), 78 (Bundesliga), 61 (Ligue 1), 3 (UEFA Europa League), 45 (FA Cup),
   143 (Copa del Rey), 137 (Coppa Italia), 81 (DFB-Pokal), 66 (Coupe de France).
-- **Recalled from general knowledge only, no independent source found** — the riskiest three,
-  worth checking first: 40 (Championship), 48 (EFL Cup), 253 (MLS). A search for a public
-  ID-to-name table covering these three specifically came up empty this session (API-Football's
-  own such page requires dashboard login).
+- **Recalled from general knowledge only, no independent source found** — the riskiest two left,
+  worth checking first: 40 (Championship), 48 (EFL Cup). A search for a public ID-to-name table
+  covering these came up empty this session (API-Football's own such page requires dashboard
+  login). MLS (253) used to sit in this same tier and, once live, actually did hit a real
+  standings-parsing bug — dropped from `TRACKED_COMPETITIONS` entirely on request rather than
+  re-verified or fixed; see that val's doc comment in `SoccerModels.kt`.
 
 A wrong ID isn't silently dangerous: the proxy's whitelist has to list the same ID before any
 request for it succeeds at all, and the first real request against a wrong one either errors or
 comes back as an obviously different competition's real teams — worth a quick look at each new
-competition's Scores/Fixtures/Standings once this is deployed, especially the three unconfirmed
+competition's Scores/Fixtures/Standings once this is deployed, especially the two remaining unconfirmed
 ones.
 
 **Also not independently verified — worth a quick real check before relying on them:**
@@ -136,18 +139,20 @@ follow-up rather than an oversight — just not part of the Phase 3 migration it
 
 - **Scores** (default view): today's matches (real device date) across every followed competition,
   grouped by competition. No auto-refresh (see above) — pull-to-date is via Settings' "Refresh now".
-  Fans out one request per followed competition, concurrently — with all 15 followed by default
-  that's up to 15 concurrent requests per refresh (up from 4 pre-expansion), all cached 5 minutes
+  Fans out one request per followed competition, concurrently — with all 14 followed by default
+  that's up to 14 concurrent requests per refresh (up from 4 pre-expansion), all cached 5 minutes
   server-side by the proxy; worth keeping in mind against the proxy's shared daily budget even
   though the proxy is exactly what makes this cheap in the first place.
-- **Settings**: which of the 15 tracked competitions you follow, your My Team pick (changeable,
-  clearable), and the manual refresh action.
+- **Settings**: which of the 14 tracked competitions you follow (each with its own crest, fetched
+  from API-Football's media CDN directly by league id — see `fetchLeagueLogosByCompetitionId`'s
+  doc comment in `SoccerApi.kt`), your My Team pick (changeable, clearable), and the manual
+  refresh action.
 - **Fixtures**: pick a followed competition (leagues and cups both), see its matches ±10/+21 days
   around today, grouped by date, auto-scrolled to today.
 - **Standings**: pick a followed *league* (knockout cups are excluded here — see `Competition
   .hasStandings` in `SoccerModels.kt` — since they have no table to show), see its table — grouped
-  by "Group A"/"Group B"/etc. automatically for UEFA competitions and assumed for MLS's conferences,
-  one flat table otherwise (see the Data source section).
+  by "Group A"/"Group B"/etc. automatically for UEFA competitions, one flat table otherwise (see
+  the Data source section).
 - **My Team**: reachable via the star icon in the bottom bar. First use walks through a two-step
   setup (pick a followed *league* — same cup exclusion as Standings, since "league position" needs
   a table — then a team from that league's standings; there's no team-search endpoint verified for

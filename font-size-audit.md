@@ -823,3 +823,51 @@ now always call `openTeamDetail` regardless of which mode led there, so recursiv
 out of the existing "remember where I came from" pattern rather than needing new code. Not verified
 on a real device, but worth knowing this wasn't a deliberate scope decision — it's just what the
 shared plumbing does.
+
+## 23. League icons on the League Selection screen; MLS dropped entirely
+
+Two asks: add each league's crest to Settings' "Leagues" screen (where followed leagues are
+toggled), and confirm whether seven more countries' top flights can be added, plus drop MLS
+outright.
+
+**League icons.** Every other league crest in this app is decoded from a URL the API itself
+returned on a fixture or standings response — this screen is the first case where that doesn't
+work, because it lists *every* `TRACKED_COMPETITIONS` entry (so the user can follow leagues they
+aren't already following), before any such response necessarily exists for a given league. Instead
+of leaving those rows iconless, `fetchLeagueLogosByCompetitionId` (new, `SoccerApi.kt`) constructs
+the crest URL itself from API-Football's documented media CDN convention,
+`media.api-sports.io/football/leagues/{id}.png`, straight off each `Competition.id` — confirmed
+against a real example URL in API-Football's own BunnyCDN integration guide (id 39 / Premier
+League, matching this app's own curl-confirmed id). This is the first place in this app that
+constructs an image URL itself rather than only ever using one the API handed back; flagging that
+explicitly since every other fetch in this file deliberately avoided it. Low risk either way: a
+wrong URL for some id just 404s, and that row renders with no icon — same "omit rather than show
+broken" convention every other image fetch here already follows, never a crash.
+
+Fetched as a follow-up when `openLeagueSelection()` opens the screen, all 14 tracked ids at once,
+keyed by id (not URL — the one map in this app that isn't) into a new `ScoreScreenMode
+.LeagueSelection.leagueLogos` field. `LeagueSelectionContent` decodes and renders each row's icon
+through the same `decodeLeagueLogo`/`leagueLogoColorFilter` recolor pipeline Scores/Fixtures/
+Standings already use, so e.g. Premier League/UCL read white here too instead of dark-on-black.
+
+**Seven more countries — confirmed available, but IDs not verified.** Checked API-Football's own
+coverage page: Portugal (Primeira Liga), Netherlands (Eredivisie), Turkey (Süper Lig), Denmark
+(Superliga), Sweden (Allsvenskan), Norway (Eliteserien), and Russia (Premier League) are all
+covered by the data source — "possible to pull in," yes. What I could *not* do this round: find
+their actual numeric API-Football league IDs anywhere public. The dashboard page that would have
+them (`dashboard.api-football.com/soccer/ids`) requires login, same wall this codebase hit
+before; no third-party source with the specific numbers turned up in several searches this round
+either — worse corroboration than even this codebase's existing "two independent sources" tier
+(La Liga, Bundesliga, etc.), and the same "recalled from general knowledge only" tier that MLS
+itself sat in before it hit a real bug live. Deliberately did not add guessed IDs for these seven
+on my own judgment, given the user asked to drop MLS in the same message — see the response for
+how this was left for the user to decide.
+
+**MLS dropped.** Removed the `Competition(id = 253, name = "MLS")` entry from
+`TRACKED_COMPETITIONS` outright, along with its `GROUP_STAGE_COMPETITION_IDS` membership and every
+doc-comment reference to it (`SoccerModels.kt`, `README.md`) — not just unselected, gone from the
+tracked list entirely, so it can't be re-added from the League Selection screen either. Safe by
+construction: `SoccerViewModel.selectedIds` is read from persisted prefs and filtered against
+`TRACKED_COMPETITIONS` (`.filter { it.id in selectedIds }`) everywhere it's used, so a device that
+had MLS selected before this change just silently stops seeing it on next launch — no migration
+code needed, nothing left dangling.

@@ -27,11 +27,20 @@ import kotlinx.serialization.json.JsonPrimitive
  *   listing API-Football's commonly-used IDs) but not curl-tested against a live response: 140
  *   (La Liga), 135 (Serie A), 78 (Bundesliga), 61 (Ligue 1), 3 (UEFA Europa League), 45 (FA Cup),
  *   143 (Copa del Rey), 137 (Coppa Italia), 81 (DFB-Pokal), 66 (Coupe de France).
- * - **Recalled from general knowledge only, no independent source found** — the riskiest three,
- *   worth checking first once live: 40 (Championship), 48 (EFL Cup), 253 (MLS).
+ * - **Recalled from general knowledge only, no independent source found** — the riskiest two left,
+ *   worth checking first once live: 40 (Championship), 48 (EFL Cup). MLS (253) used to sit in this
+ *   same tier; dropped from [TRACKED_COMPETITIONS] entirely on request rather than re-verified —
+ *   see that val's doc comment.
  */
 data class Competition(val id: Int, val name: String, val hasStandings: Boolean = true)
 
+// MLS (id 253) was tracked here through an earlier round, in the "recalled from general knowledge
+// only" (least-verified) ID tier above, and ran into a real standings-parsing bug live (see
+// SoccerViewModel.apiErrorMessage's doc comment on "the MLS standings bug"). Dropped entirely on
+// request rather than re-verified or fixed. Safe to remove outright: SoccerViewModel.selectedIds
+// is read from persisted prefs and filtered against this list (`TRACKED_COMPETITIONS.filter { it.id
+// in selectedIds }`), so a device that had MLS selected before this change just silently stops
+// seeing it — no migration needed, nothing left dangling.
 val TRACKED_COMPETITIONS: List<Competition> = listOf(
     // England
     Competition(id = 39, name = "Premier League"),
@@ -53,23 +62,20 @@ val TRACKED_COMPETITIONS: List<Competition> = listOf(
     // Europe
     Competition(id = 2, name = "UEFA Champions League"),
     Competition(id = 3, name = "UEFA Europa League"),
-    // USA
-    Competition(id = 253, name = "MLS"),
 )
 
 /**
  * Competitions whose `/standings` response splits into multiple group arrays instead of one flat
  * table (confirmed for id 2 / UEFA Champions League this session — 8 groups of 4 — see
  * [ApiFootballStandingsLeagueDto.standings]'s doc comment). Id 3 / Europa League is assumed to
- * share UEFA's group-stage format; id 253 / MLS is assumed to split into Eastern/Western
- * Conference tables the same way. Neither assumption is independently confirmed —
+ * share UEFA's group-stage format. Not independently confirmed —
  * [toStandingsRows] doesn't actually need this set (it detects grouping directly from the response
  * shape, i.e. `standings.size > 1`), so a wrong assumption here costs nothing; this is just
  * documentation of what's expected going in. The knockout cups in [TRACKED_COMPETITIONS] aren't
  * here at all — they have no standings response to be grouped or flat in the first place (see
  * [Competition.hasStandings]).
  */
-val GROUP_STAGE_COMPETITION_IDS: Set<Int> = setOf(2, 3, 253)
+val GROUP_STAGE_COMPETITION_IDS: Set<Int> = setOf(2, 3)
 
 private val COMPETITION_DISPLAY_ORDER: Map<Int, Int> =
     TRACKED_COMPETITIONS.mapIndexed { index, c -> c.id to index }.toMap()

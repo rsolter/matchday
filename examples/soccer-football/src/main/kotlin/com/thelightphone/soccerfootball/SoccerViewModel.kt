@@ -51,7 +51,15 @@ sealed class ScoreScreenMode {
     ) : ScoreScreenMode()
     data object Attribution : ScoreScreenMode()
 
-    data class LeagueSelection(val rows: List<LeagueSelectionRow>) : ScoreScreenMode()
+    /** [leagueLogos] is keyed by [Competition.id] rather than a URL, unlike every other logo map on
+     * this class — see [ApiFootballApi.fetchLeagueLogosByCompetitionId]'s doc comment for why this
+     * screen needs its own fetch shape. Starts empty and fills in once that follow-up fetch resolves
+     * (see [SoccerViewModel.openLeagueSelection]); a still-missing id after that just renders that
+     * row without an icon, same as every other logo in this app. */
+    data class LeagueSelection(
+        val rows: List<LeagueSelectionRow>,
+        val leagueLogos: Map<Int, ByteArray> = emptyMap(),
+    ) : ScoreScreenMode()
 
     data class Standings(
         val leagueId: Int,
@@ -412,6 +420,20 @@ class SoccerViewModel(
 
     fun openLeagueSelection() {
         updateState { it.copy(mode = ScoreScreenMode.LeagueSelection(buildLeagueRows()), errorModal = null) }
+        // Fetched as a follow-up, same pattern as leagueLogos/teamLogos elsewhere on this class:
+        // never blocks the row list itself from rendering, and a failed or still-in-flight fetch
+        // just means those rows render without an icon a moment longer (or permanently, on failure)
+        // rather than showing an error. Every TRACKED_COMPETITIONS id at once, not just followed
+        // ones — the whole point of this screen is picking leagues you *aren't* already following.
+        viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
+            val logos = api.fetchLeagueLogosByCompetitionId(TRACKED_COMPETITIONS.map { it.id })
+            if (logos.isNotEmpty()) {
+                updateState { state ->
+                    val mode = state.mode as? ScoreScreenMode.LeagueSelection ?: return@updateState state
+                    state.copy(mode = mode.copy(leagueLogos = logos))
+                }
+            }
+        }
     }
 
     fun closeLeagueSelection() {

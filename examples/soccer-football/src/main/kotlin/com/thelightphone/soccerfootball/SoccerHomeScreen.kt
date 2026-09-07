@@ -117,6 +117,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                     is ScoreScreenMode.LeagueSelection -> {
                         LeagueSelectionContent(
                             rows = mode.rows,
+                            leagueLogos = mode.leagueLogos,
                             onToggle = viewModel::toggleLeague,
                             onBack = viewModel::closeLeagueSelection,
                         )
@@ -1017,6 +1018,7 @@ private fun AttributionContent(onBack: () -> Unit) {
 @Composable
 private fun LeagueSelectionContent(
     rows: List<LeagueSelectionRow>,
+    leagueLogos: Map<Int, ByteArray>,
     onToggle: (Int) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -1038,6 +1040,25 @@ private fun LeagueSelectionContent(
                         .lightClickable(onClick = { onToggle(row.id) })
                         .padding(vertical = 0.85f.gridUnitsAsDp()),
                 ) {
+                    // Same decodeLeagueLogo (recolor-on-decode) treatment Scores/Fixtures/Standings
+                    // already give a league crest, so e.g. Premier League/UCL still read as white
+                    // here instead of the dark-on-black original. Bytes come from leagueLogos, keyed
+                    // by id (see ScoreScreenMode.LeagueSelection's doc comment) rather than the
+                    // URL-keyed maps every other screen uses. Row simply renders without an icon
+                    // until the fetch resolves, or permanently if it fails — never a broken image.
+                    val bytes = leagueLogos[row.id]
+                    val logoBitmap = bytes?.let { b -> remember(b, row.id) { decodeLeagueLogo(b, row.id) } }
+                    if (logoBitmap != null) {
+                        Image(
+                            bitmap = logoBitmap,
+                            contentDescription = null,
+                            contentScale = ContentScale.Fit,
+                            colorFilter = leagueLogoColorFilter(row.id),
+                            modifier = Modifier
+                                .size(1.4f.gridUnitsAsDp())
+                                .padding(end = 0.6f.gridUnitsAsDp()),
+                        )
+                    }
                     // Was Copy (30) before the global one-step-down pass shifted it to Detail (20);
                     // reverted back to Copy — this is a Settings child page, same treatment.
                     LightText(text = row.name, variant = LightTextVariant.Copy, modifier = Modifier.weight(1f))

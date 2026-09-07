@@ -25,6 +25,15 @@ import kotlinx.serialization.json.decodeFromJsonElement
 private const val API_BASE = "https://soccer-proxy.ravisolter.com"
 private const val REQUEST_TIMEOUT_MS = 15_000L
 
+// API-Football/API-Sports' own documented media CDN for league crests — a static image host, not
+// part of the proxied/whitelisted API surface (same "bypasses the proxy entirely" category as every
+// other image fetch in this file — see fetchImageBytes's doc comment). Confirmed against a real
+// example URL in API-Football's own BunnyCDN integration guide (media.api-sports.io/football/
+// leagues/39.png for id 39 / Premier League, which matches this app's own curl-confirmed id for
+// that league) — not confirmed against every individual league id this app constructs a URL for,
+// see fetchLeagueLogosByCompetitionId's doc comment.
+private const val API_SPORTS_LEAGUE_LOGO_BASE = "https://media.api-sports.io/football/leagues"
+
 /**
  * Client for this app's own caching proxy (`https://soccer-proxy.ravisolter.com`), not
  * API-Football directly — Phase 3 onward, the proxy holds the real API-Football key server-side
@@ -326,6 +335,28 @@ internal class ApiFootballApi {
         urls.filter { it.isNotBlank() }.distinct()
             .map { url -> url to async { fetchImageBytes(url).getOrNull() } }
             .mapNotNull { (url, deferred) -> deferred.await()?.let { url to it } }
+            .toMap()
+    }
+
+    /** League badge bytes for the Settings "Leagues" (League Selection) screen, keyed by
+     * [Competition.id] instead of a URL — unlike [fetchLeagueLogos] above, that screen lists every
+     * [TRACKED_COMPETITIONS] entry up front, before any fixture/standings response (which is what
+     * every other logo fetch in this app gets its URL *from*, via [ApiFootballFixtureLeagueDto.logo]
+     * / [ApiFootballStandingsLeagueDto.logo]) has necessarily been fetched — a followed-but-currently-
+     * fixtureless cup, or a league not yet followed at all, would otherwise have no known logo URL to
+     * fetch by. Instead this constructs the URL itself from [API_SPORTS_LEAGUE_LOGO_BASE] + the
+     * league's own numeric id — API-Football's documented media-CDN convention for league crests
+     * (confirmed against a real example URL in their own BunnyCDN integration guide, using id 39 /
+     * Premier League, which matches this app's own curl-confirmed id for that league). This is the
+     * first place in this app that constructs an image URL itself rather than only ever using one
+     * the API handed back — every other crest/logo fetch in this file deliberately avoided that. If
+     * the convention turns out to be wrong for some league id, the fetch for that one id just fails
+     * (404 or similar) and [decodeLeagueLogo] falls back to no icon, same "omit rather than show
+     * broken" convention as every other image fetch here — never a crash. */
+    suspend fun fetchLeagueLogosByCompetitionId(ids: Collection<Int>): Map<Int, ByteArray> = coroutineScope {
+        ids.distinct()
+            .map { id -> id to async { fetchImageBytes("$API_SPORTS_LEAGUE_LOGO_BASE/$id.png").getOrNull() } }
+            .mapNotNull { (id, deferred) -> deferred.await()?.let { id to it } }
             .toMap()
     }
 
