@@ -200,6 +200,32 @@ internal class ApiFootballApi {
         return body.toMatchLineups(homeTeamId, awayTeamId)
     }
 
+    /** Which of [fixtureIds] (expected: still-scheduled matches close to kickoff — see
+     * [SoccerViewModel]'s near-kickoff window doc comment) already have a posted lineup, checked by
+     * calling the same `/fixtures/lineups` endpoint [fetchLineupsInternal] uses for Match Detail,
+     * one request per id fanned out concurrently (same pattern as [fetchLeagueLogos]). Unlike
+     * [fetchLineupsInternal], this doesn't need to know either team's id — it only cares whether
+     * API-Football has posted *any* lineup data at all for that fixture yet (`response` non-empty),
+     * not what's actually in it. A per-id failure (network hiccup, still genuinely empty) just
+     * leaves that id out of the result — same "omit rather than show broken" convention as this
+     * class's image fetches — never surfaces as an error to the caller, since a match legitimately
+     * not having lineups yet is the normal, expected case for most of this list. */
+    suspend fun fetchLineupAvailability(fixtureIds: Collection<Int>): Set<Int> = coroutineScope {
+        fixtureIds.distinct()
+            .map { id ->
+                id to async {
+                    runCatching {
+                        val body: ApiFootballLineupsResponse = getChecked("$API_BASE/fixtures/lineups") {
+                            parameter("fixture", id)
+                        }
+                        body.response.isNotEmpty()
+                    }.getOrDefault(false)
+                }
+            }
+            .mapNotNull { (id, deferred) -> id.takeIf { deferred.await() } }
+            .toSet()
+    }
+
     // --- Injuries / unavailability (My Team) ------------------------------------
 
     /** Who's unavailable for one specific fixture — confirmed against a real

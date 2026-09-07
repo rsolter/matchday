@@ -22,6 +22,7 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.serialization.json.Json
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
@@ -41,6 +42,14 @@ sealed class ScoreScreenMode {
          * as the same follow-up in [refresh]; a missing entry just means that one crest is skipped,
          * not that the whole row falls back to text-only. */
         val teamLogos: Map<String, ByteArray> = emptyMap(),
+        /** [Fixture.id]s of still-scheduled matches this list currently knows have a posted lineup
+         * — checked by [refresh]'s lineup-availability follow-up (see that fun's doc comment) only
+         * for matches kicking off within [LINEUP_CHECK_WINDOW], so most of a day's fixtures never
+         * get an extra API call for this. A fixture's absence here just means either it isn't close
+         * enough to kickoff yet to have been checked, or it was checked and nothing's posted yet —
+         * [MatchRow] (SoccerHomeScreen.kt) shows the plain kickoff time in both cases, "Lineups"
+         * only once its id actually lands in this set. */
+        val lineupsAvailableFixtureIds: Set<Int> = emptySet(),
     ) : ScoreScreenMode()
 
     data class Settings(
@@ -180,6 +189,20 @@ private const val MIN_LEAGUES_MESSAGE = "Keep at least one league selected."
 private const val FIXTURES_PAST_DAYS = 10
 private const val FIXTURES_FUTURE_DAYS = 21
 
+/** How far ahead of kickoff [refresh] starts spending an extra API call per still-scheduled match
+ * to check whether its lineup has been posted yet (see [ApiFootballApi.fetchLineupAvailability]).
+ * This is a real per-fixture check, not a guess at exact posting time — a fixture outside this
+ * window just never gets checked (kickoff time keeps showing), it's never told the wrong thing. The
+ * width is a judgment call, not something confirmed against a real response this session: the user
+ * who asked for this guessed lineups appear "maybe ~10 min" before kickoff, but confirmed lineups
+ * for top leagues are commonly reported (industry-wide, not specifically verified for
+ * API-Football's own timing) as posted closer to 60 minutes out. 2 hours gives real margin on
+ * either side, and this app has no poll loop (see this class's doc comment) — refresh only happens
+ * on first load and the bottom bar's Refresh tap — so a tighter window would risk the whole gap
+ * between "posted" and "next manual refresh" landing on a match this never got to check. Worth
+ * narrowing later if it turns out to add real load on the proxy. */
+private val LINEUP_CHECK_WINDOW = 2.hours
+
 /**
  * Phase 3: this app talks to its own caching proxy (`ApiFootballApi`'s `API_BASE`), not
  * API-Football directly, and no longer holds or prompts for an API key — the proxy holds the real
@@ -301,26 +324,40 @@ class SoccerViewModel(
                         state.copy(errorModal = null)
                     }
                 }
-                // League badges and team crests fetch only now, as a follow-up, run concurrently
-                // with each other — same pattern as MatchDetailScreen's coach photos below: nothing
-                // here needs to block the scores themselves rendering. Silent on failure/blank, same
-                // "just render without a badge" convention as the rest of this app's images.
-                val (leagueLogos, teamLogos) = coroutineScope {
+                // League badges, team crests, and near-kickoff lineup availability all fetch only
+                // now, as a follow-up, run concurrently with each other — same pattern as
+                // MatchDetailScreen's coach photos below: nothing here needs to block the scores
+                // themselves rendering. Logos are silent on failure/blank, same "just render without
+                // a badge" convention as the rest of this app's images; lineup availability is the
+                // same "omit rather than show broken" idea applied to a status label instead of an
+                // image — see fetchLineupAvailability's own doc comment.
+                val now = Clock.System.now()
+                val lineupCandidateIds = matches.filter { it.isLineupCheckCandidate(now) }.map { it.id }
+                val (leagueLogos, teamLogos, lineupsAvailable) = coroutineScope {
                     val leagueLogosDeferred = async { api.fetchLeagueLogos(groups.map { it.leagueLogo }) }
                     val teamLogosDeferred = async {
                         api.fetchTeamLogos(matches.flatMap { listOf(it.homeTeamLogo, it.awayTeamLogo) })
                     }
-                    leagueLogosDeferred.await() to teamLogosDeferred.await()
+                    // Skipped entirely (no request at all) when nothing's close enough to kickoff to
+                    // be worth checking — the common case most of the day.
+                    val lineupsDeferred = async {
+                        if (lineupCandidateIds.isEmpty()) emptySet() else api.fetchLineupAvailability(lineupCandidateIds)
+                    }
+                    Triple(leagueLogosDeferred.await(), teamLogosDeferred.await(), lineupsDeferred.await())
                 }
-                if (leagueLogos.isNotEmpty() || teamLogos.isNotEmpty()) {
-                    val modeWithLogos = mode.copy(leagueLogos = leagueLogos, teamLogos = teamLogos)
-                    lastScores = modeWithLogos
+                if (leagueLogos.isNotEmpty() || teamLogos.isNotEmpty() || lineupsAvailable.isNotEmpty()) {
+                    val modeWithExtras = mode.copy(
+                        leagueLogos = leagueLogos,
+                        teamLogos = teamLogos,
+                        lineupsAvailableFixtureIds = lineupsAvailable,
+                    )
+                    lastScores = modeWithExtras
                     updateState { state ->
                         // Guards against a newer refresh() call having already replaced groups by
-                        // the time this slower logo fetch resolves — don't stamp stale badges onto
-                        // whatever's on screen now.
+                        // the time this slower follow-up resolves — don't stamp stale badges/labels
+                        // onto whatever's on screen now.
                         if (state.mode is ScoreScreenMode.Scores && state.mode.groups == groups) {
-                            state.copy(mode = modeWithLogos)
+                            state.copy(mode = modeWithExtras)
                         } else {
                             state
                         }
@@ -329,6 +366,16 @@ class SoccerViewModel(
             },
             onFailure = { error -> handleFailure(error) },
         )
+    }
+
+    /** True for a still-scheduled match kicking off within [LINEUP_CHECK_WINDOW] — the set of
+     * fixtures [refresh] spends an extra `/fixtures/lineups` call checking on each refresh. See
+     * [LINEUP_CHECK_WINDOW]'s own doc comment for why this width, and [Fixture.kickoffInstant]
+     * (SoccerFormatting.kt) for the parse this relies on. */
+    private fun Fixture.isLineupCheckCandidate(now: Instant): Boolean {
+        if (status != MatchStatus.SCHEDULED) return false
+        val timeToKickoff = (kickoffInstant() ?: return false) - now
+        return timeToKickoff.isPositive() && timeToKickoff <= LINEUP_CHECK_WINDOW
     }
 
     private suspend fun cacheMatches(matches: List<Fixture>) {
@@ -371,8 +418,9 @@ class SoccerViewModel(
         else -> NETWORK_ERROR_MESSAGE
     }
 
-    /** Settings' "Refresh now" row — this build's entire manual-refresh surface, since there's no
-     * bottom-bar refresh button (see the class doc comment). */
+    /** The Scores screen's bottom-bar Refresh icon — this build's entire manual-refresh surface
+     * (moved here from a Settings row; see ScoresContent's LightBottomBar doc comment in
+     * SoccerHomeScreen.kt for why). */
     fun manualRefresh() {
         viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
             refresh(showSpinner = true)

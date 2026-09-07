@@ -12,8 +12,14 @@ import kotlin.time.Instant
  * Short status/score text shown next to a match, e.g. "2 - 1 · 37'", "HT", "FT", "19:30".
  * [Fixture.elapsed]/[Fixture.extraMinutes] build the live minute directly (API-Football sends
  * these as plain numbers, not a pre-formatted string the way ESPN's `displayClock` does).
+ *
+ * [lineupsAvailable] (default false, so every existing call site is unaffected) swaps the plain
+ * kickoff time for "Lineups" once [SoccerViewModel]'s near-kickoff check has confirmed
+ * API-Football has posted one for this fixture — see that class's lineup-availability doc comment
+ * and [ApiFootballApi.fetchLineupAvailability]. Only meaningful for [MatchStatus.SCHEDULED]; every
+ * other branch ignores it.
  */
-fun Fixture.statusLabel(): String = when (status) {
+fun Fixture.statusLabel(lineupsAvailable: Boolean = false): String = when (status) {
     MatchStatus.IN_PLAY -> elapsed?.let { e ->
         val extra = extraMinutes?.takeIf { it > 0 }
         if (extra != null) "$e+$extra'" else "$e'"
@@ -23,7 +29,7 @@ fun Fixture.statusLabel(): String = when (status) {
     MatchStatus.POSTPONED -> "Postponed"
     MatchStatus.CANCELLED -> "Cancelled"
     MatchStatus.SUSPENDED -> "Suspended"
-    MatchStatus.SCHEDULED -> formatKickoffTime(utcDate)
+    MatchStatus.SCHEDULED -> if (lineupsAvailable) "Lineups" else formatKickoffTime(utcDate)
     MatchStatus.UNKNOWN -> statusLong.ifBlank { "—" }
 }
 
@@ -75,6 +81,12 @@ fun formatKickoffDateAndTime(isoDate: String): String {
  * is needed before parsing. */
 fun Fixture.localDate(): LocalDate? =
     parseIso(utcDate)?.toLocalDateTime(TimeZone.currentSystemDefault())?.date
+
+/** Parsed kickoff [Instant], or null if [Fixture.utcDate] couldn't be parsed — a public counterpart
+ * of the private [parseIso] this file's other Fixture helpers already use internally, added for
+ * [SoccerViewModel]'s near-kickoff lineup-availability check, which needs a real time delta rather
+ * than just the local calendar date [localDate] gives. */
+fun Fixture.kickoffInstant(): Instant? = parseIso(utcDate)
 
 /** Short, uppercase date header for grouping fixtures by day, e.g. "SAT, AUG 19" — or "TODAY" for
  * the real device-local date ([todayLocalDate]). */

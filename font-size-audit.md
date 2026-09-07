@@ -921,3 +921,51 @@ a `LightScrollView`, so it never had the SDK's extra gutter to double up on.
 
 No compiler available in this sandbox — verified only by full manual re-read of the diff and the
 usual brace/paren balance-check script; not run through a real Kotlin/Gradle build.
+
+## 25. "Lineups" status once a match's lineup is posted (Today/Scores only)
+
+Ask, from watching the app on-device: show "Lineups" in place of the kickoff time once a match's
+lineup becomes viewable, instead of the plain kickoff time — the user's own guess was that lineups
+get pulled in "maybe ~10 min" before kickoff.
+
+**Flagging a misconception before the implementation:** there was no existing "pulls lineups ~10 min
+ahead" behavior to surface — lineups were, and still are, only ever fetched for one specific match
+at a time, when its own Match Detail screen is opened (`ApiFootballApi.fetchMatchDetail` →
+`fetchLineupsInternal`). The Today/Scores list itself has never fetched lineup data for anything in
+it. This was a genuinely new capability, not a tweak to something already running.
+
+**How it actually works now:** on every refresh (first load or the bottom-bar Refresh tap — this app
+has no poll loop, see `SoccerViewModel`'s class doc comment), each still-scheduled match kicking off
+within the next 2 hours gets one extra `GET /fixtures/lineups?fixture={id}` call
+(`ApiFootballApi.fetchLineupAvailability`, new) to check — for real, not by guessing a timestamp —
+whether API-Football has posted anything for it yet. Matches further out than 2 hours, or already
+past kickoff, skip the call entirely, so most of a day's fixtures never cost anything extra. The
+resulting fixture-id set (`ScoreScreenMode.Scores.lineupsAvailableFixtureIds`, new) flows down to
+`MatchRow`, which now shows "Lineups" instead of the kickoff time for any match whose id is in that
+set (`Fixture.statusLabel`'s new `lineupsAvailable` param, defaulted `false` everywhere else so no
+other screen's call sites needed touching).
+
+**The 2-hour window is a judgment call, not a verified number** — flagging this explicitly rather
+than quietly picking something and moving on. The user's "~10 min" is a guess about when lineups
+actually get posted, not something this project has confirmed against a real response; common
+industry reporting for confirmed (not "predicted") lineups is closer to 60 minutes before kickoff,
+but that's not independently verified against API-Football's own timing either. Since this is a real
+per-fixture check (not a client-side clock guess), being wrong about the exact posting time only
+ever costs an extra empty-response API call or two — it can't ever show "Lineups" for a match that
+doesn't have one. 2 hours was picked to give real margin on both sides of that uncertainty while
+this app still only refreshes on-demand, so a too-narrow window risked a match's whole
+posted-to-next-refresh gap never getting checked at all. Worth tightening later if this turns out to
+add real load on the proxy — there's no data yet on how many near-kickoff matches a typical refresh
+actually has to check.
+
+**Scoped to Today/Scores only, on purpose — not Fixtures or My Team's upcoming list.** Both of those
+also show a bare kickoff time for scheduled matches, and could in principle want the same "Lineups"
+swap. Didn't extend it there this round: Fixtures pulls a much wider date window (`FIXTURES_PAST_DAYS`
+=10 / `FIXTURES_FUTURE_DAYS`=21) where the overwhelming majority of scheduled matches are nowhere
+near kickoff, and My Team's upcoming card pulls an even less kickoff-proximate window — both would
+need their own near-kickoff filtering and their own follow-up fetch wired into `openFixtures`/My
+Team's loader, not just a threaded boolean, since neither currently has a "refresh already fetched
+this list and can piggyback a follow-up" moment the way Scores' `refresh()` does. Flagged for the
+user to confirm whether it's worth doing there too, rather than assumed.
+
+No compiler in this sandbox — verified by manual diff review and balance_check.py only.

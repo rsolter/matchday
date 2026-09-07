@@ -89,6 +89,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             groups = mode.groups,
                             leagueLogos = mode.leagueLogos,
                             teamLogos = mode.teamLogos,
+                            lineupsAvailableFixtureIds = mode.lineupsAvailableFixtureIds,
                             onOpenSettings = viewModel::openSettings,
                             onOpenMyTeam = viewModel::openMyTeam,
                             onOpenStandingsTable = viewModel::openStandingsTable,
@@ -408,6 +409,7 @@ private fun ScoresContent(
     groups: List<CompetitionGroup>,
     leagueLogos: Map<String, ByteArray>,
     teamLogos: Map<String, ByteArray>,
+    lineupsAvailableFixtureIds: Set<Int>,
     onOpenSettings: () -> Unit,
     onOpenMyTeam: () -> Unit,
     onOpenStandingsTable: (Int, String) -> Unit,
@@ -468,6 +470,7 @@ private fun ScoresContent(
                         },
                         showTeamCrests = true,
                         teamLogos = teamLogos,
+                        lineupsAvailableFixtureIds = lineupsAvailableFixtureIds,
                         onMatchClick = onMatchClick,
                     )
                 }
@@ -538,7 +541,11 @@ private fun ScoresContent(
  * [showTeamCrests]/[teamLogos], only ever set by Scores' call site, switch every row in this card
  * over to [MatchTeamsAndScoreCell] instead of plain team-name text — see [MatchRow]'s doc comment;
  * My Team never sets these, so its cards are unaffected. [teamLogos] is keyed by
- * [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] URL, looked up per-match below. */
+ * [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] URL, looked up per-match below.
+ * [lineupsAvailableFixtureIds], also only ever set by Scores' call site, is a plain
+ * [Fixture.id] set (not keyed by URL — there's no image involved) checked per-match below to flip
+ * [MatchRow]'s leading label from a kickoff time to "Lineups" — see that param's own doc comment
+ * and [SoccerViewModel]'s near-kickoff check for where the set itself comes from. */
 @Composable
 private fun MatchGroupCard(
     title: String,
@@ -555,6 +562,9 @@ private fun MatchGroupCard(
     showScoreSlot: Boolean = true,
     showTeamCrests: Boolean = false,
     teamLogos: Map<String, ByteArray> = emptyMap(),
+    // Only ever non-empty from Scores' call site — see MatchRow's own doc comment on its
+    // lineupsAvailable param.
+    lineupsAvailableFixtureIds: Set<Int> = emptySet(),
     onMatchClick: (Fixture) -> Unit,
 ) {
     Column(
@@ -606,6 +616,7 @@ private fun MatchGroupCard(
                 showTeamCrests = showTeamCrests,
                 homeTeamLogoBytes = teamLogos[match.homeTeamLogo],
                 awayTeamLogoBytes = teamLogos[match.awayTeamLogo],
+                lineupsAvailable = match.id in lineupsAvailableFixtureIds,
                 onClick = { onMatchClick(match) },
             )
         }
@@ -758,6 +769,12 @@ private fun MatchRow(
     showTeamCrests: Boolean = false,
     homeTeamLogoBytes: ByteArray? = null,
     awayTeamLogoBytes: ByteArray? = null,
+    // Set only by Scores (see MatchGroupCard's call site, threaded from
+    // ScoreScreenMode.Scores.lineupsAvailableFixtureIds) — swaps the leading kickoff-time label for
+    // "Lineups" once SoccerViewModel's near-kickoff check confirms one's posted for this specific
+    // match. My Team never sets this, so its rows are unaffected — see statusLabel's doc comment in
+    // SoccerFormatting.kt for the scope/timing tradeoffs behind that scoping choice.
+    lineupsAvailable: Boolean = false,
     onClick: () -> Unit,
 ) {
     // Only My Team's "UPCOMING" card ever hits the showDate+SCHEDULED branch below (its rows are
@@ -788,11 +805,12 @@ private fun MatchRow(
                     }
                 }
             } else {
-                // Upcoming match, no score yet — nothing to color-code, just the kickoff label.
+                // Upcoming match, no score yet — nothing to color-code, just the kickoff label (or
+                // "Lineups" once lineupsAvailable flips true — see statusLabel's doc comment).
                 val label = if (usesDatedKickoffLabel) {
                     formatKickoffDateAndTime(match.utcDate)
                 } else {
-                    match.statusLabel()
+                    match.statusLabel(lineupsAvailable = lineupsAvailable)
                 }
                 // Was Superfine (16), then Detail (20) after round 13's revert, then Fine (25) —
                 // now back to Detail, on request, matching MatchStatusBadge's same move (see its
