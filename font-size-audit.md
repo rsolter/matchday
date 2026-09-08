@@ -1340,3 +1340,29 @@ zero remaining references to the removed `SCHEDULE_ROW_STATUS_CLUSTER_WIDTH` con
 reviewing, two unrelated stale doc-comment references to `MatchTeamsAndScoreCell` — a composable
 already retired in an earlier round — corrected to past tense), and `balance_check.py` on
 `SoccerHomeScreen.kt`.
+
+## 34. Real-device feedback on §33: drop the card background, shrink the crests
+
+First real-device screenshots of §33's 3-column layout showed two problems, both fixed on request:
+
+**Card background reads as a solid grey block on-device, not a subtle tint.** `ScheduleDayCard`'s
+translucent fill (`LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f)`) was meant to be a
+barely-there separator between one day's card and the next. On the actual Light Phone III display it
+rendered as a visibly solid grey rectangle instead — likely a real device/preview rendering gap for
+low-alpha overlays on this hardware, not something the emulator or a screenshot review could have
+caught. Fixed by removing the card fill entirely, so the card blends into the screen's real black
+background with nothing behind it. The divider between league groups within a card (`contentSecondary`
+at 15% alpha) is untouched — the user explicitly wanted that kept.
+
+**`TEAM_CREST_SIZE = 3f` (from §33) was too tall.** Real device: only about 4 matches fit on screen at
+once, where 6-7 was wanted. This confirms §33's own stated risk — a hand-picked size chosen with no
+compiler or device to check it against — did in fact need the "follow-up nudge" that doc comment
+predicted. Set to 1.5, aiming for the crest to sit within the two-line text column's own height rather
+than dictating the row's height the way it did at 3f, which should put row density back closer to
+where it was before crests became full-height columns. Still an estimate, flagged as such in the code
+comment and to the user — this is the third value this constant has held this session (1.1 originally,
+3 in §33, 1.5 now), so it's treated as a live tuning parameter rather than a settled one at this point.
+
+No compiler or Android SDK in this sandbox — verified by manual diff review, balance_check.py, and a
+grep confirming the other three `alpha = 0.08f` card backgrounds in this file belong to unrelated
+composables (`MatchGroupCard`, `UnavailableBlock`, `LineupSection`) and were correctly left alone.
