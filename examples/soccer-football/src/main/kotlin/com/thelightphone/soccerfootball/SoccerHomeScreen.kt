@@ -248,19 +248,22 @@ private val SCORE_SLOT_WIDTH = 4f
 private val TEAM_CREST_SIZE = 1.1f
 
 // Fixed width for ScheduleMatchRow's leading status cluster — badge alone (still-scheduled matches),
-// or badge-plus-score together (live/finished matches), now rendered at LightTextVariant.Copy (30sp)
-// instead of Detail (20sp) so the badge can be genuinely bigger, on request, by giving it the row's
+// or badge-plus-score together (live/finished matches). The badge renders at LightTextVariant.Copy
+// (30sp) instead of Detail (20sp) so it can be genuinely bigger, on request, by giving it the row's
 // full two-line height to sit in rather than squeezing it into one line alongside the score and a
 // league name (the league name has since moved to a per-day-card header anyway — see
-// ScheduleDayCard's doc comment — and the score moved in here to sit beside the bigger badge).
-// Estimated to comfortably fit the widest realistic pairing ("FT" or a two-digit live minute next to
-// a "2 - 1"-shaped score) at the larger font — unverified without a compiler or real device, same
-// caveat as this file's other hand-picked widths; worth a look if a real screenshot ever shows either
-// one clipping. Doesn't need to match any other slot's width for centering purposes the way the
-// previous per-row layout's flanking slots did — this cluster is now a sibling of the whole two-line
-// crest/name-and-kickoff-time column, not sharing a row with a `weight(1f)` center Box anymore, so
-// that particular constraint from the previous round no longer applies. See ScheduleMatchRow.
-private val SCHEDULE_ROW_STATUS_CLUSTER_WIDTH = 7.5f
+// ScheduleDayCard's doc comment). The score sitting next to it is back to Fine (25sp, matching team
+// names) after this width's first value (7.5, with the score also at Copy) turned out to swallow
+// long team names almost entirely on a real device — non-league FA Cup clubs especially, whose full
+// names run noticeably longer than the leagues this had been screenshotted against so far. Narrowed
+// to 6f accordingly: still an estimate, unverified without a compiler or real device, same caveat as
+// this file's other hand-picked widths — but this one has already been wrong once, so a look at the
+// next batch of real screenshots (ideally including a few long-named non-league or lower-division
+// clubs, not just Serie A/La Liga-length names) matters more than usual here. Doesn't need to match
+// any other slot's width for centering purposes the way the previous per-row layout's flanking slots
+// did — this cluster is a sibling of the whole two-line crest/name-and-kickoff-time column, not
+// sharing a row with a `weight(1f)` center Box. See ScheduleMatchRow.
+private val SCHEDULE_ROW_STATUS_CLUSTER_WIDTH = 6f
 
 // A light, legible green for a live match's minute-counter text — matches the reference (fotmob)
 // screenshot's live-indicator hue. Used for text color only (see MatchStatusBadge); the badge's
@@ -634,8 +637,10 @@ private fun ScheduleDayCard(
  * across the whole row (both lines' combined height, not just one), holding — in order, badge first
  * then score, on request — [MatchStatusBadge] (FT/live-minute/"Lineups"/a postponed-etc. status,
  * whichever applies, all now [LightTextVariant.Copy] instead of `Detail`) paired with the match's
- * score once it has one ([Fixture.showsFinalOrLiveScore], also `Copy`, matching the badge); just the
- * badge alone for a postponed/cancelled/suspended match (see
+ * score once it has one ([Fixture.showsFinalOrLiveScore], still `Fine` — matching team names, not
+ * the badge — after `Copy` turned out to swallow long team names on a real device; see
+ * [SCHEDULE_ROW_STATUS_CLUSTER_WIDTH]'s doc comment); just the badge alone for a
+ * postponed/cancelled/suspended match (see
  * [Fixture.isPostponedCancelledOrSuspended]) or a still-scheduled one with a posted lineup; and
  * nothing at all for a still-scheduled match with no lineup posted yet — that match's only status
  * information is the kickoff time on its second line below.
@@ -683,9 +688,14 @@ private fun ScheduleMatchRow(
                             isLive = match.status.isLive,
                             variant = LightTextVariant.Copy,
                         )
+                        // Fine, not Copy — on request, after Copy's extra width (on top of the
+                        // badge's own) turned out to swallow long team names (non-league FA Cup
+                        // clubs especially) almost entirely. Still sits right next to the enlarged
+                        // badge, just no longer matching its size — the badge is the element that
+                        // was actually asked to get bigger; the score just needed to move next to it.
                         LightText(
                             text = match.scoreLabel(),
-                            variant = LightTextVariant.Copy,
+                            variant = LightTextVariant.Fine,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             color = if (match.status.isLive) LIVE_STATUS_GREEN else null,

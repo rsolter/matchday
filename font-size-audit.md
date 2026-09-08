@@ -1258,3 +1258,32 @@ the crests, that width is the one number to adjust.
 No compiler in this sandbox — verified by manual diff review, a grep sweep confirming no stale
 references to the old `SCHEDULE_ROW_SIDE_SLOT_WIDTH` constant remain, and `balance_check.py` on all
 four touched files.
+
+## 32. §31's real device screenshot: away team names almost entirely swallowed
+
+Real-device screenshot after §31, this time from an FA Cup day, showed a genuine regression, not a
+tuning nitpick: rows like "Carshalton Athletic - Redditch United" (English non-league club names,
+noticeably longer than anything Serie A/La Liga/UCL had shown in prior screenshots) rendered as
+"Carshalton Athletic - …" — the entire away team name gone, just an ellipsis, with its crest crowded
+right up against the card's edge. This is exactly the failure mode several earlier rounds worked to
+avoid, reintroduced by §31's own change: giving the score `LightTextVariant.Copy` (30sp, matching the
+enlarged badge) made the status cluster wide enough, combined with unusually long full club names, to
+leave too little width for the crest/name line.
+
+**The actual fix, on request:** keep the badge itself at `Copy` — that's the thing that was actually
+asked to get bigger — but the score next to it goes back to `Fine` (25sp, matching team names), not
+`Copy`. `SCHEDULE_ROW_STATUS_CLUSTER_WIDTH` narrowed from 7.5 to 6 grid units accordingly, giving
+that width back to the crest/name column. Two options not taken, offered alongside this one and
+explicitly declined: reverting the whole bigger-badge change outright, and instead handling long names
+by abbreviating them more aggressively when they don't fit — both stayed on the table but weren't
+what was asked for here.
+
+**Flagging plainly rather than asserting confidence this is fully fixed:** the new 6-unit width is
+still an estimate with no compiler or device to check it against, same as the 7.5 before it — the
+difference is that estimate has now been visibly wrong once already, on exactly the kind of long
+non-league club name that's likely to recur (FA Cup, lower-division English football generally). The
+next real screenshot is worth checking specifically against a few of the longest team names likely to
+appear, not just the shorter Serie A/La Liga-style names this had mostly been screenshotted with so
+far.
+
+No compiler in this sandbox — verified by manual diff review and `balance_check.py` only.
