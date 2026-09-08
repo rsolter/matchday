@@ -247,12 +247,19 @@ private val SCORE_SLOT_WIDTH = 4f
 // next to a team name without dominating the row, matching the reference fotmob screenshots' scale.
 private val TEAM_CREST_SIZE = 1.1f
 
-// Fixed width for ScheduleMatchRow's trailing status-badge slot — sized to comfortably fit its
-// longest label ("Lineups") with the pill's own padding, same reasoning as LEFT_SLOT_WIDTH above
-// but a touch narrower since this slot only ever holds a pill, never a bare kickoff time. Kept
-// reserved even when nothing renders in it (a still-scheduled match with no posted lineup) so the
-// center score/kickoff column stays in the same place on every row — see ScheduleMatchRow.
-private val STATUS_BADGE_SLOT_WIDTH = 2.8f
+// Fixed width for ScheduleMatchRow's two bottom-line flanking slots — the leading status badge and
+// the trailing league-name label. Both use this same width, on purpose: with a centered `weight(1f)`
+// Box between two slots of EQUAL fixed width, that Box's midpoint lands on the row's true visual
+// center regardless of what either side is showing (or not showing) — mismatched side widths would
+// pull the center off to whichever side is narrower, which is exactly the "why isn't the score
+// centered" bug this fixes. Sized to comfortably fit the badge's longest label ("Lineups") with the
+// pill's own padding, same reasoning as LEFT_SLOT_WIDTH above but a touch narrower since that slot
+// only ever holds a pill, never a bare kickoff time. Reused for the league-name slot even though a
+// couple of this app's short names (`"Coupe Fr."` is the longest at 9 characters) are close to this
+// width — untested on a real device, so worth a look if one ever visibly clips. Reserved even when
+// the badge side has nothing to show (a still-scheduled match with no posted lineup) so the center
+// column's position never depends on match status — see ScheduleMatchRow.
+private val SCHEDULE_ROW_SIDE_SLOT_WIDTH = 2.8f
 
 // A light, legible green for a live match's minute-counter text — matches the reference (fotmob)
 // screenshot's live-indicator hue. Used for text color only (see MatchStatusBadge); the badge's
@@ -569,36 +576,36 @@ private fun ScheduleDayCard(
 
 /** One match, two lines — bigger text throughout than the old single-line rows, on request, for
  * on-device readability. Top line: [TeamCrestImage] for each team pinned to the row's true left and
- * right edges, with one continuous "Home vs Away" string filling the space between them — a
- * revision (on request, after seeing real on-device screenshots of the first version) of an earlier
- * design that had the crests sitting adjacent in the row's center with a separately-truncated,
- * independently-weighted name on each side: a long home name paired with a short away name still
- * got cut off there even though the away side had unused width it couldn't lend. Making it one
- * string removes that artificial 50/50 split — whichever side needs more of the row's width just
- * takes it — and moving both crests to the true edges reclaims the padding that used to sit between
- * them in the middle. The one real trade-off: if the combined string still doesn't fit,
- * [TextOverflow.Ellipsis] always trims from the end (the away team), not necessarily whichever name
- * is actually longer — accepted as the simpler of the layout options discussed, versus a real
- * text-measuring/space-splitting layout. No center score slot on this line — that moved to the
- * second line, since fitting
- * a legible score/time next to two comfortably-sized names left no room for one on the same line.
- * Bottom line, three flexible zones
- * across the full width: the league's short name on the left ([competitionShortName]; tappable via
- * [onStandingsClick] when set, replacing the old per-card league-crest tap target now that cards no
- * longer have a per-league header — see [ScheduleDayCard]'s doc comment), the score (once the match
- * has a real one — [Fixture.showsFinalOrLiveScore]) or the kickoff time (before then) centered in
- * the middle, and — on the right — a [STATUS_BADGE_SLOT_WIDTH]-wide slot for a status pill
- * ([MatchStatusBadge], reused as-is from the old single-line rows) for whichever of
- * FT/live-minute/"Lineups" applies; empty but still reserving its width when none does (a
- * still-scheduled match whose lineup isn't posted yet — the kickoff time in the middle already
- * covers that state on its own, and a postponed/cancelled/suspended match shows its own status
- * text there instead of a kickoff time — see [Fixture.isPostponedCancelledOrSuspended] — so no
- * badge is needed alongside it either). Reserving the slot's width even when blank, rather than
- * omitting it, was a fix made after seeing real on-device screenshots: without it, the center
- * column drifted right on any row with no badge, visibly misaligned against rows that had one.
- * This reading of "league name, then FT/min/lineup indicator, then score/kickoff time in the
- * middle" was a judgment call given the ask's exact wording didn't fully pin down the three
- * elements' relative layout — worth a look on-device to confirm it's what was meant. */
+ * right edges, with one continuous "Home - Away" string filling the space between them (a plain
+ * dash, on request — was "vs" originally). This is itself a revision, after seeing real on-device
+ * screenshots of an earlier version that had the crests sitting adjacent in the row's center with a
+ * separately-truncated, independently-weighted name on each side: a long home name paired with a
+ * short away name still got cut off there even though the away side had unused width it couldn't
+ * lend. Making it one string removes that artificial 50/50 split — whichever side needs more of the
+ * row's width just takes it — and moving both crests to the true edges reclaims the padding that
+ * used to sit between them in the middle. The one real trade-off: if the combined string still
+ * doesn't fit, [TextOverflow.Ellipsis] always trims from the end (the away team), not necessarily
+ * whichever name is actually longer — accepted as the simpler of the layout options discussed,
+ * versus a real text-measuring/space-splitting layout. No center score slot on this line — that
+ * moved to the second line, since fitting a legible score/time next to two comfortably-sized names
+ * left no room for one on the same line.
+ *
+ * Bottom line, three zones across the full width: a leading [SCHEDULE_ROW_SIDE_SLOT_WIDTH]-wide slot
+ * for a status pill ([MatchStatusBadge], reused as-is from the old single-line rows) for whichever
+ * of FT/live-minute/"Lineups" applies, empty but still reserving its width when none does; the score
+ * (once the match has a real one — [Fixture.showsFinalOrLiveScore]), a postponed/cancelled/suspended
+ * match's own status text (see [Fixture.isPostponedCancelledOrSuspended]), or the kickoff time
+ * (before any of that), centered in the middle in a `weight(1f)` [Box]; and a trailing, equally
+ * [SCHEDULE_ROW_SIDE_SLOT_WIDTH]-wide slot for the league's short name ([competitionShortName],
+ * end-aligned; tappable via [onStandingsClick] when set, replacing the old per-card league-crest tap
+ * target now that cards no longer have a per-league header — see [ScheduleDayCard]'s doc comment).
+ * Badge-then-league (rather than league-then-badge, the first version's order) and giving both
+ * flanking slots the *same* fixed width are both on request, together: the center Box is only ever
+ * centered relative to the space between its two neighbors, so it only lands on the row's true
+ * visual center when both neighbors are the same fixed width — see
+ * [SCHEDULE_ROW_SIDE_SLOT_WIDTH]'s doc comment for why the earlier version (one fixed-width badge
+ * slot opposite one `weight(1f)` league-name slot) put the center off-true regardless of which side
+ * either one was on. */
 @Composable
 private fun ScheduleMatchRow(
     match: Fixture,
@@ -621,7 +628,7 @@ private fun ScheduleMatchRow(
                 modifier = Modifier.padding(end = 0.35f.gridUnitsAsDp()),
             )
             LightText(
-                text = "${match.homeTeamName} vs ${match.awayTeamName}",
+                text = "${match.homeTeamName} - ${match.awayTeamName}",
                 variant = LightTextVariant.Fine,
                 align = TextAlign.Center,
                 maxLines = 1,
@@ -638,17 +645,24 @@ private fun ScheduleMatchRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().padding(top = 0.25f.gridUnitsAsDp()),
         ) {
-            val shortName = competitionShortName(match.leagueId)
-            LightText(
-                text = shortName,
-                variant = LightTextVariant.Detail,
-                lighten = true,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .let { if (onStandingsClick != null) it.lightClickable(onClick = onStandingsClick) else it },
-            )
+            // Leading, fixed-width, regardless of whether a badge actually renders — kept reserved
+            // (rather than omitted) even when there's nothing to show, e.g. a still-scheduled match
+            // with no posted lineup, the whole UCL screenshot below. On request, this and the
+            // trailing league-name slot swapped sides from the first version (badge used to trail,
+            // league used to lead) — swapping alone wouldn't have fixed the actual complaint, though:
+            // the center Box below is only ever centered relative to the space BETWEEN these two
+            // slots, so it only lands on the row's true visual center when both are the same fixed
+            // width (see SCHEDULE_ROW_SIDE_SLOT_WIDTH's doc comment) — that's the real fix.
+            Box(
+                modifier = Modifier.width(SCHEDULE_ROW_SIDE_SLOT_WIDTH.gridUnitsAsDp()),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (match.showsFinalOrLiveScore()) {
+                    MatchStatusBadge(text = match.statusLabel(), isLive = match.status.isLive)
+                } else if (lineupsAvailable) {
+                    MatchStatusBadge(text = "Lineups", isLive = false)
+                }
+            }
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 if (match.showsFinalOrLiveScore()) {
                     LightText(
@@ -683,24 +697,18 @@ private fun ScheduleMatchRow(
                     )
                 }
             }
-            // Fixed-width regardless of whether a badge actually renders — on a self-review pass
-            // against the real-device screenshots, an omitted badge (any still-scheduled match with
-            // no posted lineup, e.g. the whole UCL screenshot) let the center score/time column above
-            // shift right into this slot's space, since Compose only allocates weight(1f) between
-            // however many children are actually present. That misaligned the center column between
-            // a "TODAY" card (all FT, badge always present) and a future day (all scheduled, badge
-            // usually absent) — exactly the kind of unevenness asked to be fixed. Reserving this
-            // width unconditionally keeps the center column's position identical on every row.
-            Box(
-                modifier = Modifier.width(STATUS_BADGE_SLOT_WIDTH.gridUnitsAsDp()),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                if (match.showsFinalOrLiveScore()) {
-                    MatchStatusBadge(text = match.statusLabel(), isLive = match.status.isLive)
-                } else if (lineupsAvailable) {
-                    MatchStatusBadge(text = "Lineups", isLive = false)
-                }
-            }
+            val shortName = competitionShortName(match.leagueId)
+            LightText(
+                text = shortName,
+                variant = LightTextVariant.Detail,
+                lighten = true,
+                align = TextAlign.End,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .width(SCHEDULE_ROW_SIDE_SLOT_WIDTH.gridUnitsAsDp())
+                    .let { if (onStandingsClick != null) it.lightClickable(onClick = onStandingsClick) else it },
+            )
         }
     }
 }

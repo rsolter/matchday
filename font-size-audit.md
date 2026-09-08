@@ -1121,3 +1121,47 @@ padding on the side facing the text (2 units total).
 No compiler in this sandbox — verified by manual diff review and `balance_check.py` only; the two
 real-device screenshots that prompted this round are the closest thing to visual verification either
 of these fixes has had, and the new top-line layout specifically hasn't been seen running yet.
+
+## 29. §28's own fixes, seen on-device — score/time still wasn't centered
+
+Ask, after seeing §28's redesign running: the top-line "Home vs Away" merge looked good, but the
+bottom line's score/time still wasn't visually centered, asked to swap the badge and league-name
+slots (league to the right), and asked to replace "vs" with a plain dash. Also flagged: the same
+off-center problem on a scheduled day's kickoff time, not just a finished day's score.
+
+**Why §28's fix didn't fully fix it.** §28 gave the trailing badge slot a fixed width so it no
+longer disappeared and let the center column drift — correct as far as it went, but it only
+addressed the badge side. The layout was still: `[league name, weight(1f)]` `[score/time,
+weight(1f), centered within its own box]` `[badge, fixed width]`. A `weight(1f)` Box's content is
+only centered *within that box* — and the box itself only sits at the row's true center when
+whatever's on both sides of it is equally wide. With one flexible `weight(1f)` slot on the left and
+one fixed-width slot on the right, the center box's own midpoint is mathematically pulled toward
+whichever side is narrower — here, toward the fixed badge slot, since the flexible league slot
+claims however much space is left over rather than matching the badge's width. Screenshots of a
+"TODAY" card (badge always present) and a scheduled day (badge usually blank) both showed a
+score/time that read as roughly centered but was, on close comparison, sitting left of the row's
+true visual center in both — this hadn't been caught in §28 because nothing in that round compared
+the center column's position against the top line's crest-to-true-edge center directly.
+
+**The actual fix: both flanking slots the same fixed width.** Swapped the badge to lead (left) and
+the league name to trail (right), per the request, and renamed `STATUS_BADGE_SLOT_WIDTH` to
+`SCHEDULE_ROW_SIDE_SLOT_WIDTH` since it's now shared by both ends — the league-name `Text` gets an
+explicit fixed width matching the badge's, instead of `weight(1f)`, with `TextAlign.End` so it still
+reads naturally hugging the row's right edge. With two equal fixed-width neighbors, the center
+`weight(1f)` Box's midpoint is now guaranteed to land on the row's true center regardless of match
+status — this is a real structural guarantee, not a coincidence of the current content, so it holds
+for scheduled kickoff times exactly the same way it holds for scores. **One thing worth flagging
+rather than guessing past:** reusing `SCHEDULE_ROW_SIDE_SLOT_WIDTH` (sized for the badge's longest
+label, "Lineups") for the league-name slot too means a couple of this app's short names — "Coupe
+Fr." is the longest at 9 characters — are close to that width and could clip on a real screen;
+still unverified without a compiler or device, flagged in that constant's own doc comment for
+whoever next has a device in hand.
+
+**"vs" → dash.** Changed the top line's separator from `" vs "` to `" - "` — mechanical, no layout
+implications, matches the plain-dash convention `Fixture.scoreLabel()` already uses for "2 - 1".
+
+No compiler in this sandbox — verified by manual diff review and `balance_check.py` only. This is
+the second round in a row where a layout bug only became visible by comparing two real-device
+screenshots side by side rather than either one alone — worth remembering that a single screenshot
+of this row, by itself, won't necessarily show a centering problem if every match on that day
+happens to share the same status.
