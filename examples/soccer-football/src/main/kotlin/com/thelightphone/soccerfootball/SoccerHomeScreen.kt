@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
@@ -158,6 +159,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             isLoading = mode.isLoading,
                             onBack = viewModel::backFromMyTeam,
                             onMatchClick = viewModel::openMatchDetail,
+                            onOpenStandingsTable = viewModel::openStandingsTable,
                         )
                     }
 
@@ -178,6 +180,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             isLoading = mode.isLoading,
                             onBack = viewModel::backFromTeamDetail,
                             onMatchClick = viewModel::openMatchDetail,
+                            onOpenStandingsTable = viewModel::openStandingsTable,
                         )
                     }
                 }
@@ -748,7 +751,11 @@ private fun ScheduleMatchRow(
  * for that team instead — see [MatchRow]. [allowKickoffLabelWrap] is only ever passed by My Team's
  * "UPCOMING" card — see [MatchRow]. [showScoreSlot], only ever set false by My Team's "UPCOMING"
  * card, drops the trailing score column entirely (rather than just leaving it visually empty) so
- * the team-name text gets that width back — see [MatchRow]. */
+ * the team-name text gets that width back — see [MatchRow]. No card fill on request, same reasoning
+ * and same real-device finding as [ScheduleDayCard]'s own background removal: a low-alpha grey fill
+ * rendered as a visibly solid block on the real device rather than the subtle tint it looked like in
+ * preview. The divider between individual matches (still `contentSecondary` at 15% alpha) is
+ * untouched — that's the "small grey line" the user asked to keep in its place. */
 @Composable
 private fun MatchGroupCard(
     title: String,
@@ -769,7 +776,6 @@ private fun MatchGroupCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(1.2f.gridUnitsAsDp()))
-            .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f))
             .padding(horizontal = 1f.gridUnitsAsDp(), vertical = 0.75f.gridUnitsAsDp()),
     ) {
         Row(
@@ -1216,16 +1222,22 @@ private fun CompetitionPickerContent(
 
 // --- Standings ------------------------------------------------------------------
 
-// POS narrowed from 0.13 to 0.08 (it only ever holds 1-2 digits) so TEAM starts further left,
-// closing up the blank gap that used to sit in front of team names; the width that frees up plus
-// TEAM's own reduction from 0.48 makes room for the new GF/GA columns below.
-private val STANDINGS_POS_WEIGHT = 0.08f
-private val STANDINGS_TEAM_WEIGHT = 0.34f
-private val STANDINGS_MP_WEIGHT = 0.11f
-private val STANDINGS_GF_WEIGHT = 0.11f
-private val STANDINGS_GA_WEIGHT = 0.11f
-private val STANDINGS_GD_WEIGHT = 0.12f
-private val STANDINGS_PTS_WEIGHT = 0.13f
+// On request: W/D/L added, GD dropped to make room for them, and every column tightened further
+// than the previous 0.08/0.34/0.11x3/0.12/0.13 split (7 columns) — explicitly framed as an
+// experiment to try now that team names can be shortened via [teamShortName], so this is a first
+// estimate, not a measured fit, same as every other hand-picked size in this file.
+//
+// POS narrowed again (0.08 -> 0.045) — it only ever holds 1-2 digits, and the user specifically
+// asked for the gap in front of team names closed up further. The six remaining stat columns
+// (MP/W/D/L/GF/GA) are all single-or-double-digit for the whole season, so they share one equal,
+// tight weight rather than each getting its own tuned value. PTS keeps a little extra room since a
+// runaway title race can occasionally reach 3 digits. TEAM actually ends up *larger* than the old
+// 0.34 despite the two net-new columns (9 total, was 7) — shortened team names plus every other
+// column being pushed as tight as a season-max value needs frees up more than W/D/L cost.
+private val STANDINGS_POS_WEIGHT = 0.045f
+private val STANDINGS_TEAM_WEIGHT = 0.405f
+private val STANDINGS_STAT_WEIGHT = 0.075f // MP, W, D, L, GF, GA all share this
+private val STANDINGS_PTS_WEIGHT = 0.10f
 
 @Composable
 private fun StandingsTableContent(
@@ -1328,10 +1340,12 @@ private fun StandingsHeaderRow() {
     Row(modifier = Modifier.fillMaxWidth().padding(bottom = 0.4f.gridUnitsAsDp())) {
         LightText(text = "#", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
         LightText(text = "TEAM", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT))
-        LightText(text = "MP", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
-        LightText(text = "GF", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
-        LightText(text = "GA", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
-        LightText(text = "GD", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
+        LightText(text = "MP", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = "W", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = "D", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = "L", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = "GF", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = "GA", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
         LightText(text = "PTS", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
 }
@@ -1344,27 +1358,29 @@ private fun StandingsTableRow(row: StandingsRow) {
     ) {
         // Sized to match the column headers above (also Detail, after the one-size-larger pass
         // requested on top of the app's earlier global one-step-down pass) — see
-        // font-size-audit.md recommendation #1: this is the densest row in the app (7 columns), and
-        // matching the header size gives the data more room before a long team name has to
-        // ellipsize.
+        // font-size-audit.md recommendation #1: this is the densest row in the app (9 columns as of
+        // the W/D/L addition, was 7), and matching the header size gives the data more room before
+        // a long team name has to ellipsize.
         LightText(text = row.position.toString(), variant = LightTextVariant.Detail, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
+        // teamShortName on request, now that this row's own column got tighter to make room for
+        // W/D/L — see that fun's doc comment in SoccerModels.kt. Falls back to the full name
+        // unchanged for any team without a researched short one, same as ScheduleMatchRow's use.
         LightText(
-            text = row.teamName,
+            text = teamShortName(row.teamName),
             variant = LightTextVariant.Detail,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT),
         )
-        LightText(text = row.played.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_MP_WEIGHT))
-        LightText(text = row.goalsFor.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GF_WEIGHT))
-        LightText(text = row.goalsAgainst.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GA_WEIGHT))
-        LightText(text = row.goalDifferenceLabel(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_GD_WEIGHT))
+        LightText(text = row.played.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = row.win.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = row.draw.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = row.lose.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = row.goalsFor.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = row.goalsAgainst.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
         LightText(text = row.points.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
 }
-
-private fun StandingsRow.goalDifferenceLabel(): String =
-    if (goalDifference > 0) "+$goalDifference" else goalDifference.toString()
 
 // The standalone Fixtures screen (FixturesContent/FixtureLeagueCard/FixtureMatchRow) that used to
 // live here is gone — Scores absorbed it entirely on request (see ScoreScreenMode.Scores and
@@ -1435,6 +1451,7 @@ private fun MyTeamContent(
     isLoading: Boolean,
     onBack: () -> Unit,
     onMatchClick: (Fixture) -> Unit,
+    onOpenStandingsTable: (Int, String) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         // Header text removed on request, along with Today/Results & Fixtures' — this used to show
@@ -1470,9 +1487,14 @@ private fun MyTeamContent(
                 // Crest + today/next-match placeholder, moved inside the scroll view on request so
                 // this row scrolls away with the rest of the content instead of staying pinned at
                 // the top. The standings block that used to sit under a centered crest here was
-                // dropped entirely (see MyTeamSummary.standingsRow's doc comment for why the field
-                // itself is still fetched).
-                MyTeamHeaderRow(summary = summary, onMatchClick = onMatchClick, modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()))
+                // dropped entirely, though its rank now resurfaces in this same row's top-right
+                // corner (see [MyTeamHeaderRow]'s doc comment).
+                MyTeamHeaderRow(
+                    summary = summary,
+                    onMatchClick = onMatchClick,
+                    onOpenStandingsTable = onOpenStandingsTable,
+                    modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()),
+                )
                 // Order below is deliberate: recent results, then next results, then who's out —
                 // injuries/suspensions dropped to the bottom of the scroll instead of leading it.
                 if (summary.recentFixtures.isNotEmpty()) {
@@ -1523,10 +1545,23 @@ private fun MyTeamContent(
 
 /** The crest + today/next-match placeholder row at the top of My Team's scroll content. Crest on
  * the left (was centered full-width above the standings block this replaced); the featured
- * match — [MyTeamSummary.featuredFixture] — on the right, clickable the same as any other match
- * row on this screen. */
+ * match — [MyTeamSummary.featuredFixture] — in the middle, clickable the same as any other match
+ * row on this screen; on request, [MyTeamSummary.standingsRow]'s league position now resurfaces
+ * top-right, across from the crest — the standings block this row's own layout replaced is gone,
+ * but the one number from it worth keeping at a glance (where this team actually sits) is back,
+ * just relocated and tappable straight through to [StandingsTableContent] for that league
+ * ([onOpenStandingsTable], threaded down from [SoccerViewModel.openStandingsTable] — see that
+ * fun's doc comment for how "back" now correctly returns here instead of always landing on
+ * Scores). Null when standings haven't loaded or this team isn't in a domestic-league table (see
+ * that field's own doc comment) — the row just omits the rank line rather than showing a blank or
+ * placeholder one. */
 @Composable
-private fun MyTeamHeaderRow(summary: MyTeamSummary, onMatchClick: (Fixture) -> Unit, modifier: Modifier = Modifier) {
+private fun MyTeamHeaderRow(
+    summary: MyTeamSummary,
+    onMatchClick: (Fixture) -> Unit,
+    onOpenStandingsTable: (Int, String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     // remember(bytes) keys on the byte array's identity, not its content — cheap enough here since
     // a new MyTeamSummary (and therefore a new array) only shows up once per fetch, never once per
     // frame. No AsyncImage here: the Light SDK's dependency allow-list rejects every third-party
@@ -1553,6 +1588,23 @@ private fun MyTeamHeaderRow(summary: MyTeamSummary, onMatchClick: (Fixture) -> U
             onMatchClick = onMatchClick,
             modifier = Modifier.weight(1f),
         )
+        summary.standingsRow?.let { standingsRow ->
+            LightText(
+                text = "${standingsRow.position.asOrdinal()} · ${competitionShortName(summary.leagueId)}",
+                variant = LightTextVariant.Superfine,
+                lighten = true,
+                align = TextAlign.End,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                // Row-scope align, not a weight -- this should wrap to its own content width and
+                // sit in the row's top-right corner ("across from the badge"), not stretch or
+                // compete with FeaturedMatchPlaceholder's weight(1f) for space.
+                modifier = Modifier
+                    .align(Alignment.Top)
+                    .widthIn(max = 5.5f.gridUnitsAsDp())
+                    .lightClickable(onClick = { onOpenStandingsTable(summary.leagueId, summary.leagueName) }),
+            )
+        }
     }
 }
 
@@ -1619,6 +1671,13 @@ private fun FeaturedMatchPlaceholder(summary: MyTeamSummary, onMatchClick: (Fixt
     }
 }
 
+// No card fill on request, same reasoning and same real-device finding as [ScheduleDayCard]'s own
+// background removal: a low-alpha grey fill rendered as a visibly solid block on the real device
+// rather than the subtle tint it looked like in preview. In its place, a thin divider (still
+// `contentSecondary` at 15% alpha, matching [MatchGroupCard]'s between-match divider) separates the
+// Injured/Suspended groups from each other, and [UnavailableGroup] adds the same divider between
+// individual players — that's the "small grey line" the user asked to keep, extended down to the
+// player level since a bare list of names with no card edge needs it more than a bordered one did.
 @Composable
 private fun UnavailableBlock(players: List<UnavailablePlayer>, modifier: Modifier = Modifier) {
     val injured = players.filter { it.kind == UnavailabilityKind.INJURED }
@@ -1627,7 +1686,6 @@ private fun UnavailableBlock(players: List<UnavailablePlayer>, modifier: Modifie
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(1.2f.gridUnitsAsDp()))
-            .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f))
             .padding(horizontal = 1f.gridUnitsAsDp(), vertical = 0.75f.gridUnitsAsDp()),
     ) {
         // Whole section bumped one size on request: Superfine (16) -> Detail (20), Detail -> Fine
@@ -1637,6 +1695,15 @@ private fun UnavailableBlock(players: List<UnavailablePlayer>, modifier: Modifie
             UnavailableGroup(label = "Injured", players = injured, modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()))
         }
         if (suspended.isNotEmpty()) {
+            if (injured.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 0.5f.gridUnitsAsDp())
+                        .height(1.dp)
+                        .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
+                )
+            }
             UnavailableGroup(label = "Suspended", players = suspended, modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()))
         }
     }
@@ -1646,7 +1713,16 @@ private fun UnavailableBlock(players: List<UnavailablePlayer>, modifier: Modifie
 private fun UnavailableGroup(label: String, players: List<UnavailablePlayer>, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth()) {
         LightText(text = label, variant = LightTextVariant.Detail, lighten = true)
-        players.forEach { player ->
+        players.forEachIndexed { index, player ->
+            if (index > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 0.2f.gridUnitsAsDp())
+                        .height(1.dp)
+                        .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
+                )
+            }
             Row(modifier = Modifier.fillMaxWidth().padding(top = 0.2f.gridUnitsAsDp())) {
                 LightText(
                     text = player.playerName,
@@ -1875,7 +1951,16 @@ private fun MatchDetailHeader(
  * Renders name-only, same as before this feature existed, if [logoBytes] hasn't arrived yet (it's
  * fetched separately from the rest of the header, see that fetch's own doc comment) or the fetch
  * failed — a missing crest was never a reason to hide the name. Tapping anywhere on the block
- * (crest or name) opens that team's own page — see [onClick]/[SoccerViewModel.openTeamDetail]. */
+ * (crest or name) opens that team's own page — see [onClick]/[SoccerViewModel.openTeamDetail].
+ *
+ * Crest bumped 2f -> 4f on request ("on any/all match pages, make the badges larger, same size as
+ * they appear on my team page"). Interpreting "match pages" as this screen (`ScoreScreenMode.
+ * MatchDetail`, one match shown at a time) and "my team page" size as [MyTeamHeaderRow]'s own
+ * 4f team crest — not [TEAM_CREST_SIZE] (1.5f), the small crest used in Scores' and My Team's own
+ * match *list* rows, which was deliberately sized down from an earlier 3f after real-device
+ * feedback that it left only ~4 matches visible per screen; re-enlarging that one would undo that
+ * fix. This screen only ever shows a single match, so the same crowding concern doesn't apply —
+ * flagging the size choice since it wasn't unambiguous and hasn't been seen on a real device yet. */
 @Composable
 private fun MatchDetailTeamBlock(name: String, logoBytes: ByteArray?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val logoBitmap = logoBytes?.let { bytes ->
@@ -1891,7 +1976,7 @@ private fun MatchDetailTeamBlock(name: String, logoBytes: ByteArray?, onClick: (
                 contentDescription = "$name crest",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .size(2f.gridUnitsAsDp())
+                    .size(4f.gridUnitsAsDp())
                     .padding(bottom = 0.2f.gridUnitsAsDp()),
             )
         }
@@ -2325,27 +2410,19 @@ private fun LineupSection(
         }
 
         lineup.coachName?.let { coachName ->
-            // Real headshot data, curl-confirmed on this exact endpoint at the user's request —
-            // see the doc comment on ApiFootballCoachDto.photo in SoccerModels.kt. Same
-            // decode-bytes-by-hand pattern as every other image in this app (no AsyncImage
-            // available), and the same "just omit it" fallback when there's no photo (coach not
-            // sent an id/photo, or the fetch failed) rather than a placeholder.
-            val coachBitmap = coachPhotoBytes?.let { bytes ->
-                remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
-            }
+            // Headshot Image dropped on request ("drop the coach images on home/away views") —
+            // keeping the text label, which is what actually carries the information. This left
+            // [coachPhotoBytes] unused inside this composable; the parameter itself, its call-site
+            // plumbing (see [MatchDetailContent]'s two [LineupSection] calls), and the underlying
+            // fetch (ApiFootballApi.fetchMatchDetail's coach-photo follow-up, MatchDetail's
+            // homeCoachPhotoBytes/awayCoachPhotoBytes) are deliberately left in place rather than
+            // unwound — this was a UI-only removal request, and ripping out the fetch chain too
+            // would touch SoccerViewModel.kt/ApiFootballApi.kt well beyond what was asked, with no
+            // compiler here to catch a mistake made along the way.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.3f.gridUnitsAsDp()),
                 modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()),
             ) {
-                if (coachBitmap != null) {
-                    Image(
-                        bitmap = coachBitmap,
-                        contentDescription = "$coachName headshot",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(1.6f.gridUnitsAsDp()).clip(CircleShape),
-                    )
-                }
                 // Was Fine, fixed to Detail — see the font-size audit doc: Fine (25, design units)
                 // is bigger than Detail (20) in this SDK's real type scale despite the name
                 // suggesting the opposite, so this caption was rendering almost as large as the

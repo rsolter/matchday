@@ -217,6 +217,7 @@ class SoccerViewModel(
     private var modeBeforeMatchDetail: ScoreScreenMode? = null
     private var modeBeforeMyTeamSetup: ScoreScreenMode? = null
     private var modeBeforeTeamDetail: ScoreScreenMode? = null
+    private var modeBeforeStandings: ScoreScreenMode? = null
 
     private var myTeamId: Int? = null
     private var myTeamName: String? = null
@@ -514,12 +515,18 @@ class SoccerViewModel(
 
     // --- Standings -----------------------------------------------------------------
     //
-    // No standalone picker screen — the table is reached only by tapping a league logo
-    // elsewhere (currently Scores' per-competition headers; see `competitionHasStandings`
-    // in SoccerModels.kt for the cup-competition guard), so this section is just the table
-    // itself plus its back navigation.
+    // Reached by tapping a league logo on Scores' per-competition headers (see
+    // `competitionHasStandings` in SoccerModels.kt for the cup-competition guard), or — on
+    // request — the league-rank line on My Team/Team Detail's header row (see
+    // MyTeamHeaderRow's doc comment). [modeBeforeStandings] records whichever of those (or
+    // anything else) was on screen when opened, same [modeBeforeTeamDetail]/
+    // [modeBeforeMatchDetail] pattern as this file's other "opened from more than one place"
+    // screens, so back always returns to where the user actually came from instead of
+    // unconditionally landing on Scores the way this used to when Scores' league headers were
+    // the only entry point.
 
     fun openStandingsTable(leagueId: Int, leagueName: String) {
+        modeBeforeStandings = _uiState.value.mode
         updateState {
             it.copy(
                 mode = ScoreScreenMode.Standings(leagueId, leagueName, emptyList(), isLoading = true, lastUpdated = null),
@@ -572,7 +579,9 @@ class SoccerViewModel(
     }
 
     fun backFromStandingsTable() {
-        updateState { it.copy(mode = lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE), errorModal = null) }
+        val previous = modeBeforeStandings ?: lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE)
+        modeBeforeStandings = null
+        updateState { it.copy(mode = previous, errorModal = null) }
     }
 
     // The standalone Fixtures screen (openFixtures/backFromFixturesTable, ScoreScreenMode.Fixtures)

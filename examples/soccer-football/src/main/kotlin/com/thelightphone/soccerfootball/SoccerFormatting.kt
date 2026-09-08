@@ -43,6 +43,25 @@ fun formatKickoffTime(isoDate: String): String =
 fun formatUpdatedAt(instant: Instant): String =
     instant.toLocalDateTime(TimeZone.currentSystemDefault()).to24HourTime()
 
+/** "1st", "2nd", "3rd", "4th" ... "21st" — for [StandingsRow.position] shown as a league-rank line
+ * (see [MyTeamHeaderRow] in SoccerHomeScreen.kt), where the bare number ("3") reads ambiguously
+ * next to other numbers on the same row but "3rd" doesn't. English ordinal rules only (11-13 are
+ * always "th", every other 1/2/3-ending number gets "st"/"nd"/"rd") — fine for this app's own
+ * competitions, all of which use plain English standings language elsewhere already. */
+fun Int.asOrdinal(): String {
+    val suffix = if (this % 100 in 11..13) {
+        "th"
+    } else {
+        when (this % 10) {
+            1 -> "st"
+            2 -> "nd"
+            3 -> "rd"
+            else -> "th"
+        }
+    }
+    return "$this$suffix"
+}
+
 /** Today's date in the device's local timezone. Phase 3 onward, this is used for fixture/season
  * purposes too (see [currentSeason]) — Phase 1's separate frozen-date stand-in (`phase1Today`) is
  * gone now that the proxy backing this app has real current-season access. */

@@ -1403,3 +1403,68 @@ turns over every season, so it's not something a hand-researched table can reali
 
 No compiler or Android SDK in this sandbox — verified by manual diff review, balance_check.py on both
 touched files, and a grep confirming no duplicate map keys among the 74 entries.
+
+## 36. My Team header rank, standings columns, card fills, crest size, coach photos
+
+Five requested changes from real-device screenshots and the CSV feedback in §35, all landed in one
+round.
+
+**Card backgrounds removed on My Team.** Same real-device finding as §34's `ScheduleDayCard` fix,
+applied to the two remaining `alpha = 0.08f` card fills flagged there as "correctly left alone" at
+the time (they weren't the ask yet): `MatchGroupCard` (My Team's "RECENT RESULTS"/"UPCOMING" cards)
+and `UnavailableBlock` ("UNAVAILABLE FOR NEXT MATCH"). Both now render with no fill at all. In its
+place: `MatchGroupCard` already had a between-match divider (`contentSecondary` at 15% alpha), so
+nothing needed adding there. `UnavailableBlock` had no divider previously (its card border was doing
+that job), so one was added between the Injured/Suspended groups, and `UnavailableGroup` (the
+per-status list) got a matching divider between individual players — a card-less list of names reads
+worse undivided than a bordered one did, so the "small grey line" treatment was extended one level
+deeper than literally asked, flagged here as a judgment call rather than a direct request.
+
+**My Team header: league rank line.** `MyTeamHeaderRow` now shows `"{Nth} · {league short name}"` in
+the top-right corner, across from the team crest, sourced from `MyTeamSummary.standingsRow` (fetched
+already, previously unrendered). Tapping it opens that league's Standings table
+(`SoccerViewModel.openStandingsTable`). New `Int.asOrdinal()` helper (SoccerFormatting.kt) formats the
+position ("1st", "2nd", "11th", ...). Standings previously had exactly one entry point (Scores' league
+headers), so `backFromStandingsTable()` could unconditionally return to Scores; adding this second
+entry point would have silently broken "back" for it (landing on Scores instead of back on My
+Team/Team Detail) had that not been caught — fixed proactively with a `modeBeforeStandings` tracker,
+matching this file's existing `modeBeforeTeamDetail`/`modeBeforeMatchDetail` pattern. Not something the
+user asked for directly, but required for the requested feature to actually work correctly.
+
+**Standings table: W/D/L added, GD dropped, short names, tighter spacing.** Column order is now #,
+TEAM, MP, W, D, L, GF, GA, PTS (was #, TEAM, MP, GF, GA, GD, PTS). `StandingsRow.win`/`draw`/`lose`
+were already fetched and available, just unused until now. `goalDifferenceLabel()` removed as dead
+code once GD's column went away — confirmed via grep, no remaining references. Team names in this
+table now go through `teamShortName()` (§35), and the column weights were rebalanced: position went
+from 0.08 to 0.045, team name from 0.34 to 0.405 (grows despite the tighter position column, because
+eight numeric columns sharing a smaller total width pushes the layout to reclaim space from position
+rather than team), and MP/W/D/L/GF/GA all now share one `STANDINGS_STAT_WEIGHT` (0.075) instead of the
+old per-column weights. **This is explicitly a first estimate, not a measured fit** — the user's own
+framing was "test adding columns," and nine columns of digits plus a name on this screen's real width
+hasn't been seen on the actual device yet. Most likely to need a follow-up nudge: the stat columns
+could turn out too tight for two-digit values, or too generous now that names are shorter.
+
+**Match Detail crest size: 2f → 4f.** The request — "on any/all match pages, make the badges larger,
+same size as they appear on my team page" — was ambiguous about which "match pages" and which "my
+team page" size, since My Team's own header has two different crest sizes (the 4f team crest, and a
+1.4f inline opponent crest in the featured-match placeholder). Interpreted "match pages" as the Match
+Detail screen (`ScoreScreenMode.MatchDetail`, `MatchDetailTeamBlock`) and matched it to the larger 4f
+team crest, not the 1.5f `TEAM_CREST_SIZE` used by Scores'/My Team's own match *list* rows — that one
+was deliberately shrunk in §34 after real-device feedback that a larger size left only ~4 matches
+visible per screen, and Match Detail only ever shows one match at a time, so that crowding concern
+doesn't apply there. This is a real interpretation call, not a confirmed reading of the request —
+worth confirming against the next round of screenshots.
+
+**Coach headshots removed from lineup views.** `LineupSection`'s "Coach: {name}" row (Match Detail's
+Home/Away lineup tabs — the only coach-photo UI anywhere in this app; confirmed via search that
+`MyTeamContent`/`TeamDetail` never had one) had its circular headshot `Image` and `coachBitmap` decode
+logic removed; the text label stays. Deliberately left in place, as out of scope for a UI-only
+request: the `coachPhotoBytes` parameter and its call-site plumbing in `MatchDetailContent`, and the
+underlying fetch in `SoccerViewModel`/`ApiFootballApi` (`homeCoachPhotoBytes`/`awayCoachPhotoBytes`).
+That leaves an unused parameter rather than a fully unwound fetch chain — a deliberate scope choice to
+avoid touching two more files' worth of fetch/state logic, with no compiler here to catch a mistake
+made doing it.
+
+No compiler or Android SDK in this sandbox — verified by manual diff review, balance_check.py on
+SoccerHomeScreen.kt, SoccerViewModel.kt, and SoccerFormatting.kt, and greps confirming no stale
+references to `goalDifferenceLabel` or `coachBitmap` remain anywhere in the file.
