@@ -73,10 +73,11 @@ internal class ApiFootballApi {
     /** [leagueIds]' matches within [dateFrom]..[dateTo] (both yyyy-MM-dd, inclusive), one request
      * per league fanned out concurrently and tolerant of partial failure — mirrors the ESPN
      * variant's own fan-out for the same reason: one league's request failing shouldn't blank out
-     * the others. Backs both [fetchTodaysMatches] (today..today, for Scores) and the Fixtures
-     * screen's all-followed-leagues view (a wider window — see [SoccerViewModel.openFixtures]).
-     * Uses `from`/`to` rather than API-Football's `last` parameter, which was Pro-only on the free
-     * tier (confirmed: `last=5` returned
+     * the others. Backs Scores' own fetch (see [SoccerViewModel.refresh]) — today-only for a plain
+     * `date..date` call before the Scores/Fixtures merge (on request), now called with a real
+     * multi-week range every time, absorbing what used to be a second, separate call for the
+     * standalone Fixtures screen. Uses `from`/`to` rather than API-Football's `last` parameter,
+     * which was Pro-only on the free tier (confirmed: `last=5` returned
      * `{"errors":{"plan":"Free plans do not have access to the Last parameter."}}`). */
     suspend fun fetchFixturesForLeagues(
         leagueIds: List<Int>,
@@ -96,13 +97,6 @@ internal class ApiFootballApi {
         } else {
             Result.success(succeeded.flatten())
         }
-    }
-
-    /** Today's ([todayLocalDate]) matches across [leagueIds] — a thin wrapper over
-     * [fetchFixturesForLeagues] with both ends of the range pinned to today. */
-    suspend fun fetchTodaysMatches(leagueIds: List<Int>): Result<List<Fixture>> {
-        val date = todayLocalDate().toString()
-        return fetchFixturesForLeagues(leagueIds, date, date)
     }
 
     /** A single team's matches within [dateFrom]..[dateTo] — My Team's upcoming/recent fixtures.
@@ -387,10 +381,10 @@ internal class ApiFootballApi {
     }
 
     /** Team crest bytes for one or more [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] URLs, keyed
-     * by URL — used by Scores and Results & Fixtures' combined team-crest/score cell (see
-     * MatchTeamsAndScoreCell in SoccerHomeScreen.kt). Mechanically identical to [fetchLeagueLogos]
-     * (fetch each distinct URL once, keyed by URL, omit on failure) — this is a separate name
-     * purely so call sites read as "team crests", not because the fetch itself differs at all. */
+     * by URL — used by Scores' own two-line rows (see ScheduleMatchRow in SoccerHomeScreen.kt).
+     * Mechanically identical to [fetchLeagueLogos] (fetch each distinct URL once, keyed by URL, omit
+     * on failure) — this is a separate name purely so call sites read as "team crests", not because
+     * the fetch itself differs at all. */
     suspend fun fetchTeamLogos(urls: Collection<String>): Map<String, ByteArray> = fetchLeagueLogos(urls)
 
     /** Fetches a hosted image as raw bytes — used for team crest URLs off [ApiFootballFixtureTeamDto.logo].

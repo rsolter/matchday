@@ -28,27 +28,29 @@ import kotlin.time.Instant
 
 sealed class ScoreScreenMode {
     data class Loading(val message: String) : ScoreScreenMode()
+    /** On request, absorbs the former standalone Fixtures screen entirely: [days] now spans
+     * [SCHEDULE_PAST_DAYS]..[SCHEDULE_FUTURE_DAYS] around [todayLocalDate] (was today-only) — see
+     * [refresh]'s doc comment — grouped flat by day rather than day-then-league (see
+     * [FixtureDay]/[groupedByDate] in SoccerModels.kt); the old `Fixtures` mode, its bottom-bar
+     * icon, and its own separate fetch (`openFixtures`) are gone, this is the only schedule view
+     * now. No more per-league logo map: the day-card redesign dropped the per-league crest header
+     * in favor of a plain league short-name label per row (see MatchRow's font-size-audit entry),
+     * so there's nothing left that needs [Competition]-keyed image bytes for this screen. */
     data class Scores(
-        val groups: List<CompetitionGroup>,
+        val days: List<FixtureDay>,
         val lastUpdated: Instant?,
         val isRefreshing: Boolean,
-        /** Keyed by [CompetitionGroup.leagueLogo] URL, not league ID — a group's own logo URL is
-         * the lookup key a caller already has in hand. Empty until [refresh]'s follow-up fetch
-         * resolves; a group simply renders without a badge until then, same "omit rather than show
-         * broken" convention as every other image on this screen. */
-        val leagueLogos: Map<String, ByteArray> = emptyMap(),
         /** Keyed by [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] URL — backs the per-match team
-         * crests in [MatchTeamsAndScoreCell] (SoccerHomeScreen.kt). Fetched alongside [leagueLogos]
-         * as the same follow-up in [refresh]; a missing entry just means that one crest is skipped,
-         * not that the whole row falls back to text-only. */
+         * crests on each row's top line. Fetched as a follow-up in [refresh]; a missing entry just
+         * means that one crest is skipped, not that the whole row falls back to text-only. */
         val teamLogos: Map<String, ByteArray> = emptyMap(),
         /** [Fixture.id]s of still-scheduled matches this list currently knows have a posted lineup
          * — checked by [refresh]'s lineup-availability follow-up (see that fun's doc comment) only
-         * for matches kicking off within [LINEUP_CHECK_WINDOW], so most of a day's fixtures never
-         * get an extra API call for this. A fixture's absence here just means either it isn't close
-         * enough to kickoff yet to have been checked, or it was checked and nothing's posted yet —
-         * [MatchRow] (SoccerHomeScreen.kt) shows the plain kickoff time in both cases, "Lineups"
-         * only once its id actually lands in this set. */
+         * for matches kicking off within [LINEUP_CHECK_WINDOW], so most of the window's fixtures
+         * never get an extra API call for this. A fixture's absence here just means either it isn't
+         * close enough to kickoff yet to have been checked, or it was checked and nothing's posted
+         * yet — [MatchRow] (SoccerHomeScreen.kt) shows the plain kickoff time in both cases,
+         * "Lineups" only once its id actually lands in this set. */
         val lineupsAvailableFixtureIds: Set<Int> = emptySet(),
     ) : ScoreScreenMode()
 
@@ -82,22 +84,6 @@ sealed class ScoreScreenMode {
         val leagueLogoBytes: ByteArray? = null,
     ) : ScoreScreenMode()
 
-    /** All followed leagues' fixtures, grouped by day then by competition — see
-     * [groupedByDateThenLeague]. No more standalone per-league picker/view (removed on request);
-     * this is reached directly from the bottom bar, same as [Standings] is now reached only via a
-     * league logo tap rather than its own picker. [leagueLogos] backs each day/league card's header
-     * badge (see FixtureLeagueCard in SoccerHomeScreen.kt) — fetched as a follow-up the same way
-     * [Scores.leagueLogos] is, keyed by the same [CompetitionGroup.leagueLogo] URL. [teamLogos],
-     * keyed by [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] URL, backs the per-match team crests
-     * in [MatchTeamsAndScoreCell] — fetched concurrently with [leagueLogos] in the same follow-up. */
-    data class Fixtures(
-        val groups: List<FixtureDayGroup>,
-        val isLoading: Boolean,
-        val lastUpdated: Instant?,
-        val leagueLogos: Map<String, ByteArray> = emptyMap(),
-        val teamLogos: Map<String, ByteArray> = emptyMap(),
-    ) : ScoreScreenMode()
-
     /** My Team setup, step 1: pick which followed league the team plays in — there's no team
      * search endpoint verified for this build, so a team is picked from an already-loaded
      * league's standings table instead (see [ScoreScreenMode.MyTeamTeamPicker]). */
@@ -128,7 +114,8 @@ sealed class ScoreScreenMode {
         val isLoading: Boolean,
     ) : ScoreScreenMode()
 
-    /** Reachable by tapping a match row from either Scores or Fixtures. [detail] is null while
+    /** Reachable by tapping a match row from Scores (which absorbed the former standalone Fixtures
+     * screen — see that mode's doc comment) or My Team. [detail] is null while
      * [isLoading] is true, and stays null on a failed fetch — the header (teams/score/status)
      * still has everything it needs from the tapped [Fixture] itself. Named `MatchDetailScreen`
      * rather than `MatchDetail` to avoid colliding with the domain model of the same name. */
@@ -186,8 +173,13 @@ private const val MIN_LEAGUES_MESSAGE = "Keep at least one league selected."
 /** How far back/forward the Fixtures mode's window reaches from [todayLocalDate]. Wide enough to
  * cover a handful of matchdays either side without pulling a whole season's worth of matches —
  * matches the ESPN variant's window (see its README). */
-private const val FIXTURES_PAST_DAYS = 10
-private const val FIXTURES_FUTURE_DAYS = 21
+/** How far back/forward [refresh]'s fetch window reaches from [todayLocalDate] — on request, the
+ * merged Scores/schedule list defaults to two weeks either side (was today-only for Scores, a wider
+ * but separate 10-past/21-future window for the now-retired standalone Fixtures screen — see that
+ * mode's own doc comment history). Symmetric on purpose, matching what was actually asked for
+ * ("2 weeks behind and ahead"), unlike the old Fixtures window's asymmetric past/future split. */
+private const val SCHEDULE_PAST_DAYS = 14
+private const val SCHEDULE_FUTURE_DAYS = 14
 
 /** How far ahead of kickoff [refresh] starts spending an extra API call per still-scheduled match
  * to check whether its lineup has been posted yet (see [ApiFootballApi.fetchLineupAvailability]).
@@ -204,11 +196,11 @@ private val LINEUP_CHECK_WINDOW = 1.hours
 /**
  * Phase 3: this app talks to its own caching proxy (`ApiFootballApi`'s `API_BASE`), not
  * API-Football directly, and no longer holds or prompts for an API key — the proxy holds the real
- * key server-side. Refresh here is still on-demand only (once on first load, and via Settings'
- * "Refresh now" row) rather than a poll loop, even though the proxy is exactly the kind of shared,
- * budget-absorbing intermediary that would make background polling cheap across installs — that's
- * a real follow-up worth doing, just not part of this pass, which is scoped to the proxy
- * migration itself.
+ * key server-side. Refresh here is still on-demand only (once on first load, and via the Scores
+ * screen's bottom-bar Refresh icon) rather than a poll loop, even though the proxy is exactly the
+ * kind of shared, budget-absorbing intermediary that would make background polling cheap across
+ * installs — that's a real follow-up worth doing, just not part of this pass, which is scoped to
+ * the proxy migration itself.
  */
 class SoccerViewModel(
     private val dataStore: DataStore<Preferences>,
@@ -271,7 +263,7 @@ class SoccerViewModel(
 
         val cached = loadCachedMatches(prefs)
         if (cached != null) {
-            val mode = ScoreScreenMode.Scores(cached.groupedForDisplay(), lastUpdated = null, isRefreshing = true)
+            val mode = ScoreScreenMode.Scores(cached.groupedByDate(), lastUpdated = null, isRefreshing = true)
             lastScores = mode
             updateState { it.copy(mode = mode) }
         } else {
@@ -280,6 +272,13 @@ class SoccerViewModel(
         refresh(showSpinner = cached != null)
     }
 
+    // Still keyed by a single calendar date, same as before the Scores/Fixtures merge — invalidates
+    // (and triggers a full re-fetch via the null return below) the day the window itself shifts,
+    // which is exactly when a cached blob would go stale anyway. Now caches roughly a month's worth
+    // of fixtures across every followed league instead of just one day's — Preferences DataStore
+    // has no hard size cap, but it's meant for small values, not a growing JSON blob; flagged as a
+    // real tradeoff worth revisiting (e.g. a file-backed cache) if it ever causes a slow read/write
+    // on a real device, which this sandbox has no way to check.
     private fun loadCachedMatches(prefs: Preferences): List<Fixture>? {
         val cachedDate = prefs[SoccerPreferences.CACHED_MATCHES_DATE]
         val cachedJson = prefs[SoccerPreferences.CACHED_MATCHES_JSON]
@@ -288,10 +287,13 @@ class SoccerViewModel(
         return matches.filter { it.leagueId in selectedIds }
     }
 
-    /** Fetches [todayLocalDate]'s matches and folds the result into [ScoreUiState] — see the class
-     * doc comment for why this isn't on a poll loop. Behaves like the ESPN/football-data.org
-     * variants otherwise: only touches what's on screen if the user is looking at Scores/Loading,
-     * updates [lastScores] silently otherwise. */
+    /** Fetches every followed league's matches across [SCHEDULE_PAST_DAYS]..[SCHEDULE_FUTURE_DAYS]
+     * around [todayLocalDate] and folds the result into [ScoreUiState] — see the class doc comment
+     * for why this isn't on a poll loop. Was today-only, scoped to Scores alone, before the
+     * Scores/Fixtures merge (on request) folded the former standalone Fixtures screen's whole
+     * window into this one fetch — see [ScoreScreenMode.Scores]'s doc comment. Otherwise behaves
+     * like the ESPN/football-data.org variants: only touches what's on screen if the user is
+     * looking at Scores/Loading, updates [lastScores] silently otherwise. */
     private suspend fun refresh(showSpinner: Boolean) {
         val isFirstLoad = _uiState.value.mode is ScoreScreenMode.Loading
         if (showSpinner) {
@@ -302,15 +304,18 @@ class SoccerViewModel(
         }
 
         val loadingStartedAt = Clock.System.now()
-        val result = api.fetchTodaysMatches(selectedIds.toList())
+        val today = todayLocalDate()
+        val dateFrom = today.minus(SCHEDULE_PAST_DAYS, DateTimeUnit.DAY).toString()
+        val dateTo = today.plus(SCHEDULE_FUTURE_DAYS, DateTimeUnit.DAY).toString()
+        val result = api.fetchFixturesForLeagues(selectedIds.toList(), dateFrom, dateTo)
         if (isFirstLoad) awaitMinimumLoading(loadingStartedAt)
 
         result.fold(
             onSuccess = { matches ->
                 cacheMatches(matches)
-                val groups = matches.groupedForDisplay()
+                val days = matches.groupedByDate()
                 val mode = ScoreScreenMode.Scores(
-                    groups = groups,
+                    days = days,
                     lastUpdated = Clock.System.now(),
                     isRefreshing = false,
                 )
@@ -322,39 +327,36 @@ class SoccerViewModel(
                         state.copy(errorModal = null)
                     }
                 }
-                // League badges, team crests, and near-kickoff lineup availability all fetch only
-                // now, as a follow-up, run concurrently with each other — same pattern as
-                // MatchDetailScreen's coach photos below: nothing here needs to block the scores
-                // themselves rendering. Logos are silent on failure/blank, same "just render without
-                // a badge" convention as the rest of this app's images; lineup availability is the
-                // same "omit rather than show broken" idea applied to a status label instead of an
-                // image — see fetchLineupAvailability's own doc comment.
+                // Team crests and near-kickoff lineup availability fetch only now, as a follow-up,
+                // run concurrently with each other — same pattern as MatchDetailScreen's coach
+                // photos below: nothing here needs to block the schedule itself rendering. Crests
+                // are silent on failure/blank, same "just render without a badge" convention as the
+                // rest of this app's images; lineup availability is the same "omit rather than show
+                // broken" idea applied to a status label instead of an image — see
+                // fetchLineupAvailability's own doc comment. No more league-logo fetch here: the
+                // day-card redesign dropped the per-league crest header (see ScoreScreenMode.Scores'
+                // doc comment), so nothing on this screen needs it any more.
                 val now = Clock.System.now()
                 val lineupCandidateIds = matches.filter { it.isLineupCheckCandidate(now) }.map { it.id }
-                val (leagueLogos, teamLogos, lineupsAvailable) = coroutineScope {
-                    val leagueLogosDeferred = async { api.fetchLeagueLogos(groups.map { it.leagueLogo }) }
+                val (teamLogos, lineupsAvailable) = coroutineScope {
                     val teamLogosDeferred = async {
                         api.fetchTeamLogos(matches.flatMap { listOf(it.homeTeamLogo, it.awayTeamLogo) })
                     }
                     // Skipped entirely (no request at all) when nothing's close enough to kickoff to
-                    // be worth checking — the common case most of the day.
+                    // be worth checking — the common case for most of the window.
                     val lineupsDeferred = async {
                         if (lineupCandidateIds.isEmpty()) emptySet() else api.fetchLineupAvailability(lineupCandidateIds)
                     }
-                    Triple(leagueLogosDeferred.await(), teamLogosDeferred.await(), lineupsDeferred.await())
+                    teamLogosDeferred.await() to lineupsDeferred.await()
                 }
-                if (leagueLogos.isNotEmpty() || teamLogos.isNotEmpty() || lineupsAvailable.isNotEmpty()) {
-                    val modeWithExtras = mode.copy(
-                        leagueLogos = leagueLogos,
-                        teamLogos = teamLogos,
-                        lineupsAvailableFixtureIds = lineupsAvailable,
-                    )
+                if (teamLogos.isNotEmpty() || lineupsAvailable.isNotEmpty()) {
+                    val modeWithExtras = mode.copy(teamLogos = teamLogos, lineupsAvailableFixtureIds = lineupsAvailable)
                     lastScores = modeWithExtras
                     updateState { state ->
-                        // Guards against a newer refresh() call having already replaced groups by
-                        // the time this slower follow-up resolves — don't stamp stale badges/labels
-                        // onto whatever's on screen now.
-                        if (state.mode is ScoreScreenMode.Scores && state.mode.groups == groups) {
+                        // Guards against a newer refresh() call having already replaced days by the
+                        // time this slower follow-up resolves — don't stamp stale crests/labels onto
+                        // whatever's on screen now.
+                        if (state.mode is ScoreScreenMode.Scores && state.mode.days == days) {
                             state.copy(mode = modeWithExtras)
                         } else {
                             state
@@ -573,80 +575,11 @@ class SoccerViewModel(
         updateState { it.copy(mode = lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE), errorModal = null) }
     }
 
-    // --- Fixtures ------------------------------------------------------------------
-    //
-    // No standalone per-league picker/view (removed on request) — this is now a single screen
-    // covering every followed league at once, grouped by day then by competition (see
-    // groupedByDateThenLeague in SoccerModels.kt), reached directly from the bottom bar.
-
-    fun openFixtures() {
-        updateState {
-            it.copy(mode = ScoreScreenMode.Fixtures(emptyList(), isLoading = true, lastUpdated = null), errorModal = null)
-        }
-        viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
-            val today = todayLocalDate()
-            val dateFrom = today.minus(FIXTURES_PAST_DAYS, DateTimeUnit.DAY).toString()
-            val dateTo = today.plus(FIXTURES_FUTURE_DAYS, DateTimeUnit.DAY).toString()
-            val result = api.fetchFixturesForLeagues(followedLeagues().map { it.id }, dateFrom, dateTo)
-            result.fold(
-                onSuccess = { matches ->
-                    val groups = matches.groupedByDateThenLeague()
-                    updateState { state ->
-                        if (state.mode is ScoreScreenMode.Fixtures) {
-                            state.copy(
-                                mode = ScoreScreenMode.Fixtures(
-                                    groups = groups,
-                                    isLoading = false,
-                                    lastUpdated = Clock.System.now(),
-                                ),
-                                errorModal = null,
-                            )
-                        } else {
-                            state
-                        }
-                    }
-                    // League badges and team crests fetch only now, as a follow-up, run concurrently
-                    // with each other — same pattern refresh() already uses for Scores' own
-                    // leagueLogos/teamLogos: doesn't block the fixtures themselves rendering, silent
-                    // on failure/blank.
-                    val (leagueLogos, teamLogos) = coroutineScope {
-                        val leagueLogosDeferred = async {
-                            api.fetchLeagueLogos(groups.flatMap { it.leagueGroups }.map { it.leagueLogo })
-                        }
-                        val teamLogosDeferred = async {
-                            api.fetchTeamLogos(matches.flatMap { listOf(it.homeTeamLogo, it.awayTeamLogo) })
-                        }
-                        leagueLogosDeferred.await() to teamLogosDeferred.await()
-                    }
-                    if (leagueLogos.isNotEmpty() || teamLogos.isNotEmpty()) {
-                        updateState { state ->
-                            // Guards against a newer openFixtures() call having already replaced
-                            // groups by the time this slower logo fetch resolves.
-                            if (state.mode is ScoreScreenMode.Fixtures && state.mode.groups == groups) {
-                                state.copy(mode = state.mode.copy(leagueLogos = leagueLogos, teamLogos = teamLogos))
-                            } else {
-                                state
-                            }
-                        }
-                    }
-                },
-                onFailure = { error ->
-                    updateState { state ->
-                        val fallback = if (state.mode is ScoreScreenMode.Fixtures) {
-                            ScoreScreenMode.Fixtures(emptyList(), false, null)
-                        } else {
-                            state.mode
-                        }
-                        state.copy(mode = fallback, errorModal = apiErrorMessage(error))
-                    }
-                },
-            )
-        }
-    }
-
-    fun backFromFixturesTable() {
-        updateState { it.copy(mode = lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE), errorModal = null) }
-    }
+    // The standalone Fixtures screen (openFixtures/backFromFixturesTable, ScoreScreenMode.Fixtures)
+    // that used to live here is gone — merged into Scores' own refresh() on request (see that mode's
+    // and refresh()'s doc comments). Scores is now the only schedule view, reached directly from the
+    // bottom bar same as before, just covering the wider window itself instead of handing off to a
+    // second screen.
 
     // --- My Team ---------------------------------------------------------------------
 
@@ -845,7 +778,7 @@ class SoccerViewModel(
 
     // --- Match detail ----------------------------------------------------------------
 
-    /** Opens the detail screen for a tapped match row, from Scores, Fixtures, or My Team. The
+    /** Opens the detail screen for a tapped match row, from Scores or My Team. The
      * header (teams/score/status) comes straight from [match] and renders immediately; the
      * stats/timeline/lineups tabs fetch separately and fill in once loaded. */
     fun openMatchDetail(match: Fixture) {

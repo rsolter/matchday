@@ -32,7 +32,18 @@ import kotlinx.serialization.json.JsonPrimitive
  *   same tier; dropped from [TRACKED_COMPETITIONS] entirely on request rather than re-verified —
  *   see that val's doc comment.
  */
-data class Competition(val id: Int, val name: String, val hasStandings: Boolean = true)
+data class Competition(
+    val id: Int,
+    val name: String,
+    // Defaults to the full name — only overridden below for names long enough to be worth
+    // shortening. Backs the per-match league label on the merged Scores/schedule list's second
+    // line (see MatchRow's font-size-audit entry on the day-card redesign) — plain well-known
+    // abbreviations (EPL, UCL, UEL), not confirmed against how this app's own font actually
+    // measures them since there's no compiler/emulator in this sandbox to render-test against;
+    // worth a real look once built.
+    val shortName: String = name,
+    val hasStandings: Boolean = true,
+)
 
 // MLS (id 253) was tracked here through an earlier round, in the "recalled from general knowledge
 // only" (least-verified) ID tier above, and ran into a real standings-parsing bug live (see
@@ -43,7 +54,7 @@ data class Competition(val id: Int, val name: String, val hasStandings: Boolean 
 // seeing it — no migration needed, nothing left dangling.
 val TRACKED_COMPETITIONS: List<Competition> = listOf(
     // England
-    Competition(id = 39, name = "Premier League"),
+    Competition(id = 39, name = "Premier League", shortName = "EPL"),
     Competition(id = 40, name = "Championship"),
     Competition(id = 45, name = "FA Cup", hasStandings = false),
     Competition(id = 48, name = "EFL Cup", hasStandings = false),
@@ -58,10 +69,10 @@ val TRACKED_COMPETITIONS: List<Competition> = listOf(
     Competition(id = 81, name = "DFB-Pokal", hasStandings = false),
     // France
     Competition(id = 61, name = "Ligue 1"),
-    Competition(id = 66, name = "Coupe de France", hasStandings = false),
+    Competition(id = 66, name = "Coupe de France", shortName = "Coupe Fr."),
     // Europe
-    Competition(id = 2, name = "UEFA Champions League"),
-    Competition(id = 3, name = "UEFA Europa League"),
+    Competition(id = 2, name = "UEFA Champions League", shortName = "UCL"),
+    Competition(id = 3, name = "UEFA Europa League", shortName = "UEL"),
 )
 
 /**
@@ -77,11 +88,20 @@ val TRACKED_COMPETITIONS: List<Competition> = listOf(
  */
 val GROUP_STAGE_COMPETITION_IDS: Set<Int> = setOf(2, 3)
 
+// Kept as a tiebreaker for same-kickoff-time matches in [groupedByDate] below — no longer used to
+// order per-league cards now that Scores' per-day list is flat (see that fun's doc comment).
 private val COMPETITION_DISPLAY_ORDER: Map<Int, Int> =
     TRACKED_COMPETITIONS.mapIndexed { index, c -> c.id to index }.toMap()
 private val COMPETITION_NAMES: Map<Int, String> = TRACKED_COMPETITIONS.associate { it.id to it.name }
+private val COMPETITION_SHORT_NAMES: Map<Int, String> = TRACKED_COMPETITIONS.associate { it.id to it.shortName }
 
 fun competitionName(id: Int): String = COMPETITION_NAMES[id] ?: "League $id"
+
+/** [Competition.shortName] by id, falling back to the full name for a league id this app doesn't
+ * track (shouldn't happen in practice — every [Fixture.leagueId] on screen came from a followed,
+ * therefore tracked, competition — but matches [competitionName]'s own fallback rather than risking
+ * a blank label). */
+fun competitionShortName(id: Int): String = COMPETITION_SHORT_NAMES[id] ?: competitionName(id)
 
 /** Whether [id] has a real league table — false for single-elimination cups (see [Competition.hasStandings]).
  * Used to gate the Scores screen's league-logo-tap navigation so tapping a cup's logo doesn't try
@@ -628,38 +648,27 @@ fun Fixture.resultFor(teamId: Int): MatchResult? {
     return if (teamWon) MatchResult.WIN else MatchResult.LOSS
 }
 
-data class CompetitionGroup(
-    val leagueId: Int,
-    val leagueName: String,
-    val leagueLogo: String = "",
-    val matches: List<Fixture>,
-)
+/** One calendar day's fixtures across every followed league, flat and sorted chronologically — on
+ * request, replaces the old two-level grouping (`CompetitionGroup`/`groupedForDisplay` for Scores,
+ * `FixtureDayGroup`/`groupedByDateThenLeague` for the standalone Fixtures screen, both removed) now
+ * that Scores has absorbed Fixtures into one continuous list spanning
+ * [SoccerViewModel]'s schedule window. [matches] is no longer split into a per-league sub-list —
+ * every league's matches for the day sit together in one card, sorted by kickoff time
+ * ([Fixture.utcDate]) with [COMPETITION_DISPLAY_ORDER] only as a tiebreaker for same-time kickoffs
+ * — each row now carries its own league's short name instead of sitting under a league-titled
+ * header (see the day-card/two-line row redesign in SoccerHomeScreen.kt). */
+data class FixtureDay(val date: LocalDate, val dateLabel: String, val matches: List<Fixture>)
 
-fun List<Fixture>.groupedForDisplay(): List<CompetitionGroup> = this
-    .groupBy { it.leagueId to it.leagueName }
-    .map { (key, matches) ->
-        CompetitionGroup(
-            leagueId = key.first,
-            leagueName = key.second,
-            // All matches in a group share one leagueId, so they share one league's logo URL too —
-            // any match in the group works as the source, first is just convenient.
-            leagueLogo = matches.first().leagueLogo,
-            matches = matches.sortedBy { it.utcDate },
-        )
-    }
-    .sortedBy { COMPETITION_DISPLAY_ORDER[it.leagueId] ?: Int.MAX_VALUE }
-
-/** One calendar day's fixtures across every followed league, on request replacing the old
- * per-league Fixtures picker/view entirely — [leagueGroups] is that day's matches split out by
- * competition (reusing [CompetitionGroup]/[groupedForDisplay], the same per-league grouping Scores
- * already uses), each competition rendered as its own card under one shared day header. See
- * [groupedByDateThenLeague]. */
-data class FixtureDayGroup(val date: LocalDate, val dateLabel: String, val leagueGroups: List<CompetitionGroup>)
-
-fun List<Fixture>.groupedByDateThenLeague(): List<FixtureDayGroup> = this
+fun List<Fixture>.groupedByDate(): List<FixtureDay> = this
     .mapNotNull { match -> match.localDate()?.let { it to match } }
     .groupBy({ it.first }) { it.second }
-    .map { (date, matches) -> FixtureDayGroup(date, formatFixtureDateHeader(date), matches.groupedForDisplay()) }
+    .map { (date, matches) ->
+        FixtureDay(
+            date = date,
+            dateLabel = formatFixtureDateHeader(date),
+            matches = matches.sortedWith(compareBy({ it.utcDate }, { COMPETITION_DISPLAY_ORDER[it.leagueId] ?: Int.MAX_VALUE })),
+        )
+    }
     .sortedBy { it.date }
 
 /**

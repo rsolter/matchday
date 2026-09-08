@@ -979,3 +979,103 @@ buffer on top. Since this constant only bounds which still-scheduled matches get
 `/fixtures/lineups` check per refresh (never affects whether the check itself is correct), this
 change only reduces wasted API calls on scheduled matches more than an hour out — it can't cause a
 match to show the wrong label.
+
+## 27. Scores and Fixtures merged into one day-grouped, two-week, two-line schedule
+
+Ask, after seeing the Lineups-status change on the real device: combine Today/Scores with the
+standalone Fixtures screen into one, defaulting to two weeks behind and ahead of today across all
+followed leagues; make each match's text bigger by moving from one line to two (top: home v away;
+bottom: league short name, score-or-kickoff-time, and an FT/live-minute/Lineups indicator, all three
+using the full width); and replace the old per-league cards with one card per day holding every
+league's matches together, thin grey lines separating days. This is the largest structural change
+this project has made in one round — four files touched (`SoccerModels.kt`, `SoccerViewModel.kt`,
+`SoccerHomeScreen.kt`, `SoccerApi.kt`) — so this entry is longer than most, on purpose: several
+parts of the ask left real judgment calls, and those are called out explicitly below rather than
+folded quietly into the diff.
+
+**The merge itself.** `ScoreScreenMode.Fixtures` (its own mode, its own bottom-bar icon, its own
+`openFixtures`/`backFromFixturesTable` fetch pair) is gone. `ScoreScreenMode.Scores` now carries
+`days: List<FixtureDay>` spanning `SCHEDULE_PAST_DAYS`/`SCHEDULE_FUTURE_DAYS` (both `= 14`, replacing
+the old asymmetric `FIXTURES_PAST_DAYS = 10`/`FIXTURES_FUTURE_DAYS = 21` that only the standalone
+Fixtures screen used to have) around `todayLocalDate()`, for every followed league, fetched with one
+`fetchFixturesForLeagues` call per refresh instead of Scores' old separate today-only
+`fetchTodaysMatches` call. That function is now fully unused and has been deleted from `SoccerApi.kt`
+— confirmed via grep before removing it, not assumed. The bottom bar's Fixtures icon is gone too,
+since there's nowhere left for it to navigate to; this wasn't asked for directly, but follows
+directly from there being only one schedule screen now.
+
+**Per-day cards, not per-league.** `CompetitionGroup`/`groupedForDisplay` (old Scores grouping) and
+`FixtureDayGroup`/`groupedByDateThenLeague` (old Fixtures grouping) are both gone, replaced by one
+new `FixtureDay`/`groupedByDate()` in `SoccerModels.kt` — a flat list of matches per calendar day,
+sorted by kickoff time (same-kickoff ties broken by `COMPETITION_DISPLAY_ORDER`, which is now kept
+alive purely for that). Each day renders as one `ScheduleDayCard`, with a thin grey `Box` divider
+between rows (not between days — each day already gets its own card with margin between them).
+
+**The two-line row, and the one layout call worth flagging clearest of all.** The ask's own wording —
+"the bottom line would be the short name for the league/competition, ft/min/lineup indicator and
+then the score/kickoff time in the middle" — doesn't fully pin down whether that's a literal
+left-to-right reading order (league, then indicator, then score/time) or a description of three
+zones with the score/time simply being the one called out as "in the middle." I read it as the
+latter: left = league short name (tappable — see below), center = the score once the match has one,
+or the kickoff time before then, right = the FT/live-minute/Lineups badge. If the literal
+left-to-right order was intended instead (indicator before the centered score/time), that's a
+one-line swap in `ScheduleMatchRow` to fix — flagging now rather than guessing silently and hoping
+it lands right.
+
+**Standings' tap target moved.** The only way into a league's Standings table used to be tapping its
+crest icon on the old per-league card header. Per-league headers don't exist anymore, so that tap
+target is gone too — this wasn't called out in the ask, but dropping it silently would have been a
+real feature loss. It's now the league short-name text itself in each row's bottom line
+(`onStandingsClick`, gated by the same `competitionHasStandings` check as before).
+
+**Auto-scroll-to-today, carried forward.** The old standalone Fixtures screen already solved the
+"a two/four-week list shouldn't open scrolled to its oldest entry" problem with a
+`BringIntoViewRequester` on the first day whose date is `>= today` (falling back to the last day if
+somehow every day in the window is in the past). Ported that mechanism into the new merged screen
+unchanged — the ask didn't mention scroll position at all, but this would have been an immediate,
+obvious regression on-device if dropped.
+
+**League short names.** New `Competition.shortName` field, defaulted to the full `name` so nothing
+needed a value everywhere; hand-picked abbreviations only for the ones that seemed genuinely long
+enough to matter given the new row's tighter left-hand slot: Premier League → "EPL", Coupe de France
+→ "Coupe Fr.", UEFA Champions League → "UCL", UEFA Europa League → "UEL". Every other followed
+league keeps its full name. None of these are checked against how this app's actual font renders
+them — there's no compiler or emulator in this sandbox to confirm any of them actually fit the
+`weight(1f)` slot they're given without ellipsizing on a real device; worth a look once you can see
+it running.
+
+**A bug caught (and fixed) in this same round, not shipped.** The new center-of-bottom-line slot
+falls back to a plain kickoff time whenever a match doesn't have a real score yet
+(`Fixture.showsFinalOrLiveScore()` false). On a first pass, that branch didn't account for
+postponed/cancelled/suspended matches — those also have no real score, so they'd have silently
+rendered with their *original* kickoff time and no status indicator at all, looking exactly like an
+ordinary still-scheduled match. (The older single-line `MatchRow`, still used by My Team, has a
+related but milder version of this same gap: it shows the real "Postponed"/"Cancelled"/"Suspended"
+text, but pairs it with a fake "0 - 0" score in the trailing score box, since its branch is keyed off
+`hasScore` rather than a narrower "has a real score" check.) Caught this on a final self-review
+before sending this round over, not by any compiler or test — added
+`Fixture.isPostponedCancelledOrSuspended()` and a third branch in `ScheduleMatchRow`'s center slot so
+those three statuses show their real status text instead. Calling this out specifically because it's
+exactly the kind of gap that's easy to miss without a real device or test suite to catch it, and I'd
+rather flag that this was found and fixed than have it look like it was never a risk.
+
+**Cache-size tradeoff, not yet a problem but worth watching.** The cached-matches blob
+(`SoccerPreferences.CACHED_MATCHES_JSON`, DataStore Preferences) now holds roughly four weeks of
+fixtures across every followed league instead of just one day's worth. DataStore Preferences has no
+hard size cap, but it's built for small values, not a growing JSON blob — this hasn't caused any
+observed problem, and there's no way to load-test it in this sandbox, but if the app feels slow to
+load from cache on-device, this is the first place to look; a file-backed cache would be the fix.
+
+**Dead code removed, not just left behind.** Once Scores stopped calling `MatchRow` with
+`showTeamCrests = true`, that parameter, its two logo-bytes params, and `lineupsAvailable` on
+`MatchRow` were all fully unused (confirmed via grep — My Team's calls never referenced them by
+name), so they were removed rather than left as unused plumbing; `MatchTeamsAndScoreCell`
+(`MatchRow`'s combined crest/score cell, `showTeamCrests`'s only caller) went with them, along with
+the old `FixturesContent`/`FixtureLeagueCard`/`FixtureMatchRow` composables and
+`ApiFootballApi.fetchTodaysMatches`. `MatchGroupCard`'s now-unused-by-Scores
+`titleLogoBytes`/`titleLogoLeagueId`/`titleLogoTint`/`onTitleLogoClick` params were left in place
+rather than stripped, since My Team's own calls never pass them by name and removing them buys
+nothing this round — noted in that composable's own doc comment for whoever touches it next.
+
+No compiler in this sandbox for any of this — verified only by manual diff review, a cross-file grep
+sweep for stale references to every removed symbol, and `balance_check.py` on all four touched files.
