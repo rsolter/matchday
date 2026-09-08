@@ -8,4 +8,4 @@ capabilities = []
 # Defaults to the LightOS emulator. Switch to "com.lightos" (and update
 # examples/soccer-football/build.gradle.kts install target) when sideloading
 # to a real Light Phone III.
-serverPackage = "com.thelightphone.sdk.emulator"
+serverPackage = "com.lightos"
