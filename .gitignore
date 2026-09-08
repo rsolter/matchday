@@ -50,3 +50,9 @@ bin/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+### Private release signing (examples/soccer-football) ###
+# The shared dev key at sdk/keys/lightsdk-dev.jks stays committed on purpose (it's a known, public
+# test key); a private release keystore must never be. See keystore.properties.example.
+examples/soccer-football/keystore.properties
+examples/soccer-football/*.jks

@@ -186,6 +186,36 @@ adb shell am start -n com.thelightphone.soccerfootball/com.thelightphone.sdk.Lig
 — see [`docs/system_app`](../../docs/system_app) for setting that up in Android Studio. Switch it
 to `com.lightos` before sideloading to a real Light Phone III.
 
+### Building a production (release) APK to share
+
+By default `assembleRelease` signs with the same shared dev keystore as `debug`
+(`sdk/keys/lightsdk-dev.jks`) — fine for local testing, but its password ("android") is public in
+this repo, so anyone can resign an APK with that same key. For a build meant to be handed out as an
+authentic release, generate your own private key first:
+
+```bash
+cd examples/soccer-football
+keytool -genkeypair -v -keystore matchday-release.jks -alias matchday-release \
+    -keyalg RSA -keysize 2048 -validity 10000
+```
+
+`keytool` prompts for the store/key passwords and your name/org info interactively — nothing here
+needs typing into a chat or a script. Then copy `keystore.properties.example` to
+`keystore.properties` in this same directory and fill in the passwords you just chose. Both
+`matchday-release.jks` and `keystore.properties` are gitignored — they stay on your machine only.
+
+Once that's in place, flip `serverPackage` in `lighttool.toml` to `com.lightos` (see above), then:
+
+```bash
+./gradlew :examples:soccer-football:assembleRelease
+```
+
+→ `examples/soccer-football/build/outputs/apk/release/soccer-football-release.apk`, signed with your
+private key. Note this makes it installable (via `adb install` or LightOS's "Any tools" sideload
+option, which warns the user it isn't Light-verified) — it does not make it a "Light-approved" or
+"SDK-built" tool in LightOS's own sense, which per this SDK's own docs requires Light to build and
+sign it themselves from a public git commit.
+
 No API key or setup is needed to run this — the app talks straight to the deployed proxy
 (`https://soccer-proxy.ravisolter.com`) and shows real data on first launch. The proxy itself needs
 its own API-Football key configured server-side (see the `soccer-pro-proxy` repo), but that's
