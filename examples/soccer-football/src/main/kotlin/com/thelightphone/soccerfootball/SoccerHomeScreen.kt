@@ -247,18 +247,18 @@ private val SCORE_SLOT_WIDTH = 4f
 // next to a team name without dominating the row, matching the reference fotmob screenshots' scale.
 private val TEAM_CREST_SIZE = 1.1f
 
-// Fixed width for ScheduleMatchRow's two bottom-line flanking slots — the leading status badge and
-// the trailing league-name label. Both use this same width, on purpose: with a centered `weight(1f)`
-// Box between two slots of EQUAL fixed width, that Box's midpoint lands on the row's true visual
-// center regardless of what either side is showing (or not showing) — mismatched side widths would
-// pull the center off to whichever side is narrower, which is exactly the "why isn't the score
-// centered" bug this fixes. Sized to comfortably fit the badge's longest label ("Lineups") with the
-// pill's own padding, same reasoning as LEFT_SLOT_WIDTH above but a touch narrower since that slot
-// only ever holds a pill, never a bare kickoff time. Reused for the league-name slot even though a
-// couple of this app's short names (`"Coupe Fr."` is the longest at 9 characters) are close to this
-// width — untested on a real device, so worth a look if one ever visibly clips. Reserved even when
-// the badge side has nothing to show (a still-scheduled match with no posted lineup) so the center
-// column's position never depends on match status — see ScheduleMatchRow.
+// Fixed width for ScheduleMatchRow's two bottom-line flanking slots — a leading status badge and a
+// trailing spacer (that spacer used to hold the per-row league name; it moved up to a per-league
+// header in ScheduleDayCard once every row under one header already shares that league). Both use
+// this same width, on purpose: with a centered `weight(1f)` Box between two slots of EQUAL fixed
+// width, that Box's midpoint lands on the row's true visual center regardless of what either side is
+// showing (or not showing) — mismatched side widths would pull the center off to whichever side is
+// narrower, which is exactly the "why isn't the score centered" bug this fixes. Sized to comfortably
+// fit the badge's longest label ("Lineups") with the pill's own padding, same reasoning as
+// LEFT_SLOT_WIDTH above but a touch narrower since that slot only ever holds a pill, never a bare
+// kickoff time. Reserved even when the badge side has nothing to show (a still-scheduled match with
+// no posted lineup) so the center column's position never depends on match status — see
+// ScheduleMatchRow.
 private val SCHEDULE_ROW_SIDE_SLOT_WIDTH = 2.8f
 
 // A light, legible green for a live match's minute-counter text — matches the reference (fotmob)
@@ -518,15 +518,36 @@ private fun ScoresContent(
     }
 }
 
-/** One day's card on the merged Scores/schedule list — every followed league's matches for [day]
- * together, in kickoff order (see [FixtureDay]/[groupedByDate]), separated by thin grey dividers
- * with no per-league sub-header; replaces the old per-league [MatchGroupCard] on request (that
- * composable is unchanged and still backs My Team's own cards — see its doc comment). Each row
- * carries its own league's short name instead (see [ScheduleMatchRow]). [teamLogos], keyed by
- * [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] URL, and [lineupsAvailableFixtureIds] both come
- * straight from [ScoreScreenMode.Scores] and are looked up per-match below.
- * [onOpenStandingsTable] is only ever invoked for a league that [competitionHasStandings] — see
- * [ScheduleMatchRow]'s own doc comment for where that tap target lives now. */
+/** One league's matches within a single day's card, in kickoff order — see
+ * `List<Fixture>.groupedByLeagueForDisplay` below. */
+private data class DayLeagueGroup(val leagueId: Int, val matches: List<Fixture>)
+
+/** Re-groups a day's flat, chronologically-sorted [FixtureDay.matches] (see [groupedByDate] in
+ * SoccerModels.kt) back into per-league sections for display, on request — [ScheduleDayCard] used
+ * to render the whole day as one flat list with each row carrying its own league's short name; now
+ * every league gets one shared, centered header instead, with its matches (re-sorted by kickoff
+ * time within the group, since the flat list's own sort only used league as a tiebreaker) beneath
+ * it. Groups are ordered by [competitionDisplayOrder] — this app's fixed, existing league preference
+ * order — rather than by whichever league's earliest match happens to kick off first, so a given
+ * league lands in the same position within the card from one day to the next. */
+private fun List<Fixture>.groupedByLeagueForDisplay(): List<DayLeagueGroup> = this
+    .groupBy { it.leagueId }
+    .map { (leagueId, matches) -> DayLeagueGroup(leagueId, matches.sortedBy { it.utcDate }) }
+    .sortedBy { competitionDisplayOrder(it.leagueId) }
+
+/** One day's card on the merged Scores/schedule list — every followed league's matches for [day],
+ * grouped by league within the card (see [groupedByLeagueForDisplay]), each group under its own
+ * centered header carrying that league's short name; replaces the old per-league [MatchGroupCard]
+ * on request (that composable is unchanged and still backs My Team's own cards — see its doc
+ * comment) as well as an even earlier version of this same card, which had gone fully flat with the
+ * league's short name repeated on every row instead (see [ScheduleMatchRow]'s doc comment) — on
+ * request, back to a shared per-league header now that repeating it on every row read as noisy.
+ * Thin grey dividers now separate league groups within a day rather than every individual match row.
+ * [teamLogos], keyed by [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] URL, and
+ * [lineupsAvailableFixtureIds] both come straight from [ScoreScreenMode.Scores] and are looked up
+ * per-match below. [onOpenStandingsTable] is only ever invoked for a league that
+ * [competitionHasStandings] — now gated on the per-league header tap, not a per-row one, since the
+ * league name itself moved there. */
 @Composable
 private fun ScheduleDayCard(
     day: FixtureDay,
@@ -549,27 +570,47 @@ private fun ScheduleDayCard(
             lighten = true,
             modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
         )
-        day.matches.forEachIndexed { index, match ->
-            if (index > 0) {
+        val leagueGroups = remember(day) { day.matches.groupedByLeagueForDisplay() }
+        leagueGroups.forEachIndexed { groupIndex, group ->
+            if (groupIndex > 0) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .padding(vertical = 0.5f.gridUnitsAsDp())
                         .height(1.dp)
                         .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
                 )
             }
-            ScheduleMatchRow(
-                match = match,
-                homeLogoBytes = teamLogos[match.homeTeamLogo],
-                awayLogoBytes = teamLogos[match.awayTeamLogo],
-                lineupsAvailable = match.id in lineupsAvailableFixtureIds,
-                onStandingsClick = if (competitionHasStandings(match.leagueId)) {
-                    { onOpenStandingsTable(match.leagueId, competitionName(match.leagueId)) }
-                } else {
-                    null
-                },
-                onClick = { onMatchClick(match) },
+            // Same size/color as the per-row label it replaces (LightTextVariant.Detail, lightened)
+            // — on request, only the position (top center within the group, instead of repeated on
+            // every row) and the tap target it carries changed.
+            LightText(
+                text = competitionShortName(group.leagueId),
+                variant = LightTextVariant.Detail,
+                lighten = true,
+                align = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 0.25f.gridUnitsAsDp())
+                    .let {
+                        if (competitionHasStandings(group.leagueId)) {
+                            it.lightClickable(onClick = { onOpenStandingsTable(group.leagueId, competitionName(group.leagueId)) })
+                        } else {
+                            it
+                        }
+                    },
             )
+            group.matches.forEach { match ->
+                ScheduleMatchRow(
+                    match = match,
+                    homeLogoBytes = teamLogos[match.homeTeamLogo],
+                    awayLogoBytes = teamLogos[match.awayTeamLogo],
+                    lineupsAvailable = match.id in lineupsAvailableFixtureIds,
+                    onClick = { onMatchClick(match) },
+                )
+            }
         }
     }
 }
@@ -590,29 +631,27 @@ private fun ScheduleDayCard(
  * moved to the second line, since fitting a legible score/time next to two comfortably-sized names
  * left no room for one on the same line.
  *
- * Bottom line, three zones across the full width: a leading [SCHEDULE_ROW_SIDE_SLOT_WIDTH]-wide slot
- * for a status pill ([MatchStatusBadge], reused as-is from the old single-line rows) for whichever
- * of FT/live-minute/"Lineups" applies, empty but still reserving its width when none does; the score
- * (once the match has a real one — [Fixture.showsFinalOrLiveScore]), a postponed/cancelled/suspended
- * match's own status text (see [Fixture.isPostponedCancelledOrSuspended]), or the kickoff time
- * (before any of that), centered in the middle in a `weight(1f)` [Box]; and a trailing, equally
- * [SCHEDULE_ROW_SIDE_SLOT_WIDTH]-wide slot for the league's short name ([competitionShortName],
- * end-aligned; tappable via [onStandingsClick] when set, replacing the old per-card league-crest tap
- * target now that cards no longer have a per-league header — see [ScheduleDayCard]'s doc comment).
- * Badge-then-league (rather than league-then-badge, the first version's order) and giving both
- * flanking slots the *same* fixed width are both on request, together: the center Box is only ever
- * centered relative to the space between its two neighbors, so it only lands on the row's true
- * visual center when both neighbors are the same fixed width — see
- * [SCHEDULE_ROW_SIDE_SLOT_WIDTH]'s doc comment for why the earlier version (one fixed-width badge
- * slot opposite one `weight(1f)` league-name slot) put the center off-true regardless of which side
- * either one was on. */
+ * Bottom line, three zones across the full width, all [SCHEDULE_ROW_SIDE_SLOT_WIDTH]-related: a
+ * leading fixed-width slot for a status pill ([MatchStatusBadge], reused as-is from the old
+ * single-line rows) for whichever of FT/live-minute/"Lineups" applies, empty but still reserving its
+ * width when none does; the score (once the match has a real one —
+ * [Fixture.showsFinalOrLiveScore]), a postponed/cancelled/suspended match's own status text (see
+ * [Fixture.isPostponedCancelledOrSuspended]), or the kickoff time (before any of that), centered in
+ * the middle in a `weight(1f)` [Box]; and a trailing, equally-wide slot that's always empty now — it
+ * used to hold the league's short name, but that moved up to one shared, centered header per league
+ * group within the day card (see [ScheduleDayCard]'s doc comment), so this row no longer needs to
+ * say which league it's in at all. Left in place as a spacer rather than removed outright: the
+ * center Box is only ever centered relative to the space between its two neighbors, so it only lands
+ * on the row's true visual center when both neighbors are the same fixed width — see
+ * [SCHEDULE_ROW_SIDE_SLOT_WIDTH]'s doc comment for the fuller reasoning (including why an earlier
+ * version, with a `weight(1f)` league-name slot instead of a fixed one, put the center off-true
+ * regardless of which side either slot was on). */
 @Composable
 private fun ScheduleMatchRow(
     match: Fixture,
     homeLogoBytes: ByteArray?,
     awayLogoBytes: ByteArray?,
     lineupsAvailable: Boolean,
-    onStandingsClick: (() -> Unit)?,
     onClick: () -> Unit,
 ) {
     Column(
@@ -697,18 +736,15 @@ private fun ScheduleMatchRow(
                     )
                 }
             }
-            val shortName = competitionShortName(match.leagueId)
-            LightText(
-                text = shortName,
-                variant = LightTextVariant.Detail,
-                lighten = true,
-                align = TextAlign.End,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .width(SCHEDULE_ROW_SIDE_SLOT_WIDTH.gridUnitsAsDp())
-                    .let { if (onStandingsClick != null) it.lightClickable(onClick = onStandingsClick) else it },
-            )
+            // Trailing, empty, but still reserving the same fixed width as the leading badge slot
+            // above — this used to hold the per-row league name; that moved up to one shared,
+            // centered header per league group within the day card, on request, now that every row
+            // under a given header already shares that league (see ScheduleDayCard's doc comment).
+            // Still needed as a spacer: the center Box above is only centered relative to the space
+            // between its two neighbors, so removing this slot instead of just emptying it would
+            // pull the center off-true toward the leading badge slot — see
+            // SCHEDULE_ROW_SIDE_SLOT_WIDTH's doc comment.
+            Box(modifier = Modifier.width(SCHEDULE_ROW_SIDE_SLOT_WIDTH.gridUnitsAsDp()))
         }
     }
 }

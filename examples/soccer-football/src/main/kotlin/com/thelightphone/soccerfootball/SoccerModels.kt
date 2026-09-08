@@ -88,8 +88,10 @@ val TRACKED_COMPETITIONS: List<Competition> = listOf(
  */
 val GROUP_STAGE_COMPETITION_IDS: Set<Int> = setOf(2, 3)
 
-// Kept as a tiebreaker for same-kickoff-time matches in [groupedByDate] below — no longer used to
-// order per-league cards now that Scores' per-day list is flat (see that fun's doc comment).
+// Used as a tiebreaker for same-kickoff-time matches in [groupedByDate] below, and — on request,
+// after Scores went back to grouping each day's matches by league within the day card (see
+// ScheduleDayCard's doc comment in SoccerHomeScreen.kt) — as the order those per-day league groups
+// render in, via [competitionDisplayOrder].
 private val COMPETITION_DISPLAY_ORDER: Map<Int, Int> =
     TRACKED_COMPETITIONS.mapIndexed { index, c -> c.id to index }.toMap()
 private val COMPETITION_NAMES: Map<Int, String> = TRACKED_COMPETITIONS.associate { it.id to it.name }
@@ -107,6 +109,13 @@ fun competitionShortName(id: Int): String = COMPETITION_SHORT_NAMES[id] ?: compe
  * Used to gate the Scores screen's league-logo-tap navigation so tapping a cup's logo doesn't try
  * to open a standings table that doesn't exist. */
 fun competitionHasStandings(id: Int): Boolean = TRACKED_COMPETITIONS.firstOrNull { it.id == id }?.hasStandings ?: false
+
+/** [TRACKED_COMPETITIONS]' own declared order for league id — the same fixed preference order this
+ * app has used since before the Scores/Fixtures merge (see [COMPETITION_DISPLAY_ORDER]'s doc
+ * comment), exposed here for `ScheduleDayCard`'s per-day league-group ordering (SoccerHomeScreen.kt).
+ * A followed league not found in [TRACKED_COMPETITIONS] (shouldn't happen — see
+ * [competitionShortName]'s same fallback reasoning) sorts last rather than crashing. */
+fun competitionDisplayOrder(id: Int): Int = COMPETITION_DISPLAY_ORDER[id] ?: Int.MAX_VALUE
 
 // --- Wire format (API-Football /fixtures response) ----------------------------
 //
@@ -648,15 +657,17 @@ fun Fixture.resultFor(teamId: Int): MatchResult? {
     return if (teamWon) MatchResult.WIN else MatchResult.LOSS
 }
 
-/** One calendar day's fixtures across every followed league, flat and sorted chronologically — on
- * request, replaces the old two-level grouping (`CompetitionGroup`/`groupedForDisplay` for Scores,
- * `FixtureDayGroup`/`groupedByDateThenLeague` for the standalone Fixtures screen, both removed) now
- * that Scores has absorbed Fixtures into one continuous list spanning
- * [SoccerViewModel]'s schedule window. [matches] is no longer split into a per-league sub-list —
- * every league's matches for the day sit together in one card, sorted by kickoff time
- * ([Fixture.utcDate]) with [COMPETITION_DISPLAY_ORDER] only as a tiebreaker for same-time kickoffs
- * — each row now carries its own league's short name instead of sitting under a league-titled
- * header (see the day-card/two-line row redesign in SoccerHomeScreen.kt). */
+/** One calendar day's fixtures across every followed league — on request, replaces the old
+ * two-level grouping (`CompetitionGroup`/`groupedForDisplay` for Scores, `FixtureDayGroup`/
+ * `groupedByDateThenLeague` for the standalone Fixtures screen, both removed) now that Scores has
+ * absorbed Fixtures into one continuous list spanning [SoccerViewModel]'s schedule window. [matches]
+ * itself stays flat and chronological here — sorted by kickoff time ([Fixture.utcDate]) with
+ * [COMPETITION_DISPLAY_ORDER] only as a tiebreaker for same-time kickoffs — but isn't rendered flat
+ * any more: `ScheduleDayCard` (SoccerHomeScreen.kt) re-groups it by league for display, on request,
+ * back into per-league sections within the day card (each with its own centered header, via
+ * [competitionDisplayOrder] for the header order) rather than a per-row league label. Kept flat here
+ * rather than pre-grouped, since [SoccerViewModel]'s stale-guard equality check and the schedule
+ * window math both only care about the day's matches as a set, not how they're presented. */
 data class FixtureDay(val date: LocalDate, val dateLabel: String, val matches: List<Fixture>)
 
 fun List<Fixture>.groupedByDate(): List<FixtureDay> = this

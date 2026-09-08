@@ -1165,3 +1165,46 @@ the second round in a row where a layout bug only became visible by comparing tw
 screenshots side by side rather than either one alone — worth remembering that a single screenshot
 of this row, by itself, won't necessarily show a centering problem if every match on that day
 happens to share the same status.
+
+## 30. Back to per-league headers within each day's card, on request
+
+Ask, after seeing §29's now-properly-centered rows: rather than repeating each match's league name
+on every row, show it once as a centered header at the top of that league's section within the
+day's card, group the day's matches under it by league, and move the thin grey dividers from
+between every match to between league groups instead.
+
+This is, in effect, a partial return to the two-level (day, then league) grouping that §27 flattened
+away — but nested inside the day card this time, not as the top-level structure, and this round's
+implementation reuses everything §27-§29 already built rather than reverting any of it.
+
+**What changed.** `FixtureDay.matches` itself is untouched — still flat and sorted chronologically,
+since `SoccerViewModel`'s stale-guard equality check and the schedule-window math only care about
+the day's matches as a set, not their presentation. All the re-grouping happens at render time:
+new `List<Fixture>.groupedByLeagueForDisplay()` (SoccerHomeScreen.kt) re-groups a day's matches by
+`leagueId`, sorts each group's matches back into kickoff order (the flat list only used league as a
+tiebreaker, not a primary sort key), and orders the groups themselves by a new
+`competitionDisplayOrder(id)` (SoccerModels.kt, a public wrapper around the existing
+`COMPETITION_DISPLAY_ORDER` map, previously private to that file) — this app's fixed league
+preference order, so a given league lands in the same position within the card from one day to the
+next rather than wherever its earliest match happens to sort. `ScheduleDayCard` renders each group
+under a centered `LightText` header (same `LightTextVariant.Detail`, lightened, as the per-row label
+it replaces — only its position and its tap target changed, not its size or color, matching what was
+asked), tappable through to Standings when `competitionHasStandings` — that tap target moves from
+the per-row league label (removed) to this per-league header, the same kind of relocation as §27's
+original crest-to-text move. The grey divider now renders only between consecutive league groups,
+not between every match row.
+
+**`ScheduleMatchRow` loses its trailing league-name slot — but keeps the slot's width.** Since every
+row under a header already shares that header's league, the row itself no longer needs to say which
+league it's in. Rather than removing that slot outright, it's now an empty, fixed-width spacer at
+the same `SCHEDULE_ROW_SIDE_SLOT_WIDTH` as before: §29 already established that the center
+score/kickoff-time Box only sits at the row's true visual center when both its flanking neighbors
+are the *same* fixed width, so simply deleting the trailing slot would have reintroduced that exact
+bug one round after fixing it. A nice side effect: the "Coupe Fr." clipping concern flagged in §29
+(the league-name slot's fixed width being close to that name's actual length) no longer applies to
+anything — the league name now renders in the header's full `fillMaxWidth()`, with the whole card's
+width to work with instead of one narrow row slot.
+
+No compiler in this sandbox — verified by manual diff review, a grep sweep for stale references
+(`onStandingsClick` no longer exists anywhere in `ScheduleMatchRow`'s call sites, confirmed removed
+cleanly), and `balance_check.py` on both touched files.
