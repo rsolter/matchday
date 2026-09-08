@@ -1287,3 +1287,56 @@ appear, not just the shorter Serie A/La Liga-style names this had mostly been sc
 far.
 
 No compiler in this sandbox — verified by manual diff review and `balance_check.py` only.
+
+## 33. Mock-up on request: crests as true left/right columns, status/score moved into the middle column
+
+User sent a mock-up image (a Cagliari - Lecce row) and asked for a from-scratch layout swap: "3
+columns on the left home badge, on the right away badge. in the middle two rows - top showing home -
+away text, bottom should show status/score." This isn't a tuning pass on §30-32's layout — it's a
+different mental model entirely. §30's "make the badge icons larger by having them also use top and
+bottom rows" had been implemented as a full-height *status* cluster (badge+score) to one side, with
+crests still sitting inline with just the top team-name line. The mock-up made clear that wasn't the
+intent: the crests themselves should be the full-height flanking columns, and status/score belongs
+inside the middle column, as its second line.
+
+**What changed in `ScheduleMatchRow`:**
+- The row is back to three top-level children — `TeamCrestImage` (home), a `Column` with
+  `Modifier.weight(1f)`, `TeamCrestImage` (away) — no more separate leading status cluster.
+- `TEAM_CREST_SIZE` bumped from 1.1 to 3 grid units, since the crests now need to look proportional
+  at roughly the row's full two-line height rather than sitting inline next to a team name. This is a
+  hand-picked estimate with no compiler or device to check it against — the same caveat every prior
+  hand-picked size in this file has carried, and per §32, worth double-checking on a real device before
+  trusting it.
+- The middle column's top line is unchanged from §30/§31: `"${homeTeamName} - ${awayTeamName}"` at
+  `Fine`, centered, one line, ellipsized.
+- The middle column's bottom line is a centered `Row` (`Arrangement.Center`) holding, depending on
+  match state: `MatchStatusBadge` (`Copy`) + score (`Fine`, green while live) for a match that's live
+  or finished; `MatchStatusBadge` (`Copy`) alone for postponed/cancelled/suspended or a posted lineup;
+  or the plain kickoff time (`Fine`, lightened) otherwise. These are the same size choices §31/§32
+  settled on for the badge and score individually — just relocated from their own outer cluster into
+  this column, not re-picked.
+- `SCHEDULE_ROW_STATUS_CLUSTER_WIDTH` (the 6-grid-unit constant from §32's fix) is removed outright —
+  this layout has no fixed-width slot left to size. Confirmed via a grep sweep: zero remaining
+  references anywhere in the file.
+
+**Why this design doesn't carry forward §31/§32's centering-bug risk:** those two rounds' bugs both
+came from needing two flanking slots of *equal* fixed width so a centered middle `weight(1f)` box's
+midpoint would land on the row's true center. Here there's no such bookkeeping: the crests are sized
+by `TEAM_CREST_SIZE` for their own sake (not to balance anything), and the middle column's two lines
+each center themselves independently within its own `weight(1f)` width via their own
+`Arrangement.Center`/`TextAlign.Center`, regardless of whether the two crests happen to be the same
+width as each other. So this round doesn't re-introduce a new version of that same class of bug.
+
+**What's still unverified:** `TEAM_CREST_SIZE = 3f` is a size guess, not a measurement — it may read
+as too large or too small once seen at real Light Phone III resolution, and unlike the flanking-slot
+widths in §31/§32, there's no float-tuning precedent yet for this constant to lean on. Also
+unverified: whether growing the crests this much changes the row's overall height in a way that looks
+right next to `ScheduleDayCard`'s per-league headers and the divider spacing between groups (all
+untouched this round) — that's a visual judgment a real screenshot will settle faster than more
+reasoning here would.
+
+No compiler or Android SDK in this sandbox — verified by manual diff review, a grep sweep confirming
+zero remaining references to the removed `SCHEDULE_ROW_STATUS_CLUSTER_WIDTH` constant (and, while
+reviewing, two unrelated stale doc-comment references to `MatchTeamsAndScoreCell` — a composable
+already retired in an earlier round — corrected to past tense), and `balance_check.py` on
+`SoccerHomeScreen.kt`.
