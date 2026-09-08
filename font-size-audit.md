@@ -1694,3 +1694,28 @@ glyph icons both `Superfine` (16) -> `Detail` (20).
 
 No compiler or Android SDK in this sandbox — verified by manual diff review and balance_check.py
 across SoccerHomeScreen.kt, SoccerModels.kt, SoccerApi.kt, and SoccerViewModel.kt.
+
+## §42 — My Team rank alignment/spacing, detail-tab font bump
+
+Two small follow-ups to §41, both scoped to `SoccerHomeScreen.kt`.
+
+**My Team rank block (`MyTeamHeaderRow`).** Two separate bugs, both visible in the user's Real
+Betis screenshot ("4th / La Liga" sitting oddly high and flush against the screen's right edge).
+First, the rank/league `Column` carried an explicit `.align(Alignment.Top)` inside a `Row` whose own
+`verticalAlignment` is already `CenterVertically` — the override made this block sit noticeably
+higher than the crest and featured-match text beside it. Removed the override entirely so it
+inherits the Row's centering like every other child. Second, the enclosing `LightScrollView` only
+pads its *start* edge (`padding(start = 1f.gridUnitsAsDp())`, added when the crest moved off-center
+in an earlier round) — nothing was keeping the rank block off the right edge of the screen. Added
+`padding(end = 1f.gridUnitsAsDp())` directly to the rank `Column`'s own modifier (matching the
+scroll view's start inset) rather than touching the scroll view's padding, since the scroll view's
+end edge is otherwise deliberately unpadded content-width. Self-critique: I did not verify visually
+(no compiler/emulator in this sandbox) — this is a straightforward Compose alignment fix, but the
+exact amount of end spacing (1 grid unit) is a judgment call, not something from the screenshot.
+
+**Detail tab buttons (`DetailTabButton`, feeding `DetailTabRow`'s Stats/Events/Home/Away row).**
+Font bumped one step, `Superfine` (16sp) -> `Detail` (20sp), per the explicit "1 size larger"
+request — same progression convention used throughout §41. Left the button's own horizontal padding
+(`0.15f.gridUnitsAsDp()`) unchanged; all four labels are short single words so this shouldn't
+introduce ellipsis at the new size, but wasn't visually confirmed for the same no-compiler reason as
+above.

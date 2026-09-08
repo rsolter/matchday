@@ -1626,11 +1626,18 @@ private fun MyTeamHeaderRow(
             // "Premier League") on its own line below, smaller since the rank is the number someone
             // actually glances here for. Both lines share the lightClickable so tapping either opens
             // Standings, same as before.
+            //
+            // No .align(Alignment.Top) — the outer Row is already verticalAlignment =
+            // CenterVertically, and the explicit Top override was making this block sit noticeably
+            // higher than the crest/featured-match content beside it ("strangely aligned" per user
+            // report). End padding added because the enclosing LightScrollView only pads its start
+            // edge (see the padding(start = 1f...) a few lines up at the call site), so this was the
+            // only element in the row with nothing keeping it off the screen's right edge.
             Column(
                 horizontalAlignment = Alignment.Start,
                 modifier = Modifier
-                    .align(Alignment.Top)
                     .widthIn(max = 6.5f.gridUnitsAsDp())
+                    .padding(end = 1f.gridUnitsAsDp())
                     .lightClickable(onClick = { onOpenStandingsTable(summary.leagueId, summary.leagueName) }),
             ) {
                 LightText(
@@ -2363,7 +2370,9 @@ private fun DetailTabButton(text: String, isSelected: Boolean, onClick: () -> Un
     ) {
         LightText(
             text = text,
-            variant = LightTextVariant.Superfine,
+            // Bumped one size on request (Superfine 16sp -> Detail 20sp), same progression used
+            // elsewhere this session.
+            variant = LightTextVariant.Detail,
             lighten = !isSelected,
             align = TextAlign.Center,
             maxLines = 1,
