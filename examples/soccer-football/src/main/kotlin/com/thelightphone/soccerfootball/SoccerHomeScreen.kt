@@ -1538,9 +1538,11 @@ private fun MyTeamContent(
  * just relocated and tappable straight through to [StandingsTableContent] for that league
  * ([onOpenStandingsTable], threaded down from [SoccerViewModel.openStandingsTable] — see that
  * fun's doc comment for how "back" now correctly returns here instead of always landing on
- * Scores). Null when standings haven't loaded or this team isn't in a domestic-league table (see
- * that field's own doc comment) — the row just omits the rank line rather than showing a blank or
- * placeholder one. */
+ * Scores). Omitted (not just blank) when [MyTeamSummary.standingsRow] is null (standings haven't
+ * loaded, or the team isn't in that competition's table — see that field's own doc comment) or,
+ * on request, when the followed league is continental rather than domestic
+ * ([competitionIsDomestic] — a UCL/UEL group-stage position isn't the domestic-table rank this row
+ * is meant to show at a glance). */
 @Composable
 private fun MyTeamHeaderRow(
     summary: MyTeamSummary,
@@ -1574,14 +1576,19 @@ private fun MyTeamHeaderRow(
             onMatchClick = onMatchClick,
             modifier = Modifier.weight(1f),
         )
-        summary.standingsRow?.let { standingsRow ->
+        // Domestic leagues only, on request — a UCL/UEL group-stage position doesn't belong next to
+        // a team's actual table standing, so this whole block is skipped for a team followed from a
+        // continental context (competitionIsDomestic(summary.leagueId) == false) even when
+        // standingsRow did resolve for it.
+        if (summary.standingsRow != null && competitionIsDomestic(summary.leagueId)) {
+            val standingsRow = summary.standingsRow
             // Two lines on request ("needs to be given more space") — one line at Fine size was
             // still cramped for a full league name (e.g. "16th · Championship" was ellipsizing to
-            // "16th · Cha…" even after the 6.5f width bump). Rank on its own top line, full league
-            // name (not [competitionShortName] — the request specifically asked for "the name of
-            // league", and a second line has room for it) on its own line below, smaller since the
-            // rank is the number someone actually glances here for. Both lines share the
-            // lightClickable so tapping either opens Standings, same as before.
+            // "16th · Cha…" even after the 6.5f width bump). Rank on its own top line, the same
+            // shorthand league name used on Scores (competitionShortName — e.g. "EPL", not the full
+            // "Premier League") on its own line below, smaller since the rank is the number someone
+            // actually glances here for. Both lines share the lightClickable so tapping either opens
+            // Standings, same as before.
             Column(
                 horizontalAlignment = Alignment.Start,
                 modifier = Modifier
@@ -1597,7 +1604,7 @@ private fun MyTeamHeaderRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 LightText(
-                    text = summary.leagueName,
+                    text = competitionShortName(summary.leagueId),
                     variant = LightTextVariant.Detail,
                     lighten = true,
                     maxLines = 1,

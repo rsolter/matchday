@@ -43,6 +43,11 @@ data class Competition(
     // worth a real look once built.
     val shortName: String = name,
     val hasStandings: Boolean = true,
+    // False only for the two UEFA competitions below. Backs [competitionIsDomestic] — used to hide
+    // My Team's league-rank line for a team followed from a continental context (see
+    // MyTeamHeaderRow's doc comment in SoccerHomeScreen.kt): a UCL/UEL group-stage position reads
+    // as noise next to the domestic-table rank the request actually wants there.
+    val isDomestic: Boolean = true,
 )
 
 // MLS (id 253) was tracked here through an earlier round, in the "recalled from general knowledge
@@ -71,8 +76,8 @@ val TRACKED_COMPETITIONS: List<Competition> = listOf(
     Competition(id = 61, name = "Ligue 1"),
     Competition(id = 66, name = "Coupe de France", shortName = "Coupe Fr."),
     // Europe
-    Competition(id = 2, name = "UEFA Champions League", shortName = "UCL"),
-    Competition(id = 3, name = "UEFA Europa League", shortName = "UEL"),
+    Competition(id = 2, name = "UEFA Champions League", shortName = "UCL", isDomestic = false),
+    Competition(id = 3, name = "UEFA Europa League", shortName = "UEL", isDomestic = false),
 )
 
 /**
@@ -109,6 +114,12 @@ fun competitionShortName(id: Int): String = COMPETITION_SHORT_NAMES[id] ?: compe
  * Used to gate the Scores screen's league-logo-tap navigation so tapping a cup's logo doesn't try
  * to open a standings table that doesn't exist. */
 fun competitionHasStandings(id: Int): Boolean = TRACKED_COMPETITIONS.firstOrNull { it.id == id }?.hasStandings ?: false
+
+/** Whether [id] is a domestic league rather than a UEFA continental competition (see
+ * [Competition.isDomestic]). Defaults true for an untracked id, same fallback reasoning as
+ * [competitionName]/[competitionShortName] — every real [MyTeamSummary.leagueId] on screen came
+ * from [TRACKED_COMPETITIONS], so this only matters if that ever stops being true. */
+fun competitionIsDomestic(id: Int): Boolean = TRACKED_COMPETITIONS.firstOrNull { it.id == id }?.isDomestic ?: true
 
 /** [TRACKED_COMPETITIONS]' own declared order for league id — the same fixed preference order this
  * app has used since before the Scores/Fixtures merge (see [COMPETITION_DISPLAY_ORDER]'s doc
