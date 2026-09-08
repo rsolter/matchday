@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -13,7 +15,7 @@ plugins {
 // clone — including this sandbox — so `hasReleaseKeystore` is false here and `release` falls back to
 // the shared lightsdkDev key below, same as before this change. Only on a machine where that
 // properties file has been created does `assembleRelease` sign with the private key instead.
-val releaseKeystoreProperties = java.util.Properties().apply {
+val releaseKeystoreProperties = Properties().apply {
     val propsFile = project.file("keystore.properties")
     if (propsFile.exists()) {
         propsFile.inputStream().use { load(it) }
