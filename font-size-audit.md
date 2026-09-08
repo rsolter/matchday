@@ -1528,3 +1528,25 @@ shortened today, since the lookup is by team name, not by competition.
 No compiler or Android SDK in this sandbox — verified by manual diff review, balance_check.py on
 SoccerModels.kt and SoccerHomeScreen.kt, and a script confirming no duplicate keys in
 `TEAM_SHORT_NAMES` (68 entries) after this round's edits.
+
+## 38. Standings badge removed, My Team rank line goes two-line
+
+Two more from real-device screenshots.
+
+**League badges dropped from Standings.** The only table view in this app is Standings
+(`StandingsTableContent`); its centered league-crest image below the top bar is gone on request.
+`leagueLogoBytes` is left unused in the composable rather than unwinding the fetch behind it
+(`ScoreScreenMode.Standings.leagueLogoBytes`, its ViewModel follow-up) — same call as the earlier
+coach-photo removal, and for the same reason: a UI-only request doesn't need two more files' worth
+of fetch/state logic touched to satisfy it.
+
+**My Team header rank line: two lines instead of one.** §37's fix (bumped to Fine, left-aligned)
+still weren't enough room — "16th · Championship" was ellipsizing to "16th · Cha…" even after that
+round's width bump. Split into its own `Column`: rank alone on the top line (still Fine, matching
+the size the user pointed at), the full league name on its own line below (Detail — smaller, since
+the rank is what's actually being glanced at here) rather than `competitionShortName`, since the
+request specifically asked for "the name of league" and there's now a dedicated line for it. Both
+lines share one `lightClickable`, so tapping either still opens that league's Standings table.
+
+No compiler or Android SDK in this sandbox — verified by manual diff review and balance_check.py on
+SoccerHomeScreen.kt.

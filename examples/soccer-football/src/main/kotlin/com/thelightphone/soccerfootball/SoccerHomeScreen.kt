@@ -1247,28 +1247,15 @@ private fun StandingsTableContent(
     Column(modifier = Modifier.fillMaxSize()) {
         LightTopBar(
             leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = onBack),
-            // LightTopBarCenter has no image slot (Text/TwoLineDetail only, both vendored SDK
-            // types this app can't extend), so the badge itself renders just below the bar rather
-            // than inline with the title.
             center = LightTopBarCenter.Text(leagueName),
-            modifier = Modifier.padding(bottom = if (leagueLogoBytes != null) 0.2f.gridUnitsAsDp() else 0.5f.gridUnitsAsDp()),
+            modifier = Modifier.padding(bottom = 1f.gridUnitsAsDp()),
         )
-
-        val leagueLogoBitmap = leagueLogoBytes?.let { bytes ->
-            remember(bytes, leagueId) { decodeLeagueLogo(bytes, leagueId) }
-        }
-        if (leagueLogoBitmap != null) {
-            Image(
-                bitmap = leagueLogoBitmap,
-                contentDescription = "$leagueName badge",
-                contentScale = ContentScale.Fit,
-                colorFilter = leagueLogoColorFilter(leagueId),
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .size(2.2f.gridUnitsAsDp())
-                    .padding(bottom = 0.5f.gridUnitsAsDp()),
-            )
-        }
+        // League badge image dropped on request ("remove league badges from all table views") —
+        // this was the only one (Standings is this app's only table view). [leagueLogoBytes] is
+        // left unused in this composable rather than unwinding its call-site plumbing and the
+        // ViewModel/API fetch behind it (ScoreScreenMode.Standings.leagueLogoBytes,
+        // SoccerViewModel's standings-logo follow-up) — same UI-only-removal call as
+        // [LineupSection]'s coach headshot removal, for the same reason.
 
         if (isLoading) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -1588,29 +1575,36 @@ private fun MyTeamHeaderRow(
             modifier = Modifier.weight(1f),
         )
         summary.standingsRow?.let { standingsRow ->
-            LightText(
-                text = "${standingsRow.position.asOrdinal()} · ${competitionShortName(summary.leagueId)}",
-                // Bumped Superfine (16) -> Fine (25) on request, to match "the Juventus vs AC Milan
-                // match header under Recent results" — that's MatchRow's own combined name text,
-                // also Fine. Also switched from end- to start-aligned (dropped `align =
-                // TextAlign.End`, LightText's default) on request, "aligned in a way that looks more
-                // like next match element towards the left" — reads left-to-right from its own slot
-                // now, the way FeaturedMatchPlaceholder's date/opponent text does, instead of
-                // hugging the row's right edge.
-                variant = LightTextVariant.Fine,
-                lighten = true,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                // Row-scope align, not a weight -- this should wrap to its own content width and
-                // sit in the row's top-right corner ("across from the badge"), not stretch or
-                // compete with FeaturedMatchPlaceholder's weight(1f) for space. Max width bumped
-                // 5.5f -> 6.5f grid units alongside the font increase so "11th · Bundesliga"-length
-                // text still has room at the larger size before it'd have to ellipsize.
+            // Two lines on request ("needs to be given more space") — one line at Fine size was
+            // still cramped for a full league name (e.g. "16th · Championship" was ellipsizing to
+            // "16th · Cha…" even after the 6.5f width bump). Rank on its own top line, full league
+            // name (not [competitionShortName] — the request specifically asked for "the name of
+            // league", and a second line has room for it) on its own line below, smaller since the
+            // rank is the number someone actually glances here for. Both lines share the
+            // lightClickable so tapping either opens Standings, same as before.
+            Column(
+                horizontalAlignment = Alignment.Start,
                 modifier = Modifier
                     .align(Alignment.Top)
                     .widthIn(max = 6.5f.gridUnitsAsDp())
                     .lightClickable(onClick = { onOpenStandingsTable(summary.leagueId, summary.leagueName) }),
-            )
+            ) {
+                LightText(
+                    text = standingsRow.position.asOrdinal(),
+                    variant = LightTextVariant.Fine,
+                    lighten = true,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                LightText(
+                    text = summary.leagueName,
+                    variant = LightTextVariant.Detail,
+                    lighten = true,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 0.1f.gridUnitsAsDp()),
+                )
+            }
         }
     }
 }
