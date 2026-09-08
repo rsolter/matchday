@@ -622,7 +622,7 @@ private fun ScheduleDayCard(
  * [TEAM_CREST_SIZE]'s doc comment for the size bump that goes with that); the middle column, taking
  * whatever width is left over, stacks two centered lines — top, the "Home - Away" string (still
  * [LightTextVariant.Fine], unchanged, matching team names as before); bottom, this match's
- * status/score, all centered together in one `Row` with [Arrangement.Center]: [MatchStatusBadge] then
+ * status/score, all centered together in one `Row` with `Arrangement.Center`: [MatchStatusBadge] then
  * the score side by side for a live/finished match ([Fixture.showsFinalOrLiveScore] — badge at
  * [LightTextVariant.Copy], score at `Fine`, same size choices the previous full-height-cluster
  * version settled on, just relocated here instead of to their own outer column); the badge alone for
@@ -667,7 +667,7 @@ private fun ScheduleMatchRow(
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(
-                horizontalArrangement = Arrangement.Center,
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().padding(top = 0.25f.gridUnitsAsDp()),
             ) {
