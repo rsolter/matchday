@@ -1468,3 +1468,63 @@ made doing it.
 No compiler or Android SDK in this sandbox — verified by manual diff review, balance_check.py on
 SoccerHomeScreen.kt, SoccerViewModel.kt, and SoccerFormatting.kt, and greps confirming no stale
 references to `goalDifferenceLabel` or `coachBitmap` remain anywhere in the file.
+
+## 37. Standings spacing/alignment revert, My Team rank line size/alignment, short-name map fixes
+
+Follow-up to §36 from real-device screenshots.
+
+**Standings: # column reverted, MP/W/D/L/GF/GA/PTS centered.** §36's POS weight (0.045) made the
+gap in front of TEAM tighter than wanted — reverted to the pre-§36 0.08, with TEAM giving back the
+same 0.035 it had picked up (0.405 -> 0.37) to keep the row's total weight roughly stable. All seven
+stat columns (previously right-aligned) are now center-aligned instead, header and data cells both —
+an unmatched header/data alignment would read as broken, not intentional.
+
+**My Team header rank line: bumped to Fine, left-aligned.** Was Superfine (16), end-aligned. Now
+Fine (25), matching the size of "the Juventus vs AC Milan match header under Recent results" — that
+turned out to be `MatchRow`'s own combined "Home vs Away" text, also Fine. Alignment switched from
+end (hugging the row's right edge) to LightText's default start, "aligned in a way that looks more
+like next match element towards the left" — reads left-to-right from its own slot the way
+`FeaturedMatchPlaceholder`'s date/opponent text does. Max width bumped 5.5f -> 6.5f grid units to
+give the larger font room before a long league name ellipsizes.
+
+**Short-name map: a real bug, not just missing coverage.** The user reported unshortened names in
+FA Cup/Championship/UEL specifically. Investigation found something more fundamental than "these
+leagues weren't researched": a live check against this app's own proxy showed API-Football already
+returns an abbreviated display name for many English clubs directly — "Swansea" (not "Swansea
+City"), "QPR" (not "Queens Park Rangers"), "West Brom" (not "West Bromwich Albion"), "Charlton"
+(not "Charlton Athletic"), and so on for most of Championship, plus "West Ham" and "Wolves" from
+what was Premier League's section. Every one of those Wikipedia-official-name keys could therefore
+never have matched anything, in any competition — this had nothing to do with which competition a
+match belonged to. Removed the confirmed-dead entries; kept `Middlesbrough`/`Stoke City`, whose keys
+the live check confirmed ARE what the API sends. Re-keyed `Sheffield United` -> `Sheffield Utd`
+(confirmed) and, by unconfirmed analogy only, `Sheffield Wednesday` -> `Sheffield Wed`.
+
+**Live verification itself hit a real problem, flagged rather than papered over:** repeated fetches
+to the proxy's `/standings` and `/fixtures` endpoints kept returning the same league's data back no
+matter which `league` query parameter was sent — every `/standings` call this round came back as
+English Championship, every `/fixtures` call as UEFA Europa League. Looks like a cache keyed on path
+only, ignoring the query string, either on the proxy's own side or in the fetch tool used to reach
+it — there's no proxy source in this sandbox to pin down which. Practical effect: the Championship
+list was trusted (self-consistent, correctly sized, all real clubs), but Premier League/Serie A/La
+Liga/Bundesliga could NOT be independently re-checked this round, so **entries in those sections may
+have this exact same problem and just haven't been caught yet** — this is very likely broader than
+the three competitions the user happened to notice it in. A UEL fixtures fetch also came back
+low-confidence for the same reason; two hedge keys (`FK Crvena Zvezda`, `1899 Hoffenheim`) were
+added alongside their existing unconfirmed counterparts rather than replacing them outright.
+
+**Ligue 1 fix from the user's own screenshot (fully trusted, no caching concern):** `Paris Saint
+Germain` (no hyphen — the actual on-device rendering, unlike Wikipedia's hyphenated official name)
+added as the primary key, hyphenated form kept as a hedge. `Stade Brestois 29` -> `Brest` and `Estac
+Troyes` -> `Troyes` added, both visibly un-shortened in that same screenshot.
+
+**FA Cup: confirmed as correctly out of scope, not fixed.** A live FA Cup fixtures fetch (same
+caching-affected endpoint, but this particular payload's content — Aveley vs Cheshunt, Ossett United
+vs Pontefract Collieries, 150+ more like them — was unmistakably genuine non-league qualifying-round
+football, not stale data from another competition) confirmed §35's original call: this pool is far
+too large and short-lived a season to hand-cover, and every name in it was already short on its own.
+Worth noting for the user: FA Cup fixtures between two clubs this map DOES cover already get
+shortened today, since the lookup is by team name, not by competition.
+
+No compiler or Android SDK in this sandbox — verified by manual diff review, balance_check.py on
+SoccerModels.kt and SoccerHomeScreen.kt, and a script confirming no duplicate keys in
+`TEAM_SHORT_NAMES` (68 entries) after this round's edits.

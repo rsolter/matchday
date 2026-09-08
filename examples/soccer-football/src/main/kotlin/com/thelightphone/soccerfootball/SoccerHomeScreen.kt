@@ -1222,20 +1222,16 @@ private fun CompetitionPickerContent(
 
 // --- Standings ------------------------------------------------------------------
 
-// On request: W/D/L added, GD dropped to make room for them, and every column tightened further
-// than the previous 0.08/0.34/0.11x3/0.12/0.13 split (7 columns) — explicitly framed as an
-// experiment to try now that team names can be shortened via [teamShortName], so this is a first
-// estimate, not a measured fit, same as every other hand-picked size in this file.
-//
-// POS narrowed again (0.08 -> 0.045) — it only ever holds 1-2 digits, and the user specifically
-// asked for the gap in front of team names closed up further. The six remaining stat columns
-// (MP/W/D/L/GF/GA) are all single-or-double-digit for the whole season, so they share one equal,
-// tight weight rather than each getting its own tuned value. PTS keeps a little extra room since a
-// runaway title race can occasionally reach 3 digits. TEAM actually ends up *larger* than the old
-// 0.34 despite the two net-new columns (9 total, was 7) — shortened team names plus every other
-// column being pushed as tight as a season-max value needs frees up more than W/D/L cost.
-private val STANDINGS_POS_WEIGHT = 0.045f
-private val STANDINGS_TEAM_WEIGHT = 0.405f
+// On request: W/D/L added, GD dropped to make room for them — first tried with POS narrowed
+// further still (0.08 -> 0.045f), but that made the #/TEAM gap tighter than wanted, so POS is back
+// to its pre-this-round 0.08. TEAM gives up the space POS just reclaimed (0.405 -> 0.37) to keep
+// the row's total weight roughly where it was; the six MP/W/D/L/GF/GA columns still share one
+// equal, tight weight (all single-or-double-digit for a season) and PTS keeps a little extra room
+// for a runaway title race's occasional 3-digit total. Still a first estimate for the stat columns
+// specifically — explicitly framed as an experiment now that team names can be shortened via
+// [teamShortName] — just no longer for POS, which is back to a size already confirmed to read well.
+private val STANDINGS_POS_WEIGHT = 0.08f
+private val STANDINGS_TEAM_WEIGHT = 0.37f
 private val STANDINGS_STAT_WEIGHT = 0.075f // MP, W, D, L, GF, GA all share this
 private val STANDINGS_PTS_WEIGHT = 0.10f
 
@@ -1335,18 +1331,21 @@ private fun StandingsTableContent(
     }
 }
 
+// MP/W/D/L/GF/GA/PTS switched from end- to center-aligned on request, header and data cells both
+// (they have to move together — a header sitting somewhere its column's data doesn't just reads as
+// misaligned). TEAM/# stay as they were (start-aligned, no explicit align set).
 @Composable
 private fun StandingsHeaderRow() {
     Row(modifier = Modifier.fillMaxWidth().padding(bottom = 0.4f.gridUnitsAsDp())) {
         LightText(text = "#", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
         LightText(text = "TEAM", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT))
-        LightText(text = "MP", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = "W", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = "D", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = "L", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = "GF", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = "GA", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = "PTS", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
+        LightText(text = "MP", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = "W", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = "D", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = "L", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = "GF", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = "GA", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = "PTS", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
 }
 
@@ -1372,13 +1371,13 @@ private fun StandingsTableRow(row: StandingsRow) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT),
         )
-        LightText(text = row.played.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = row.win.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = row.draw.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = row.lose.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = row.goalsFor.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = row.goalsAgainst.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = row.points.toString(), variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
+        LightText(text = row.played.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = row.win.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = row.draw.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = row.lose.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = row.goalsFor.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = row.goalsAgainst.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        LightText(text = row.points.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
 }
 
@@ -1591,17 +1590,25 @@ private fun MyTeamHeaderRow(
         summary.standingsRow?.let { standingsRow ->
             LightText(
                 text = "${standingsRow.position.asOrdinal()} · ${competitionShortName(summary.leagueId)}",
-                variant = LightTextVariant.Superfine,
+                // Bumped Superfine (16) -> Fine (25) on request, to match "the Juventus vs AC Milan
+                // match header under Recent results" — that's MatchRow's own combined name text,
+                // also Fine. Also switched from end- to start-aligned (dropped `align =
+                // TextAlign.End`, LightText's default) on request, "aligned in a way that looks more
+                // like next match element towards the left" — reads left-to-right from its own slot
+                // now, the way FeaturedMatchPlaceholder's date/opponent text does, instead of
+                // hugging the row's right edge.
+                variant = LightTextVariant.Fine,
                 lighten = true,
-                align = TextAlign.End,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 // Row-scope align, not a weight -- this should wrap to its own content width and
                 // sit in the row's top-right corner ("across from the badge"), not stretch or
-                // compete with FeaturedMatchPlaceholder's weight(1f) for space.
+                // compete with FeaturedMatchPlaceholder's weight(1f) for space. Max width bumped
+                // 5.5f -> 6.5f grid units alongside the font increase so "11th · Bundesliga"-length
+                // text still has room at the larger size before it'd have to ellipsize.
                 modifier = Modifier
                     .align(Alignment.Top)
-                    .widthIn(max = 5.5f.gridUnitsAsDp())
+                    .widthIn(max = 6.5f.gridUnitsAsDp())
                     .lightClickable(onClick = { onOpenStandingsTable(summary.leagueId, summary.leagueName) }),
             )
         }

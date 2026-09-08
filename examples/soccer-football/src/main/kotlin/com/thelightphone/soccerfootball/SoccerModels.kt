@@ -128,18 +128,43 @@ fun competitionDisplayOrder(id: Int): Int = COMPETITION_DISPLAY_ORDER[id] ?: Int
 // are deliberately absent here — those teams keep their full name.
 //
 // Keyed on the full name as this app's own tracked-league research used it (standard English club
-// names, primarily sourced from Wikipedia's current-season squad lists) — NOT independently verified
-// against what API-Football's `teams.home.name`/`teams.away.name` actually returns for each of these
-// clubs, since there's no live API access or compiler in this sandbox to check that against. If a
-// particular team's row here doesn't shorten anything on screen, a mismatched key (an accent,
-// a "CF"/"SD" prefix, etc. that API-Football includes but this map's key doesn't, or vice versa) is
-// the most likely reason — worth spot-checking a few against real fixture data.
+// names, primarily sourced from Wikipedia's current-season squad lists) — the risk flagged when
+// this map first shipped ("NOT independently verified against what API-Football actually returns")
+// turned out to be real and worse than expected. A live check against this app's own proxy (see
+// below) found API-Football already sends a short display name for MANY English clubs — "Swansea",
+// not "Swansea City"; "QPR", not "Queens Park Rangers"; "West Brom", not "West Bromwich Albion" —
+// so those keys never matched anything, though harmlessly: the unmatched fallback (this app's own
+// already-short input, unchanged) still displayed fine, it just meant those specific entries were
+// dead weight, not a visible bug. The entries below that were CONFIRMED wrong (either directly
+// on-device — see [teamShortName]'s own callers — or via that live proxy check) have been removed
+// or re-keyed; unconfirmed entries elsewhere in this map (most of Premier League/La Liga/Bundesliga,
+// for instance) may have the same problem and just haven't been checked yet.
+//
+// The live check: this app's proxy at soccer-proxy.ravisolter.com is reachable from a browser/
+// fetch tool, unlike this sandbox's own network (no direct curl access here, nor from the user's
+// Mac shell — both blocked by their respective egress allowlists). Repeated fetches to its
+// `/standings` and `/fixtures` endpoints kept returning the SAME league's data back regardless of
+// which `league` query parameter was requested (English Championship for every `/standings` call
+// made in one sitting, UEFA Europa League for every `/fixtures` call) — some kind of cache that
+// doesn't vary by query string, on the proxy's own side or in the fetch tool's. That's a plausible
+// real bug worth knowing about (this app calls that same endpoint for real, so a real user could in
+// theory hit stale cross-league data too), but there's no proxy source in this sandbox to fix it,
+// and it means only the Championship list obtained this way could actually be trusted (it was
+// self-consistent, correctly sized at 24 clubs, and every name was a real club) — EPL/Serie A/La
+// Liga/Bundesliga/Ligue 1 could not be independently re-checked this round. The Ligue 1 entries
+// below marked "confirmed" come from the user's own screenshot of a live Standings table instead,
+// which doesn't have this problem.
 //
 // Domestic cup fixtures (FA Cup, EFL Cup, Copa del Rey, Coppa Italia, DFB-Pokal, Coupe de France) can
 // pull in lower-league and non-league clubs entirely outside this map — that's the original
 // "Carshalton Athletic" truncation case this whole effort traces back to, and it's out of scope here
 // by design: that pool is enormous and changes every season, so [teamShortName] falls back to the
-// unshortened name for anything not listed rather than guessing at a truncation.
+// unshortened name for anything not listed rather than guessing at a truncation. A live FA Cup
+// fixtures fetch this round (Aveley vs Cheshunt, Ossett United vs Pontefract Collieries, and 150+
+// more like them) confirmed this was the right call — non-league qualifying rounds, not remotely
+// coverable by a hand-built table, and every name in it was already short on its own anyway. FA Cup
+// matches between two clubs this map DOES cover (e.g. two Championship sides) already get shortened
+// today, for free — the lookup is by team name, not by which competition the fixture belongs to.
 private val TEAM_SHORT_NAMES: Map<String, String> = mapOf(
     // Premier League
     "Aston Villa" to "Villa",
@@ -151,27 +176,30 @@ private val TEAM_SHORT_NAMES: Map<String, String> = mapOf(
     "Newcastle United" to "Newcastle",
     "Nottingham Forest" to "Nott'm Forest",
     "Tottenham Hotspur" to "Spurs",
-    "West Ham United" to "West Ham",
-    "Wolverhampton Wanderers" to "Wolves",
-    // Championship
-    "Birmingham City" to "Birmingham",
-    "Blackburn Rovers" to "Blackburn",
-    "Charlton Athletic" to "Charlton",
+    // "West Ham United" and "Wolverhampton Wanderers" removed: the live Championship check below
+    // (both clubs currently sit in that table this fictional season) confirmed API-Football already
+    // sends "West Ham" and "Wolves" — the exact short forms this map was trying to produce — so
+    // these two entries could never have matched anything.
+    // Championship — confirmed short-form-already via a live proxy check this round (see this
+    // section's header comment): Birmingham City, Blackburn Rovers, Charlton Athletic, Derby
+    // County, Norwich City, Preston North End, Queens Park Rangers, Swansea City, and West
+    // Bromwich Albion all removed, since API-Football already returns "Birmingham", "Blackburn",
+    // "Charlton", "Derby", "Norwich", "Preston", "QPR", "Swansea", "West Brom" respectively — none
+    // of those keys could ever have matched. "Middlesbrough" and "Stoke City" are confirmed
+    // CORRECT as-is (API returns those exact strings). "Sheffield United" re-keyed to "Sheffield
+    // Utd" (API's actual string) — still worth the further trim to "Sheff Utd". "Sheffield
+    // Wednesday" re-keyed to "Sheffield Wed" by analogy with Sheffield Utd's pattern, NOT directly
+    // confirmed (Sheffield Wednesday didn't appear in the fetched table, whether because it's not
+    // in this fictional season's Championship or just bad luck) — flagging that one as a guess.
     "Coventry City" to "Coventry",
-    "Derby County" to "Derby",
     "Hull City" to "Hull",
     "Ipswich Town" to "Ipswich",
     "Leicester City" to "Leicester",
     "Middlesbrough" to "Boro",
-    "Norwich City" to "Norwich",
     "Oxford United" to "Oxford",
-    "Preston North End" to "Preston",
-    "Queens Park Rangers" to "QPR",
-    "Sheffield United" to "Sheff Utd",
-    "Sheffield Wednesday" to "Sheff Wed",
+    "Sheffield Utd" to "Sheff Utd",
+    "Sheffield Wed" to "Sheff Wed",
     "Stoke City" to "Stoke",
-    "Swansea City" to "Swansea",
-    "West Bromwich Albion" to "West Brom",
     // Serie A
     "Hellas Verona" to "Verona",
     "AC Milan" to "Milan",
@@ -202,8 +230,16 @@ private val TEAM_SHORT_NAMES: Map<String, String> = mapOf(
     "FC St. Pauli" to "St. Pauli",
     "VfB Stuttgart" to "Stuttgart",
     "VfL Wolfsburg" to "Wolfsburg",
-    // Ligue 1
+    // Ligue 1 — "Paris Saint Germain" (no hyphen) added and made the primary key on request, after
+    // the user's own screenshot of a live Ligue 1 Standings table showed it rendering full-length:
+    // this app's data evidently doesn't carry the hyphen Wikipedia's official name uses. The
+    // original hyphenated key is kept alongside it in case some other endpoint in this app does use
+    // the hyphenated form — costs nothing if it never matches. "Stade Brestois 29" and "Estac
+    // Troyes" added too, both visible un-shortened in that same screenshot.
+    "Paris Saint Germain" to "PSG",
     "Paris Saint-Germain" to "PSG",
+    "Stade Brestois 29" to "Brest",
+    "Estac Troyes" to "Troyes",
     // Other UEFA (seen via UCL/UEL)
     "Club Brugge KV" to "Club Brugge",
     "AEK Athens FC" to "AEK Athens",
@@ -219,9 +255,17 @@ private val TEAM_SHORT_NAMES: Map<String, String> = mapOf(
     "Red Bull Salzburg" to "Salzburg",
     "Slavia Praha" to "Slavia Prague",
     "Sparta Praha" to "Sparta Prague",
+    // "Crvena Zvezda" kept, "FK Crvena Zvezda" added alongside it — an unreliable UEL fixtures
+    // fetch this round (see this section's header comment on why it's not trusted as ground truth)
+    // showed "FK Crvena Zvezda" with the prefix; not confirmed, so hedging with both keys rather
+    // than replacing the original outright.
     "Crvena Zvezda" to "Red Star Belgrade",
+    "FK Crvena Zvezda" to "Red Star Belgrade",
     "BSC Young Boys" to "Young Boys",
     "FC Basel" to "Basel",
+    // Same low-confidence UEL fetch also showed "1899 Hoffenheim" instead of "TSG Hoffenheim" —
+    // hedged the same way rather than touching the existing (also unconfirmed either way) entry.
+    "1899 Hoffenheim" to "Hoffenheim",
 )
 
 /** Shorter display name for [fullName], if this app has a researched one — otherwise [fullName]
