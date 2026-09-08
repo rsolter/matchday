@@ -247,19 +247,20 @@ private val SCORE_SLOT_WIDTH = 4f
 // next to a team name without dominating the row, matching the reference fotmob screenshots' scale.
 private val TEAM_CREST_SIZE = 1.1f
 
-// Fixed width for ScheduleMatchRow's two bottom-line flanking slots — a leading status badge and a
-// trailing spacer (that spacer used to hold the per-row league name; it moved up to a per-league
-// header in ScheduleDayCard once every row under one header already shares that league). Both use
-// this same width, on purpose: with a centered `weight(1f)` Box between two slots of EQUAL fixed
-// width, that Box's midpoint lands on the row's true visual center regardless of what either side is
-// showing (or not showing) — mismatched side widths would pull the center off to whichever side is
-// narrower, which is exactly the "why isn't the score centered" bug this fixes. Sized to comfortably
-// fit the badge's longest label ("Lineups") with the pill's own padding, same reasoning as
-// LEFT_SLOT_WIDTH above but a touch narrower since that slot only ever holds a pill, never a bare
-// kickoff time. Reserved even when the badge side has nothing to show (a still-scheduled match with
-// no posted lineup) so the center column's position never depends on match status — see
-// ScheduleMatchRow.
-private val SCHEDULE_ROW_SIDE_SLOT_WIDTH = 2.8f
+// Fixed width for ScheduleMatchRow's leading status cluster — badge alone (still-scheduled matches),
+// or badge-plus-score together (live/finished matches), now rendered at LightTextVariant.Copy (30sp)
+// instead of Detail (20sp) so the badge can be genuinely bigger, on request, by giving it the row's
+// full two-line height to sit in rather than squeezing it into one line alongside the score and a
+// league name (the league name has since moved to a per-day-card header anyway — see
+// ScheduleDayCard's doc comment — and the score moved in here to sit beside the bigger badge).
+// Estimated to comfortably fit the widest realistic pairing ("FT" or a two-digit live minute next to
+// a "2 - 1"-shaped score) at the larger font — unverified without a compiler or real device, same
+// caveat as this file's other hand-picked widths; worth a look if a real screenshot ever shows either
+// one clipping. Doesn't need to match any other slot's width for centering purposes the way the
+// previous per-row layout's flanking slots did — this cluster is now a sibling of the whole two-line
+// crest/name-and-kickoff-time column, not sharing a row with a `weight(1f)` center Box anymore, so
+// that particular constraint from the previous round no longer applies. See ScheduleMatchRow.
+private val SCHEDULE_ROW_STATUS_CLUSTER_WIDTH = 7.5f
 
 // A light, legible green for a live match's minute-counter text — matches the reference (fotmob)
 // screenshot's live-indicator hue. Used for text color only (see MatchStatusBadge); the badge's
@@ -270,10 +271,18 @@ private val LIVE_STATUS_GREEN = Color(0xFF4ADE80)
 /** Small rounded badge for a match's status — FT (or Postponed/Cancelled/Suspended) and a live
  * minute counter now share the same pill shape, matching the reference fotmob screenshot's FT
  * badge; only the live case gets green text ([LIVE_STATUS_GREEN]) to set it apart from a finished
- * match. Sized by its own content — the caller (MatchRow) places it inside [LEFT_SLOT_WIDTH]'s
- * fixed-width slot rather than sizing it directly. */
+ * match. Sized by its own content — [MatchRow] places it inside [LEFT_SLOT_WIDTH]'s fixed-width slot
+ * rather than sizing it directly (default [variant] `Detail`, unchanged for that caller).
+ * [ScheduleMatchRow] instead passes `Copy` — this app's existing "prominent score" size, the same
+ * one Match Detail's own big score label already uses — to render this badge genuinely bigger, on
+ * request, now that it has the room to (see [SCHEDULE_ROW_STATUS_CLUSTER_WIDTH]'s doc comment). */
 @Composable
-private fun MatchStatusBadge(text: String, isLive: Boolean, modifier: Modifier = Modifier) {
+private fun MatchStatusBadge(
+    text: String,
+    isLive: Boolean,
+    variant: LightTextVariant = LightTextVariant.Detail,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(50.dp))
@@ -282,10 +291,12 @@ private fun MatchStatusBadge(text: String, isLive: Boolean, modifier: Modifier =
     ) {
         // Was Superfine (16), then Detail (20) after round 13's revert, then Fine (25) to match the
         // rest of MatchRow's text — now back to Detail, on request, alongside LEFT_SLOT_WIDTH
-        // narrowing further, to close the gap a real screenshot showed before the team name.
+        // narrowing further, to close the gap a real screenshot showed before the team name. That
+        // history is MatchRow's alone now that variant is a parameter — see this fun's own doc
+        // comment for ScheduleMatchRow's separate, larger choice.
         LightText(
             text = text,
-            variant = LightTextVariant.Detail,
+            variant = variant,
             align = TextAlign.End,
             lighten = !isLive,
             color = if (isLive) LIVE_STATUS_GREEN else null,
@@ -615,37 +626,36 @@ private fun ScheduleDayCard(
     }
 }
 
-/** One match, two lines — bigger text throughout than the old single-line rows, on request, for
- * on-device readability. Top line: [TeamCrestImage] for each team pinned to the row's true left and
- * right edges, with one continuous "Home - Away" string filling the space between them (a plain
- * dash, on request — was "vs" originally). This is itself a revision, after seeing real on-device
- * screenshots of an earlier version that had the crests sitting adjacent in the row's center with a
- * separately-truncated, independently-weighted name on each side: a long home name paired with a
- * short away name still got cut off there even though the away side had unused width it couldn't
- * lend. Making it one string removes that artificial 50/50 split — whichever side needs more of the
- * row's width just takes it — and moving both crests to the true edges reclaims the padding that
- * used to sit between them in the middle. The one real trade-off: if the combined string still
- * doesn't fit, [TextOverflow.Ellipsis] always trims from the end (the away team), not necessarily
- * whichever name is actually longer — accepted as the simpler of the layout options discussed,
- * versus a real text-measuring/space-splitting layout. No center score slot on this line — that
- * moved to the second line, since fitting a legible score/time next to two comfortably-sized names
- * left no room for one on the same line.
+/** One match, a leading status cluster plus two lines of team info, on request replacing the
+ * previous version's three-way bottom line (badge / score-or-time / empty spacer) after that badge
+ * was asked to be made bigger — see [SCHEDULE_ROW_STATUS_CLUSTER_WIDTH]'s doc comment for why bigger
+ * meant pulling it out to its own full-row-height slot rather than just bumping its font size in
+ * place. Leading: a fixed-width [SCHEDULE_ROW_STATUS_CLUSTER_WIDTH] cluster, vertically centered
+ * across the whole row (both lines' combined height, not just one), holding — in order, badge first
+ * then score, on request — [MatchStatusBadge] (FT/live-minute/"Lineups"/a postponed-etc. status,
+ * whichever applies, all now [LightTextVariant.Copy] instead of `Detail`) paired with the match's
+ * score once it has one ([Fixture.showsFinalOrLiveScore], also `Copy`, matching the badge); just the
+ * badge alone for a postponed/cancelled/suspended match (see
+ * [Fixture.isPostponedCancelledOrSuspended]) or a still-scheduled one with a posted lineup; and
+ * nothing at all for a still-scheduled match with no lineup posted yet — that match's only status
+ * information is the kickoff time on its second line below.
  *
- * Bottom line, three zones across the full width, all [SCHEDULE_ROW_SIDE_SLOT_WIDTH]-related: a
- * leading fixed-width slot for a status pill ([MatchStatusBadge], reused as-is from the old
- * single-line rows) for whichever of FT/live-minute/"Lineups" applies, empty but still reserving its
- * width when none does; the score (once the match has a real one —
- * [Fixture.showsFinalOrLiveScore]), a postponed/cancelled/suspended match's own status text (see
- * [Fixture.isPostponedCancelledOrSuspended]), or the kickoff time (before any of that), centered in
- * the middle in a `weight(1f)` [Box]; and a trailing, equally-wide slot that's always empty now — it
- * used to hold the league's short name, but that moved up to one shared, centered header per league
- * group within the day card (see [ScheduleDayCard]'s doc comment), so this row no longer needs to
- * say which league it's in at all. Left in place as a spacer rather than removed outright: the
- * center Box is only ever centered relative to the space between its two neighbors, so it only lands
- * on the row's true visual center when both neighbors are the same fixed width — see
- * [SCHEDULE_ROW_SIDE_SLOT_WIDTH]'s doc comment for the fuller reasoning (including why an earlier
- * version, with a `weight(1f)` league-name slot instead of a fixed one, put the center off-true
- * regardless of which side either slot was on). */
+ * The two lines to the right of that cluster are otherwise unchanged from the previous round, at the
+ * same [LightTextVariant.Fine] team-name size, per request ("this should not affect the size of the
+ * font for the team names"): top, [TeamCrestImage] pinned to the row's true left and right edges
+ * with one continuous "Home - Away" string between them (see that design's own history in an earlier
+ * revision of this doc comment, still worth reading for the truncation reasoning); bottom, the
+ * kickoff time, centered, but ONLY for a still-scheduled match — a match with a real score or a
+ * postponed/cancelled/suspended status now says so only in the enlarged cluster on the left, so this
+ * line is simply blank for those rows rather than repeating anything. That's a real, visible
+ * consequence worth calling out rather than glossing over: a finished/live/postponed row's second
+ * line has nothing in it now, where a still-scheduled row's does — accepted as the direct result of
+ * moving the score out to sit beside the bigger badge, since there's nothing left that line would
+ * need to say for those rows. Compose still centers the (now single-line) crest/name row vertically
+ * within whatever height the taller sibling (the status cluster, or a still-scheduled row's own two
+ * lines) ends up being, so nothing needs to be reserved by hand the way the old flanking-slot-width
+ * trick did — that whole concern doesn't apply to this layout; see
+ * [SCHEDULE_ROW_STATUS_CLUSTER_WIDTH]'s doc comment. */
 @Composable
 private fun ScheduleMatchRow(
     match: Fixture,
@@ -654,97 +664,81 @@ private fun ScheduleMatchRow(
     lineupsAvailable: Boolean,
     onClick: () -> Unit,
 ) {
-    Column(
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .lightClickable(onClick = onClick)
             .padding(vertical = 0.65f.gridUnitsAsDp()),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            TeamCrestImage(
-                bytes = homeLogoBytes,
-                contentDescription = match.homeTeamName,
-                modifier = Modifier.padding(end = 0.35f.gridUnitsAsDp()),
-            )
-            LightText(
-                text = "${match.homeTeamName} - ${match.awayTeamName}",
-                variant = LightTextVariant.Fine,
-                align = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            TeamCrestImage(
-                bytes = awayLogoBytes,
-                contentDescription = match.awayTeamName,
-                modifier = Modifier.padding(start = 0.35f.gridUnitsAsDp()),
-            )
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(top = 0.25f.gridUnitsAsDp()),
+        Box(
+            modifier = Modifier.width(SCHEDULE_ROW_STATUS_CLUSTER_WIDTH.gridUnitsAsDp()),
+            contentAlignment = Alignment.CenterStart,
         ) {
-            // Leading, fixed-width, regardless of whether a badge actually renders — kept reserved
-            // (rather than omitted) even when there's nothing to show, e.g. a still-scheduled match
-            // with no posted lineup, the whole UCL screenshot below. On request, this and the
-            // trailing league-name slot swapped sides from the first version (badge used to trail,
-            // league used to lead) — swapping alone wouldn't have fixed the actual complaint, though:
-            // the center Box below is only ever centered relative to the space BETWEEN these two
-            // slots, so it only lands on the row's true visual center when both are the same fixed
-            // width (see SCHEDULE_ROW_SIDE_SLOT_WIDTH's doc comment) — that's the real fix.
-            Box(
-                modifier = Modifier.width(SCHEDULE_ROW_SIDE_SLOT_WIDTH.gridUnitsAsDp()),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                if (match.showsFinalOrLiveScore()) {
-                    MatchStatusBadge(text = match.statusLabel(), isLive = match.status.isLive)
-                } else if (lineupsAvailable) {
-                    MatchStatusBadge(text = "Lineups", isLive = false)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                when {
+                    match.showsFinalOrLiveScore() -> {
+                        MatchStatusBadge(
+                            text = match.statusLabel(),
+                            isLive = match.status.isLive,
+                            variant = LightTextVariant.Copy,
+                        )
+                        LightText(
+                            text = match.scoreLabel(),
+                            variant = LightTextVariant.Copy,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = if (match.status.isLive) LIVE_STATUS_GREEN else null,
+                            modifier = Modifier.padding(start = 0.4f.gridUnitsAsDp()),
+                        )
+                    }
+                    // Same gap [Fixture.isPostponedCancelledOrSuspended] was added to close a couple
+                    // of rounds ago — without this branch, one of these three statuses would fall
+                    // through and the cluster would show nothing at all for this match, same silent
+                    // regression as before, just relocated.
+                    match.isPostponedCancelledOrSuspended() -> {
+                        MatchStatusBadge(text = match.statusLabel(), isLive = false, variant = LightTextVariant.Copy)
+                    }
+                    lineupsAvailable -> {
+                        MatchStatusBadge(text = "Lineups", isLive = false, variant = LightTextVariant.Copy)
+                    }
+                    // else: still-scheduled, no posted lineup yet — cluster stays blank; the kickoff
+                    // time on the second line below is this match's only status information for now.
                 }
             }
-            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                if (match.showsFinalOrLiveScore()) {
-                    LightText(
-                        text = match.scoreLabel(),
-                        variant = LightTextVariant.Fine,
-                        align = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = if (match.status.isLive) LIVE_STATUS_GREEN else null,
-                    )
-                } else if (match.isPostponedCancelledOrSuspended()) {
-                    // This is the branch showsFinalOrLiveScore's doc comment promised: without it, a
-                    // postponed/cancelled/suspended match would silently fall through to the plain
-                    // kickoff-time branch below and read as an ordinary still-scheduled match — the
-                    // one real gap found in this row on a final self-review, now closed.
-                    LightText(
-                        text = match.statusLabel(),
-                        variant = LightTextVariant.Fine,
-                        lighten = true,
-                        align = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                } else {
-                    LightText(
-                        text = formatKickoffTime(match.utcDate),
-                        variant = LightTextVariant.Fine,
-                        lighten = true,
-                        align = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                TeamCrestImage(
+                    bytes = homeLogoBytes,
+                    contentDescription = match.homeTeamName,
+                    modifier = Modifier.padding(end = 0.35f.gridUnitsAsDp()),
+                )
+                LightText(
+                    text = "${match.homeTeamName} - ${match.awayTeamName}",
+                    variant = LightTextVariant.Fine,
+                    align = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                TeamCrestImage(
+                    bytes = awayLogoBytes,
+                    contentDescription = match.awayTeamName,
+                    modifier = Modifier.padding(start = 0.35f.gridUnitsAsDp()),
+                )
             }
-            // Trailing, empty, but still reserving the same fixed width as the leading badge slot
-            // above — this used to hold the per-row league name; that moved up to one shared,
-            // centered header per league group within the day card, on request, now that every row
-            // under a given header already shares that league (see ScheduleDayCard's doc comment).
-            // Still needed as a spacer: the center Box above is only centered relative to the space
-            // between its two neighbors, so removing this slot instead of just emptying it would
-            // pull the center off-true toward the leading badge slot — see
-            // SCHEDULE_ROW_SIDE_SLOT_WIDTH's doc comment.
-            Box(modifier = Modifier.width(SCHEDULE_ROW_SIDE_SLOT_WIDTH.gridUnitsAsDp()))
+            if (!match.showsFinalOrLiveScore() && !match.isPostponedCancelledOrSuspended()) {
+                LightText(
+                    text = formatKickoffTime(match.utcDate),
+                    variant = LightTextVariant.Fine,
+                    lighten = true,
+                    align = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().padding(top = 0.25f.gridUnitsAsDp()),
+                )
+            }
         }
     }
 }

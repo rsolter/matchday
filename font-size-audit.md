@@ -1208,3 +1208,53 @@ width to work with instead of one narrow row slot.
 No compiler in this sandbox — verified by manual diff review, a grep sweep for stale references
 (`onStandingsClick` no longer exists anywhere in `ScheduleMatchRow`'s call sites, confirmed removed
 cleanly), and `balance_check.py` on both touched files.
+
+## 31. Bigger status badge, spanning both rows — score moves in beside it
+
+Ask, after seeing §30's per-league headers running: make the status badge (FT/live-minute/Lineups)
+bigger by letting it use the row's full two-line height instead of squeezing into the bottom line
+alongside the score; for a live or finished match, the score would need to move next to the badge
+(badge first, score second); team-name font size stays untouched.
+
+**Why a font-size bump alone wouldn't have done it.** The badge lived inside the bottom line's
+leading slot, sharing that one line's height with the score/kickoff-time Box next to it. Making the
+badge's own text bigger without moving it would have made that one line taller, pushing the whole
+row's height around unevenly — not what was asked. The real fix pulls the badge (and, for
+live/finished matches, the score with it) out of the bottom line entirely into its own cluster that
+sits beside the whole two-line team-info column, at the row's full height, so it has real room to
+render bigger without disturbing anything else.
+
+**What changed.** `ScheduleMatchRow` goes from a `Column` of two `Row`s to one `Row`: a leading
+`SCHEDULE_ROW_STATUS_CLUSTER_WIDTH`-wide status cluster, vertically centered across the row's full
+height, next to a `Column` holding the two team-info lines (unchanged, still `LightTextVariant.Fine`
+per request). Inside the cluster: `MatchStatusBadge` (FT/live-minute/"Lineups"/a
+postponed-etc. status) at `LightTextVariant.Copy` (30sp) instead of `Detail` (20sp) — not an
+arbitrary pick: `Copy` is this app's existing "prominent score" size, the same one Match Detail's own
+big score label already uses, so this reuses an established precedent rather than inventing a new
+one. For a live or finished match, the score follows the badge in the same `Copy` size, on request
+("score coming 2nd"). `MatchStatusBadge` itself gained a `variant` parameter (default `Detail`,
+unchanged) so `MatchRow` — its other, unrelated caller — is untouched.
+
+**A real, visible trade-off, flagged rather than smoothed over.** Since the score (and the
+postponed/etc. status text) moved into the enlarged cluster, the second line of team info — the one
+that used to hold the score or that status text — is now simply blank for a live, finished, or
+postponed/cancelled/suspended match. A still-scheduled match's second line still shows its kickoff
+time, unchanged, since that content never moved. So a scheduled row's second line has real content
+and a finished row's doesn't — an asymmetry that wasn't explicitly part of the ask but falls directly
+out of it: there's nothing left for that line to say once the score has a bigger, more prominent home
+next to the badge. Compose's own `Alignment.CenterVertically` on the outer `Row` keeps the
+(now-shorter, one-line) crest/name row vertically centered against whichever sibling ends up taller —
+no manual height reservation needed the way the previous round's flanking-slot-width trick required,
+since the status cluster and the team-info column are no longer sharing a single line the way the
+badge and the centered score/time Box used to.
+
+**Cluster width, and the badge's/score's exact size, are both estimates.** `SCHEDULE_ROW_STATUS_CLUSTER_WIDTH`
+(7.5 grid units) is a guess at what comfortably fits the widest realistic pairing ("FT" next to a
+"2 - 1"-shaped score, or a two-digit live minute next to one) at the bumped-up `Copy` size — there's
+no compiler or real device here to measure actual glyph widths against. Worth a look on the real
+phone; if either the badge or the score visibly clips or the cluster looks oddly wide/narrow next to
+the crests, that width is the one number to adjust.
+
+No compiler in this sandbox — verified by manual diff review, a grep sweep confirming no stale
+references to the old `SCHEDULE_ROW_SIDE_SLOT_WIDTH` constant remain, and `balance_check.py` on all
+four touched files.
