@@ -245,11 +245,16 @@ private val SCORE_SLOT_WIDTH = 4f
 
 // Fixed square size for [TeamCrestImage] — sole caller now [ScheduleMatchRow], where the two crests
 // are the row's true left/right columns (see that fun's doc comment) rather than sitting inline with
-// just the top text line — bumped up from 1.1 accordingly, from "small enough to sit inline next to
-// a team name" to "fills roughly the row's full height". 3 is an estimate of what looks proportional
-// at that taller role, unverified without a compiler or real device — the kind of number most likely
-// to need a follow-up nudge once seen running, same as this file's other hand-picked sizes.
-private val TEAM_CREST_SIZE = 3f
+// just the top text line. That flagged-as-unverified follow-up nudge did turn out to be needed: 3
+// (this file's first estimate for "fills roughly the row's full height") rendered fine in the emulator
+// but was too tall on the real device — only ~4 matches fit on screen at once where 6-7 was wanted, so
+// per that real-device report, down to 1.5. Still just an estimate, same caveat as before — the goal
+// this time is for the crest to sit comfortably within the two-line text column's own height rather
+// than dictating the row's height itself, so row height should now track the text stack (Fine top
+// line + status/score bottom line) the way it did before crests grew into full-height columns; worth
+// a specific check that neither the crest looks awkwardly small next to that text now, nor still
+// dominates the row's height more than intended.
+private val TEAM_CREST_SIZE = 1.5f
 
 // A light, legible green for a live match's minute-counter text — matches the reference (fotmob)
 // screenshot's live-indicator hue. Used for text color only (see MatchStatusBadge); the badge's
@@ -547,7 +552,13 @@ private fun List<Fixture>.groupedByLeagueForDisplay(): List<DayLeagueGroup> = th
  * [lineupsAvailableFixtureIds] both come straight from [ScoreScreenMode.Scores] and are looked up
  * per-match below. [onOpenStandingsTable] is only ever invoked for a league that
  * [competitionHasStandings] — now gated on the per-league header tap, not a per-row one, since the
- * league name itself moved there. */
+ * league name itself moved there. No card fill on request — the faint translucent grey
+ * ([LightThemeTokens.colors.contentSecondary] at 8% alpha) that separated one day's card from the
+ * next rendered as a visibly solid, distracting grey block on the real device rather than the subtle
+ * tint it looked like in preview, so it's gone entirely now; only the divider between league groups
+ * within a card (still [LightThemeTokens.colors.contentSecondary] at 15% alpha, unchanged) remains as
+ * a visual separator. The [RoundedCornerShape] clip stays even though there's now nothing visibly
+ * clipped by it — harmless, and cheap insurance if a background returns here later. */
 @Composable
 private fun ScheduleDayCard(
     day: FixtureDay,
@@ -561,7 +572,6 @@ private fun ScheduleDayCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(1.2f.gridUnitsAsDp()))
-            .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f))
             .padding(horizontal = 1f.gridUnitsAsDp(), vertical = 0.75f.gridUnitsAsDp()),
     ) {
         LightText(
@@ -618,8 +628,10 @@ private fun ScheduleDayCard(
 /** One match, three columns, on request — a from-scratch layout swap after a mock-up made clear the
  * previous few rounds' arrangement (crests inline with just the team-name line; badge/score in their
  * own full-height cluster to one side) wasn't what was meant by "bigger": [TeamCrestImage] for home
- * and away now ARE the row's true left and right columns, each spanning the row's full height (see
- * [TEAM_CREST_SIZE]'s doc comment for the size bump that goes with that); the middle column, taking
+ * and away now ARE the row's true left and right columns (see [TEAM_CREST_SIZE]'s doc comment for
+ * that constant's own up-then-back-down history — after a real-device look, the crest is sized to sit
+ * within the middle column's own height rather than dictating the row's height itself); the middle
+ * column, taking
  * whatever width is left over, stacks two centered lines — top, the "Home - Away" string (still
  * [LightTextVariant.Fine], unchanged, matching team names as before); bottom, this match's
  * status/score, all centered together in one `Row` with `Arrangement.Center`: [MatchStatusBadge] then
@@ -801,8 +813,8 @@ private fun MatchGroupCard(
     }
 }
 
-/** One team crest — used by [ScheduleMatchRow] as its true left/right column, spanning the row's
- * full height on request (see [TEAM_CREST_SIZE]'s doc comment) — always a fixed [TEAM_CREST_SIZE]
+/** One team crest — used by [ScheduleMatchRow] as its true left/right column (see [TEAM_CREST_SIZE]'s
+ * doc comment for how large that box actually ends up, and why) — always a fixed [TEAM_CREST_SIZE]
  * box regardless of whether [bytes] actually decoded, so one missing/failed crest doesn't shift that
  * row out of alignment with its neighbors (every other row still reserves the same space). No
  * recolor is ever applied here — [leagueLogoColorFilter]/[recolorWhiteExceptOrange] are treatments
