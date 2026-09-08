@@ -1079,3 +1079,45 @@ nothing this round — noted in that composable's own doc comment for whoever to
 
 No compiler in this sandbox for any of this — verified only by manual diff review, a cross-file grep
 sweep for stale references to every removed symbol, and `balance_check.py` on all four touched files.
+
+## 28. Real-device screenshots of §27's redesign → two layout fixes on ScheduleMatchRow
+
+Ask, after seeing §27's merged Scores screen running on the actual phone: names were getting cut
+off ("Borussia Dortmu…" vs a much shorter "Villarreal" on the same row), and the request was for
+creative options to use the row's width better while keeping everything evenly spaced.
+
+**Bug fixed without asking — the center column drifted depending on match status.** Comparing the
+two screenshots side by side surfaced something neither one showed on its own: a "TODAY" card where
+every match had finished sat its center score at one horizontal position, while a future day where
+every match was still scheduled (no FT/Lineups badge to show) sat its center kickoff time further
+right. `ScheduleMatchRow`'s trailing status-badge slot only rendered a `Box` at all when there was a
+badge to put in it, so on any row with nothing to show there, the center `Box` next to it (each
+`weight(1f)`) just took the freed-up width and re-centered within a wider effective half. Gave that
+slot a fixed width (`STATUS_BADGE_SLOT_WIDTH`, reserved whether or not a badge actually renders)
+instead, so the center column now sits in the same place on every row regardless of status — this
+wasn't asked for directly, but it's exactly the kind of unevenness the request called out, and the
+two screenshots happened to each hide it by having uniform match status within themselves; a mixed
+day (the normal case) would have shown it immediately.
+
+**The truncation problem itself — three options laid out, user's choice built.** The original
+top-line design bookended each name with its own `weight(1f)` slot and put both crests adjacent in
+the row's center. That's a rigid 50/50 split: pairing a long home name with a short away name still
+truncated the long side even though the short side had width going unused right next to it, with no
+way to lend it across. Rather than pick a fix unilaterally, laid out three concrete options —
+(1) move both crests to the row's true left/right edges and merge the two names into one continuous
+"Home vs Away" string in between, so the split isn't artificial anymore and whichever name needs
+more of the row's width can take it, at the cost of always trimming the away team first if the
+combined string still overflows; (2) an actual two-pass layout that measures each name's real width
+first and splits the remaining space by need, the most correct fix for this exact problem but real
+added complexity with no way to preview the result here; (3) keep today's shape, just shrink the
+crests and their padding to reclaim a bit of width for both sides without touching the root cause.
+User picked (1). Built as: `TeamCrestImage` for the home team at the row's true left edge, one
+`LightText` spanning the remaining width center-aligned with `"${match.homeTeamName} vs
+${match.awayTeamName}"`, then the away team's `TeamCrestImage` at the true right edge. This also
+reclaims real width beyond fixing the split: the old design paid for padding on both sides of each
+of the two center-adjacent crests (4 padding units total), where edge-pinned crests only need
+padding on the side facing the text (2 units total).
+
+No compiler in this sandbox — verified by manual diff review and `balance_check.py` only; the two
+real-device screenshots that prompted this round are the closest thing to visual verification either
+of these fixes has had, and the new top-line layout specifically hasn't been seen running yet.

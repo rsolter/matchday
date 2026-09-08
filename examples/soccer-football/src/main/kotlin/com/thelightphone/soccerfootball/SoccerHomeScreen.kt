@@ -247,6 +247,13 @@ private val SCORE_SLOT_WIDTH = 4f
 // next to a team name without dominating the row, matching the reference fotmob screenshots' scale.
 private val TEAM_CREST_SIZE = 1.1f
 
+// Fixed width for ScheduleMatchRow's trailing status-badge slot — sized to comfortably fit its
+// longest label ("Lineups") with the pill's own padding, same reasoning as LEFT_SLOT_WIDTH above
+// but a touch narrower since this slot only ever holds a pill, never a bare kickoff time. Kept
+// reserved even when nothing renders in it (a still-scheduled match with no posted lineup) so the
+// center score/kickoff column stays in the same place on every row — see ScheduleMatchRow.
+private val STATUS_BADGE_SLOT_WIDTH = 2.8f
+
 // A light, legible green for a live match's minute-counter text — matches the reference (fotmob)
 // screenshot's live-indicator hue. Used for text color only (see MatchStatusBadge); the badge's
 // own pill background stays the same neutral translucent fill FT uses, so "live" reads as a color
@@ -561,24 +568,37 @@ private fun ScheduleDayCard(
 }
 
 /** One match, two lines — bigger text throughout than the old single-line rows, on request, for
- * on-device readability. Top line: home crest+name / away crest+name, bookended the same way
- * [TeamCrestImage] was already used for (right-aligned home name, left-aligned away name, crest
- * between each name and the row's center) but one size up ([Fine], not [Detail]) and with no center
- * score slot — that moved to the second line, since fitting a legible score/time next to two
- * comfortably-sized names left no room for one on the same line. Bottom line, three flexible zones
+ * on-device readability. Top line: [TeamCrestImage] for each team pinned to the row's true left and
+ * right edges, with one continuous "Home vs Away" string filling the space between them — a
+ * revision (on request, after seeing real on-device screenshots of the first version) of an earlier
+ * design that had the crests sitting adjacent in the row's center with a separately-truncated,
+ * independently-weighted name on each side: a long home name paired with a short away name still
+ * got cut off there even though the away side had unused width it couldn't lend. Making it one
+ * string removes that artificial 50/50 split — whichever side needs more of the row's width just
+ * takes it — and moving both crests to the true edges reclaims the padding that used to sit between
+ * them in the middle. The one real trade-off: if the combined string still doesn't fit,
+ * [TextOverflow.Ellipsis] always trims from the end (the away team), not necessarily whichever name
+ * is actually longer — accepted as the simpler of the layout options discussed, versus a real
+ * text-measuring/space-splitting layout. No center score slot on this line — that moved to the
+ * second line, since fitting
+ * a legible score/time next to two comfortably-sized names left no room for one on the same line.
+ * Bottom line, three flexible zones
  * across the full width: the league's short name on the left ([competitionShortName]; tappable via
  * [onStandingsClick] when set, replacing the old per-card league-crest tap target now that cards no
  * longer have a per-league header — see [ScheduleDayCard]'s doc comment), the score (once the match
  * has a real one — [Fixture.showsFinalOrLiveScore]) or the kickoff time (before then) centered in
- * the middle, and — on the right — a status pill ([MatchStatusBadge], reused as-is from the old
- * single-line rows) for whichever of FT/live-minute/"Lineups" applies; blank when none does (a
+ * the middle, and — on the right — a [STATUS_BADGE_SLOT_WIDTH]-wide slot for a status pill
+ * ([MatchStatusBadge], reused as-is from the old single-line rows) for whichever of
+ * FT/live-minute/"Lineups" applies; empty but still reserving its width when none does (a
  * still-scheduled match whose lineup isn't posted yet — the kickoff time in the middle already
  * covers that state on its own, and a postponed/cancelled/suspended match shows its own status
  * text there instead of a kickoff time — see [Fixture.isPostponedCancelledOrSuspended] — so no
- * badge is needed alongside it either). This reading of "league name, then FT/min/lineup
- * indicator, then score/kickoff time in the middle" was a judgment call given the ask's exact
- * wording didn't fully pin down the three elements' relative layout — worth a look on-device to
- * confirm it's what was meant. */
+ * badge is needed alongside it either). Reserving the slot's width even when blank, rather than
+ * omitting it, was a fix made after seeing real on-device screenshots: without it, the center
+ * column drifted right on any row with no badge, visibly misaligned against rows that had one.
+ * This reading of "league name, then FT/min/lineup indicator, then score/kickoff time in the
+ * middle" was a judgment call given the ask's exact wording didn't fully pin down the three
+ * elements' relative layout — worth a look on-device to confirm it's what was meant. */
 @Composable
 private fun ScheduleMatchRow(
     match: Fixture,
@@ -595,30 +615,23 @@ private fun ScheduleMatchRow(
             .padding(vertical = 0.65f.gridUnitsAsDp()),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            LightText(
-                text = match.homeTeamName,
-                variant = LightTextVariant.Fine,
-                align = TextAlign.End,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
             TeamCrestImage(
                 bytes = homeLogoBytes,
                 contentDescription = match.homeTeamName,
-                modifier = Modifier.padding(horizontal = 0.35f.gridUnitsAsDp()),
+                modifier = Modifier.padding(end = 0.35f.gridUnitsAsDp()),
+            )
+            LightText(
+                text = "${match.homeTeamName} vs ${match.awayTeamName}",
+                variant = LightTextVariant.Fine,
+                align = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
             TeamCrestImage(
                 bytes = awayLogoBytes,
                 contentDescription = match.awayTeamName,
-                modifier = Modifier.padding(horizontal = 0.35f.gridUnitsAsDp()),
-            )
-            LightText(
-                text = match.awayTeamName,
-                variant = LightTextVariant.Fine,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.padding(start = 0.35f.gridUnitsAsDp()),
             )
         }
         Row(
@@ -670,10 +683,23 @@ private fun ScheduleMatchRow(
                     )
                 }
             }
-            if (match.showsFinalOrLiveScore()) {
-                MatchStatusBadge(text = match.statusLabel(), isLive = match.status.isLive)
-            } else if (lineupsAvailable) {
-                MatchStatusBadge(text = "Lineups", isLive = false)
+            // Fixed-width regardless of whether a badge actually renders — on a self-review pass
+            // against the real-device screenshots, an omitted badge (any still-scheduled match with
+            // no posted lineup, e.g. the whole UCL screenshot) let the center score/time column above
+            // shift right into this slot's space, since Compose only allocates weight(1f) between
+            // however many children are actually present. That misaligned the center column between
+            // a "TODAY" card (all FT, badge always present) and a future day (all scheduled, badge
+            // usually absent) — exactly the kind of unevenness asked to be fixed. Reserving this
+            // width unconditionally keeps the center column's position identical on every row.
+            Box(
+                modifier = Modifier.width(STATUS_BADGE_SLOT_WIDTH.gridUnitsAsDp()),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                if (match.showsFinalOrLiveScore()) {
+                    MatchStatusBadge(text = match.statusLabel(), isLive = match.status.isLive)
+                } else if (lineupsAvailable) {
+                    MatchStatusBadge(text = "Lineups", isLive = false)
+                }
             }
         }
     }
