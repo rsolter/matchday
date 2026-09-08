@@ -1,4 +1,4 @@
-# Soccer Pro
+# Matchday
 
 A Light Phone III tool sourced from [API-Football](https://www.api-football.com) (api-football.com,
 `v3.football.api-sports.io`) — 14 competitions across England (Premier League, Championship, FA Cup,

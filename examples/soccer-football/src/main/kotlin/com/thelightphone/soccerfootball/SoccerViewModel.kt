@@ -167,7 +167,7 @@ private const val FETCHING_MESSAGE = "fetching today's scores..."
 private val MIN_LOADING_DISPLAY = 1.seconds
 
 private const val NETWORK_ERROR_MESSAGE =
-    "Soccer Pro requires a network connection. Connect to wi-fi or insert a data SIM to see scores."
+    "Matchday requires a network connection. Connect to wi-fi or insert a data SIM to see scores."
 private const val MIN_LEAGUES_MESSAGE = "Keep at least one league selected."
 
 /** How far back/forward the Fixtures mode's window reaches from [todayLocalDate]. Wide enough to

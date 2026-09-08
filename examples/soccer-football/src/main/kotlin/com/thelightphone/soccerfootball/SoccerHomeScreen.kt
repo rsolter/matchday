@@ -82,7 +82,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
             ) {
                 when (val mode = state.mode) {
                     is ScoreScreenMode.Loading -> {
-                        LoadingContent(title = "Soccer Pro", message = mode.message)
+                        LoadingContent(title = "Matchday", message = mode.message)
                     }
 
                     is ScoreScreenMode.Scores -> {

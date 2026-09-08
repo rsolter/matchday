@@ -8,7 +8,7 @@ import androidx.compose.ui.res.painterResource
 import com.thelightphone.sdk.ui.LightThemeTokens
 
 /**
- * Renders one of Soccer Pro's own bottom-bar drawables (this module's own `res/drawable/`, not the
+ * Renders one of Matchday's own bottom-bar drawables (this module's own `res/drawable/`, not the
  * vendored SDK's) with the same tinting behavior as [com.thelightphone.sdk.ui.LightIcon] — the theme's
  * content color, so it renders correctly in both Dark and Light LightOS themes.
  *

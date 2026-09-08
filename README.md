@@ -1,8 +1,8 @@
-# Soccer Pro
+# Matchday
 
 *Built by Ravi — a free, open-source Light Phone III tool sourced from [API-Football](https://www.api-football.com).*
 
-**What I built:** everything under [`examples/soccer-football`](examples/soccer-football) — the Soccer Pro
+**What I built:** everything under [`examples/soccer-football`](examples/soccer-football) — the Matchday
 tool itself (Scores, Fixtures, Standings, a "My Team" view, and a per-match Stats/Timeline/Lineups detail
 screen), including the API integration, data models, and UI. See
 [that module's README](examples/soccer-football/README.md) for the full write-up: the data source, the
@@ -12,7 +12,7 @@ via a shared caching proxy (Phase 2, in progress).
 **What's vendored in:** everything else in this repository — `sdk/`, `plugin/`, `tool/`, `builder/`,
 `lint-rules/`, `docs/`, and the other `examples/` modules — is
 [Light Phone's own open-source SDK](https://github.com/lightphone/light-sdk) for building LightOS tools,
-included as-is (MIT-licensed, see [`LICENSE`](LICENSE)) because Soccer Pro depends on it to build, run, and
+included as-is (MIT-licensed, see [`LICENSE`](LICENSE)) because Matchday depends on it to build, run, and
 be tested in their LightOS emulator. This repo is a fork of that SDK, not original work on my part — its
 own documentation follows below, unedited, for anyone who wants to build their own LightOS tool starting
 from the same base.

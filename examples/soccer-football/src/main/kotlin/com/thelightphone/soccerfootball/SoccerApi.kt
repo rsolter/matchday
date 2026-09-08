@@ -453,7 +453,7 @@ internal class ApiFootballApi {
                 ApiFootballApiException.Kind.PLAN_RESTRICTED,
             )
             403 -> throw ApiFootballApiException(
-                "This league isn't turned on for Soccer Pro yet — try again once the proxy is updated.",
+                "This league isn't turned on for Matchday yet — try again once the proxy is updated.",
                 ApiFootballApiException.Kind.UNKNOWN,
             )
             502 -> throw ApiFootballApiException(
