@@ -1550,3 +1550,48 @@ lines share one `lightClickable`, so tapping either still opens that league's St
 
 No compiler or Android SDK in this sandbox — verified by manual diff review and balance_check.py on
 SoccerHomeScreen.kt.
+
+## 39. Team short-name map rebuilt entirely from confirmed real data
+
+Closes out the short-name saga from §35-38. The user asked, correctly, for a fundamentally different
+process: instead of another round of Wikipedia-sourced guesses, get the real strings straight from
+the API and work from those.
+
+**How the data was actually obtained.** This sandbox's own network, and the connected Mac's shell via
+the device bridge, both had this proxy's domain blocked by their respective egress rules — and the
+`WebFetch` tool turned out to be serving stale/cached JSON on repeat calls to the same host within a
+session (confirmed directly: a raw JSON dump it returned included a `"parameters"` field that echoed
+an *earlier* call's query, not the one actually requested — several rounds' worth of "live proxy
+check" findings in §37/§38 were built on this bad data and were wrong to blame on the proxy). The fix
+was to step outside all of that entirely: the user ran a plain `curl` loop in their own Mac Terminal
+(not through any tool here) against `/standings` for all 8 tracked competitions and shared the raw
+JSON files. Read directly, no summarization layer in between — fully trustworthy.
+
+**What came back:** 159 distinct real team names across Premier League, Championship, Serie A, La
+Liga, Bundesliga, Ligue 1, Champions League, and Europa League. Compiled into a CSV (existing map
+status, a suggested short name, and notes on anything worth flagging — a wrong old key, a
+low-confidence nickname, a fixed backwards "shortening" like `Slavia Praha` -> `Slavia Prague`, which
+was one character *longer* than the input) and sent for review. The user declined 4 of the
+suggestions (Tottenham, Celta Vigo, Galatasaray stay full-length; Deportivo La Coruna's short form
+became "Deportivo" instead of "Depor") and approved the rest as-is.
+
+**What shipped:** `TEAM_SHORT_NAMES` rebuilt from scratch — 62 entries (down from 68), every single
+key now a real, confirmed API-Football string rather than a guess. Net effect versus the pre-this-
+round map: several more real key-mismatch bugs caught and fixed (`Athletic Bilbao` -> `Athletic Club`,
+`Atlético Madrid`/`Bayern Munich` -> unaccented/German-spelled `Atletico Madrid`/`Bayern München`,
+`Mainz 05` -> `FSV Mainz 05`, `Inter Milan` -> just `Inter` already, `SL Benfica` -> just `Benfica`
+already, `TSG Hoffenheim` -> `1899 Hoffenheim`), the two backwards Prague "shortenings" fixed, several
+brand-new entries for teams the earlier Wikipedia-based research never covered (`AS Roma`, `FC
+Schalke 04`, `Racing Santander`, a dozen more Europa League clubs), and several previously-mapped
+teams dropped outright because they weren't in this round's real fetch and so can't be confirmed
+(`Hellas Verona`, `Leicester City`, `Ipswich Town`, `Oxford United`, `VfL Wolfsburg`, `FC St. Pauli`,
+`1. FC Heidenheim`, `AFC Ajax`, `BSC Young Boys`, `FC Basel`, `Crvena Zvezda`) — they fall back to
+their unshortened name, same as always, rather than keep an unconfirmed guess in place. The approved
+CSV itself is saved in the repo root (`team-short-names-v2-approved.csv`) as the source of record for
+this map going forward, per the user's own framing — a future re-pull of the same process (rerun the
+curl loop, regenerate the CSV, review, rebuild the map) is now the intended way to extend this list,
+not another round of Wikipedia research.
+
+No compiler or Android SDK in this sandbox — verified by manual diff review, balance_check.py, a
+script confirming no duplicate keys (62, was 68), and a diff against the delivered CSV confirming
+every approved row landed and nothing else changed.

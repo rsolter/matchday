@@ -1,0 +1,160 @@
+League,API Team Name,Current Short Name (if mapped),Suggested Short Name,Notes
+Premier League,Arsenal,,,Already short
+Premier League,Aston Villa,Villa,Villa,"Matches current map, unchanged"
+Premier League,Bournemouth,,,Already short
+Premier League,Brentford,,,Already short
+Premier League,Brighton,,,"Already short (API already drops ""& Hove Albion"")"
+Premier League,Chelsea,,,Already short
+Premier League,Coventry,,,"Already short (API already drops ""City"")"
+Premier League,Crystal Palace,Palace,Palace,"Matches current map, unchanged"
+Premier League,Everton,,,Already short
+Premier League,Fulham,,,Already short
+Premier League,Hull City,Hull,Hull,New — not previously mapped under this real name
+Premier League,Ipswich,,,"Already short (API already drops ""Town"")"
+Premier League,Leeds,,,"Already short (API already drops ""United"") — old ""Leeds United"" key never matched"
+Premier League,Liverpool,,,Already short
+Premier League,Manchester City,Man City,Man City,"Matches current map, unchanged"
+Premier League,Manchester United,Man Utd,Man Utd,"Matches current map, unchanged"
+Premier League,Newcastle,,,"Already short (API already drops ""United"") — old ""Newcastle United"" key never matched"
+Premier League,Nottingham Forest,Nott'm Forest,Nott'm Forest,"Matches current map, unchanged"
+Premier League,Sunderland,,,Already short
+Premier League,Tottenham,,Tottenham,"API already drops ""Hotspur"" — old key never matched. ""Spurs"" is still shorter/more recognizable if you want it; leave blank to just keep ""Tottenham"""
+Championship,Birmingham,,,Already short
+Championship,Blackburn,,,Already short
+Championship,Bolton,,,Already short
+Championship,Bristol City,,,Reasonably short as-is
+Championship,Burnley,,,Already short
+Championship,Cardiff,,,Already short
+Championship,Charlton,,,Already short
+Championship,Derby,,,Already short
+Championship,Lincoln,,,Already short
+Championship,Middlesbrough,Boro,Boro,"Matches current map, unchanged"
+Championship,Millwall,,,Already short
+Championship,Norwich,,,Already short
+Championship,Portsmouth,,,Already short
+Championship,Preston,,,Already short
+Championship,QPR,,,Already short (own initials)
+Championship,Sheffield Utd,Sheff Utd,Sheff Utd,"Matches current map (fixed last round), unchanged"
+Championship,Southampton,,,Already short
+Championship,Stoke City,Stoke,Stoke,"Matches current map, unchanged"
+Championship,Swansea,,,Already short
+Championship,Watford,,,Already short
+Championship,West Brom,,,Already reasonably short
+Championship,West Ham,,,"Already short (API already drops ""United"") — old key never matched"
+Championship,Wolves,,,"Already short (API already drops ""Wanderers"") — old key never matched"
+Championship,Wrexham,,,Already short
+Serie A,AC Milan,Milan,Milan,"Matches current map, unchanged"
+Serie A,AS Roma,,Roma,New
+Serie A,Atalanta,,,Already short
+Serie A,Bologna,,,Already short
+Serie A,Cagliari,,,Already short
+Serie A,Como,,,Already short
+Serie A,Fiorentina,,,Already reasonably short
+Serie A,Frosinone,,,Already short
+Serie A,Genoa,,,Already short
+Serie A,Inter,,,"Already short (API already just ""Inter"", not ""Inter Milan"") — old key never matched"
+Serie A,Juventus,,,Kept full per your earlier feedback
+Serie A,Lazio,,,Already short
+Serie A,Lecce,,,Already short
+Serie A,Monza,,,Already short
+Serie A,Napoli,,,Already short
+Serie A,Parma,,,Already short
+Serie A,Sassuolo,,,Already short
+Serie A,Torino,,,Already short
+Serie A,Udinese,,,Already short
+Serie A,Venezia,,,Already short
+La Liga,Alaves,,,"Already short (note: API has no accent — old ""Alavés"" key never matched, moot anyway since already short)"
+La Liga,Athletic Club,,Athletic,"API's real name is ""Athletic Club"", not ""Athletic Bilbao"" — old key never matched"
+La Liga,Atletico Madrid,,Atletico,"API has no accent — old ""Atlético Madrid"" key never matched"
+La Liga,Barcelona,,,Kept full per your earlier feedback
+La Liga,Celta Vigo,,Celta Vigo,New
+La Liga,Deportivo La Coruna,,Deportivo,New — common shorthand nickname
+La Liga,Elche,,,Already short
+La Liga,Espanyol,,,Already short
+La Liga,Getafe,,,Already short
+La Liga,Levante,,,Already short
+La Liga,Malaga,,,Already short
+La Liga,Osasuna,,,Already short
+La Liga,Racing Santander,,Racing,"New — common shorthand, though ambiguous if another ""Racing"" ever shows up in a tracked league"
+La Liga,Rayo Vallecano,Rayo,Rayo,"Matches current map, unchanged"
+La Liga,Real Betis,Betis,Betis,"Matches current map, unchanged"
+La Liga,Real Madrid,,,Already commonly used in full
+La Liga,Real Sociedad,Sociedad,Sociedad,"Matches current map, unchanged"
+La Liga,Sevilla,,,Already short
+La Liga,Valencia,,,Already short
+La Liga,Villarreal,,,Already reasonably short
+Bundesliga,1. FC Köln,Köln,Köln,"Matches current map, unchanged"
+Bundesliga,1899 Hoffenheim,Hoffenheim,Hoffenheim,"API's real name is ""1899 Hoffenheim"", not ""TSG Hoffenheim"" — old key never matched, though already hedged into the map last round"
+Bundesliga,Bayer Leverkusen,Leverkusen,Leverkusen,"Matches current map, unchanged"
+Bundesliga,Bayern München,,Bayern,"API uses German spelling ""München"" — old ""Bayern Munich"" key never matched"
+Bundesliga,Borussia Dortmund,Dortmund,Dortmund,"Matches current map, unchanged"
+Bundesliga,Borussia Mönchengladbach,Gladbach,Gladbach,"Matches current map, unchanged"
+Bundesliga,Eintracht Frankfurt,Frankfurt,Frankfurt,"Matches current map, unchanged"
+Bundesliga,FC Augsburg,Augsburg,Augsburg,"Matches current map, unchanged"
+Bundesliga,FC Schalke 04,,Schalke,New
+Bundesliga,FSV Mainz 05,,Mainz,"API's real name is ""FSV Mainz 05"", not ""Mainz 05"" — old key never matched"
+Bundesliga,Hamburger SV,HSV,HSV,"Matches current map, unchanged"
+Bundesliga,RB Leipzig,Leipzig,Leipzig,"Matches current map, unchanged"
+Bundesliga,SC Freiburg,Freiburg,Freiburg,"Matches current map, unchanged"
+Bundesliga,SC Paderborn 07,,Paderborn,New
+Bundesliga,SV Elversberg,,Elversberg,New
+Bundesliga,Union Berlin,,,"Already reasonably short — left un-shortened to avoid colliding with ""Union St. Gilloise"" (Europa League) if both ever appear"
+Bundesliga,VfB Stuttgart,Stuttgart,Stuttgart,"Matches current map, unchanged"
+Bundesliga,Werder Bremen,Werder,Werder,"Matches current map, unchanged"
+Ligue 1,Angers,,,Already short
+Ligue 1,Auxerre,,,Already short
+Ligue 1,Estac Troyes,Troyes,Troyes,"Matches current map, unchanged"
+Ligue 1,Le Havre,,,Already reasonably short
+Ligue 1,Le Mans,,,Already short
+Ligue 1,Lens,,,Already short
+Ligue 1,Lille,,,Already short
+Ligue 1,Lorient,,,Already short
+Ligue 1,Lyon,,,Already short
+Ligue 1,Marseille,,,Kept full per your earlier feedback
+Ligue 1,Monaco,,,Already short
+Ligue 1,Nice,,,Already short
+Ligue 1,Paris FC,,,Already short
+Ligue 1,Paris Saint Germain,PSG,PSG,"Matches current map, unchanged — confirms last round's hyphen fix was right"
+Ligue 1,Rennes,,,Already short
+Ligue 1,Stade Brestois 29,Brest,Brest,"Matches current map, unchanged"
+Ligue 1,Strasbourg,,,Already reasonably short
+Ligue 1,Toulouse,,,Already short
+UEFA Champions League,AEK Athens FC,AEK Athens,AEK Athens,"Matches current map, unchanged"
+UEFA Champions League,Bodo/Glimt,,,Already reasonably short
+UEFA Champions League,Club Brugge KV,Club Brugge,Club Brugge,"Matches current map, unchanged"
+UEFA Champions League,FC Porto,Porto,Porto,"Matches current map, unchanged"
+UEFA Champions League,Fenerbahçe,Fenerbahce,Fenerbahce,"Matches current map, unchanged"
+UEFA Champions League,Feyenoord,,,Already short
+UEFA Champions League,Galatasaray,,Galatasaray,"New — informal nickname, less universally clear than most suggestions here; leave blank to keep ""Galatasaray"" if unsure"
+UEFA Champions League,Lask Linz,LASK,LASK,"Matches current map, unchanged"
+UEFA Champions League,PSV Eindhoven,PSV,PSV,"Matches current map, unchanged"
+UEFA Champions League,Sabah FA,,,Already short
+UEFA Champions League,Shakhtar Donetsk,Shakhtar,Shakhtar,"Matches current map, unchanged"
+UEFA Champions League,Slavia Praha,Slavia Prague,Slavia,"Old target was ""Slavia Prague"" — longer than the source, not actually a shortening. ""Sparta Praha"" is the only other Prague club tracked, so dropping the city is unambiguous"
+UEFA Champions League,Slovan Bratislava,,Slovan,New
+UEFA Champions League,Sporting CP,Sporting,Sporting,"Matches current map, unchanged"
+UEFA Champions League,Viking,,,Already short
+UEFA Europa League,AZ Alkmaar,,AZ,New — common shorthand in Dutch football media
+UEFA Europa League,Anderlecht,,,Already reasonably short
+UEFA Europa League,Ararat-Armenia,,Ararat,New
+UEFA Europa League,Benfica,,,"Already short (API already just ""Benfica"", not ""SL Benfica"") — old key never matched"
+UEFA Europa League,Beşiktaş,Besiktas,Besiktas,"Matches current map, unchanged"
+UEFA Europa League,Celje,,,Already short
+UEFA Europa League,Celtic,,,Already short
+UEFA Europa League,Dinamo Zagreb,,,"Reasonably short as-is — dropping to just ""Zagreb"" risked ambiguity with other Zagreb clubs, left alone"
+UEFA Europa League,Ferencvarosi TC,,Ferencvaros,"New — ""Fradi"" is the more colloquial nickname if you'd rather have that instead"
+UEFA Europa League,Hapoel Beer Sheva,,Beer Sheva,"New — dropping ""Hapoel"" (a prefix shared by several Israeli clubs) risks ambiguity if a ""Maccabi"" counterpart ever appears; flagging rather than assuming"
+UEFA Europa League,Jagiellonia,,Jaga,"New — informal nickname, lower confidence than most suggestions here"
+UEFA Europa League,Lech Poznan,,Lech,New
+UEFA Europa League,Levski Sofia,,Levski,New
+UEFA Europa League,Lillestrom,,,Already short
+UEFA Europa League,NEC Nijmegen,,NEC,New — already the common short form in practice
+UEFA Europa League,OFI,,,Already short
+UEFA Europa League,Olympiakos Piraeus,,Olympiakos,New
+UEFA Europa League,Omonia Nicosia,,Omonia,New
+UEFA Europa League,Plzen,,,Already short
+UEFA Europa League,Red Bull Salzburg,Salzburg,Salzburg,"Matches current map, unchanged"
+UEFA Europa League,Sparta Praha,Sparta Prague,Sparta,"Old target was ""Sparta Prague"" — longer than the source, not actually a shortening. Paired with the Slavia Praha fix above"
+UEFA Europa League,Sturm Graz,,,Already reasonably short
+UEFA Europa League,Torreense,,,Already short
+UEFA Europa League,Union St. Gilloise,,Union SG,New — the club's own commonly used abbreviation
