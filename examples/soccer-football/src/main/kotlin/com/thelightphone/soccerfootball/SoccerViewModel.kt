@@ -682,17 +682,63 @@ class SoccerViewModel(
         }
     }
 
-    /** Standings-cache-or-fetch, then [ApiFootballApi.fetchMyTeamSummary] — the fetch logic shared
-     * by [loadMyTeamSummary] (the user's own saved team) and [openTeamDetail] (an arbitrary tapped
+    /** Resolves-or-fetches, then [ApiFootballApi.fetchMyTeamSummary] — the fetch logic shared by
+     * [loadMyTeamSummary] (the user's own saved team) and [openTeamDetail] (an arbitrary tapped
      * team). Deliberately returns just the [Result] rather than also updating state: the two
      * callers write into different [ScoreScreenMode]s ([ScoreScreenMode.MyTeam] vs.
      * [ScoreScreenMode.TeamDetail]), so the state-update half stays separate in each. */
     private suspend fun fetchTeamSummary(teamId: Int, teamName: String, leagueId: Int): Result<MyTeamSummary> {
-        val leagueName = competitionName(leagueId)
-        val standings = standingsCache[leagueId]
-            ?: api.fetchStandings(leagueId).getOrElse { StandingsFetchResult(rows = emptyList()) }.rows
-                .also { if (it.isNotEmpty()) standingsCache[leagueId] = it }
-        return api.fetchMyTeamSummary(teamId, teamName, leagueId, leagueName, standings)
+        val (resolvedLeagueId, resolvedLeagueName, standingsRow) = resolveDomesticStanding(teamId, leagueId)
+        return api.fetchMyTeamSummary(teamId, teamName, resolvedLeagueId, resolvedLeagueName, standingsRow)
+    }
+
+    /** My Team's rank line is meant to always be a *domestic*-table position (see
+     * `MyTeamHeaderRow.competitionIsDomestic` gate in SoccerHomeScreen.kt) — but [contextLeagueId]
+     * (whichever league this team was opened from — a match's badge, a standings row, or the team
+     * saved during My Team setup) is sometimes a UEFA competition instead, e.g. a team tapped out of
+     * a Champions League match. On request: search every tracked *domestic* league with a table
+     * ([TRACKED_COMPETITIONS], filtered) for [teamId], rather than trusting [contextLeagueId] to
+     * already be domestic.
+     *
+     * Cheapest path first: a domestic league whose standings are already in [standingsCache] (the
+     * common case — Standings and My Team setup both populate this cache, and a session that's
+     * looked at more than one team usually already has most of them) needs no network call at all.
+     * Only leagues *not* already cached are fetched, and those run concurrently (same
+     * async/coroutineScope pattern as this file's other multi-league fetches, e.g. [refresh]'s team
+     * logos/lineups) rather than one at a time — worst case here is six concurrent requests against
+     * the proxy's shared budget, and only the first time in the process' lifetime any of the six
+     * hasn't been looked at yet.
+     *
+     * Falls back to [contextLeagueId] itself — fetching its standings too if not yet cached — only
+     * if [teamId] genuinely isn't in any tracked domestic table (a newly-promoted team the data
+     * doesn't have yet, or every fetch above failed). That fallback can still resolve to a
+     * continental id; [standingsRow] may end up null either way — both cases are handled by
+     * [MyTeamHeaderRow] omitting the rank line rather than showing something misleading. */
+    private suspend fun resolveDomesticStanding(teamId: Int, contextLeagueId: Int): Triple<Int, String, StandingsRow?> {
+        val domesticLeagueIds = TRACKED_COMPETITIONS.filter { it.isDomestic && it.hasStandings }.map { it.id }
+
+        fun findCached(): Pair<Int, StandingsRow>? = domesticLeagueIds.firstNotNullOfOrNull { id ->
+            standingsCache[id]?.firstOrNull { it.teamId == teamId }?.let { id to it }
+        }
+
+        findCached()?.let { (id, row) -> return Triple(id, competitionName(id), row) }
+
+        val uncachedIds = domesticLeagueIds.filter { it !in standingsCache }
+        if (uncachedIds.isNotEmpty()) {
+            coroutineScope {
+                uncachedIds.map { id -> async { id to api.fetchStandings(id).getOrNull()?.rows } }
+                    .forEach { deferred ->
+                        val (id, rows) = deferred.await()
+                        if (!rows.isNullOrEmpty()) standingsCache[id] = rows
+                    }
+            }
+            findCached()?.let { (id, row) -> return Triple(id, competitionName(id), row) }
+        }
+
+        val fallbackStandings = standingsCache[contextLeagueId]
+            ?: api.fetchStandings(contextLeagueId).getOrElse { StandingsFetchResult(rows = emptyList()) }.rows
+                .also { if (it.isNotEmpty()) standingsCache[contextLeagueId] = it }
+        return Triple(contextLeagueId, competitionName(contextLeagueId), fallbackStandings.firstOrNull { it.teamId == teamId })
     }
 
     private fun loadMyTeamSummary(teamId: Int, teamName: String, leagueId: Int) {

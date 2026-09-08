@@ -240,16 +240,17 @@ internal class ApiFootballApi {
     // --- My Team -----------------------------------------------------------------
 
     /** Assembles one followed team's My Team screen: league position, a handful of upcoming and
-     * recent fixtures, and who's unavailable for its next match. [standings] is passed in rather
-     * than re-fetched — the caller (SoccerViewModel) already has it cached from the Standings
-     * screen for any league the user follows, and re-fetching here would just burn another call
-     * against the proxy's shared daily budget. */
+     * recent fixtures, and who's unavailable for its next match. [leagueId]/[leagueName]/
+     * [standingsRow] are already fully resolved by the caller (SoccerViewModel.resolveDomesticStanding)
+     * to [teamId]'s actual domestic league — not necessarily whatever league context this team was
+     * opened from — so this fun does no standings lookup of its own; [standingsRow] is passed
+     * straight through onto [MyTeamSummary.standingsRow]. */
     suspend fun fetchMyTeamSummary(
         teamId: Int,
         teamName: String,
         leagueId: Int,
         leagueName: String,
-        standings: List<StandingsRow>,
+        standingsRow: StandingsRow?,
     ): Result<MyTeamSummary> = runCatching {
         val today = todayLocalDate()
         val windowStart = today.minus(MY_TEAM_WINDOW_PAST_DAYS, DateTimeUnit.DAY)
@@ -310,7 +311,7 @@ internal class ApiFootballApi {
             teamName = teamName,
             leagueId = leagueId,
             leagueName = leagueName,
-            standingsRow = standings.firstOrNull { it.teamId == teamId },
+            standingsRow = standingsRow,
             featuredFixture = featuredFixture,
             upcomingFixtures = upcoming.take(MY_TEAM_FIXTURE_LIMIT),
             recentFixtures = recent.take(MY_TEAM_FIXTURE_LIMIT),

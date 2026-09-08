@@ -478,6 +478,40 @@ internal data class ApiFootballStatDto(
 internal fun JsonElement.toStatDisplay(): String =
     if (this is JsonNull) "0" else (this as? JsonPrimitive)?.content ?: "0"
 
+// Curated display order, on request ("reorder the stats to resemble the screenshots provided") —
+// the screenshots given were from a different, richer provider (Sofascore-style: xG, xGOT, "big
+// chances", "duels", an attacking-zones map) whose stat set this API doesn't return at all, so this
+// isn't a literal copy of those rows. It's this app's best approximation of the same overall
+// reading order those screenshots showed — an attacking/shots summary first, then passing, then
+// fouls/set-pieces, then goalkeeping, discipline last — built against API-Football's own documented
+// `type` strings for `/fixtures/statistics`, of which only "Yellow Cards" and "expected_goals" have
+// actually been seen in a real response this session (see this file's wire-format doc comment
+// above). The rest (Ball Possession, Total/on-Goal/off-Goal/Blocked/insidebox/outsidebox Shots,
+// Total passes/Passes accurate/Passes %, Fouls, Corner Kicks, Offsides, Goalkeeper Saves, Red Cards)
+// are recalled from API-Football's public docs, not independently curl-verified — worth checking
+// once this can actually be built and run against a live match. A `type` not in this map (including
+// any spelled differently than guessed here) still renders, just after everything that IS mapped,
+// in whatever order the API sent it — this never drops a real stat over an unrecognized label.
+private val STAT_DISPLAY_ORDER: Map<String, Int> = listOf(
+    "Ball Possession",
+    "expected_goals",
+    "Total Shots",
+    "Shots on Goal",
+    "Shots off Goal",
+    "Blocked Shots",
+    "Shots insidebox",
+    "Shots outsidebox",
+    "Total passes",
+    "Passes accurate",
+    "Passes %",
+    "Fouls",
+    "Corner Kicks",
+    "Offsides",
+    "Goalkeeper Saves",
+    "Yellow Cards",
+    "Red Cards",
+).withIndex().associate { (index, type) -> type to index }
+
 internal fun List<ApiFootballTeamStatisticsDto>.toMatchStatRows(homeTeamId: Int, awayTeamId: Int): List<MatchStatRow> {
     val home = firstOrNull { it.team.id == homeTeamId }?.statistics.orEmpty()
     val away = firstOrNull { it.team.id == awayTeamId }?.statistics.orEmpty()
@@ -486,6 +520,9 @@ internal fun List<ApiFootballTeamStatisticsDto>.toMatchStatRows(homeTeamId: Int,
         val a = awayByType[h.type] ?: return@mapNotNull null
         MatchStatRow(label = h.type, homeValue = h.value.toStatDisplay(), awayValue = a.value.toStatDisplay())
     }
+        // sortedBy is stable, so any type missing from STAT_DISPLAY_ORDER (rank Int.MAX_VALUE) keeps
+        // its original relative position among other unmapped types, at the end of the list.
+        .sortedBy { STAT_DISPLAY_ORDER[it.label] ?: Int.MAX_VALUE }
 }
 
 // --- Wire format (API-Football /fixtures/lineups response) --------------------

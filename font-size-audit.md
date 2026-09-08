@@ -1621,3 +1621,76 @@ messages, one code comment, and both READMEs all went from "Soccer Pro" to "Matc
 
 No compiler or Android SDK in this sandbox — verified by manual diff review and balance_check.py on
 SoccerHomeScreen.kt and SoccerModels.kt.
+
+## 41. Titles, badge/font sizing across four screens, stat reorder, My Team rank fixed for real this time
+
+A large round touching Scores, My Team, Settings, and Match Detail. Font sizes throughout this
+entry are this SDK's real design-unit sizes (Superfine 16 < Detail 20 < Fine 25 < Copy 30 — see this
+doc's intro for why the enum's own name order is misleading).
+
+**Scores.** Added a "Matchday Scores" title (`LightTopBarCenter.Text`) — this screen's header was
+removed entirely several rounds ago; now that the app has a real name again (§40) there's something
+worth putting there. `ScheduleMatchRow`'s `MatchStatusBadge` (the "FT"/live-minute/"Lineups" pill)
+was `Copy` (30) against the score's `Fine` (25) — a deliberate earlier choice ("ScheduleMatchRow's
+separate, larger choice"), but the user found it visibly oversized next to the score. Matched down
+to `Fine` for all three of this row's badge branches (live/finished, postponed/cancelled/suspended,
+lineups-posted), not just the live one, so the badge reads one consistent size regardless of match
+status. Also added a thin `contentSecondary`-at-15%-alpha divider directly under each day's date
+label (`ScheduleDayCard`) — the existing dividers only ran between league groups within a day, none
+separated one day's card from the next now that card fills are gone (§32).
+
+**My Team.** Added a "My Team" title — but *only* on the `ScoreScreenMode.MyTeam` call site, not
+`TeamDetail` (an arbitrary tapped team reusing the same `MyTeamContent` composable): calling every
+team page "My Team" would be actively wrong for someone else's team, and there's still no good title
+available for that case (flagged, not solved, in this composable's own doc comment for several
+rounds now). `FeaturedMatchPlaceholder` (the next/today-match text beside the crest) bumped a full
+step: date `Superfine` (16) -> `Detail` (20), opponent name and kickoff/score line `Detail` (20) ->
+`Fine` (25).
+
+**My Team's rank line, actually fixed this time.** §40 only *hid* the rank line for a continental
+context (`competitionIsDomestic` gate) — it never made a domestic one appear instead, so a team like
+Aston Villa, opened from a Champions League match, showed nothing at all even though this app tracks
+the Premier League and has real EPL standings data. Root cause: `MyTeamSummary.leagueId` was always
+whatever league context opened the team (a match's badge, a standings row, My Team setup) — never
+actually resolved against the team's real domestic league. Fixed properly this round:
+`SoccerViewModel.resolveDomesticStanding` now searches every tracked *domestic* league with a table
+for the team, cache first (no network call for a league already in `standingsCache`), then
+concurrently fetches whichever tracked domestic leagues aren't cached yet (same
+async/coroutineScope pattern this file already uses for other multi-league fetches) — worst case six
+requests against the proxy's shared budget, and only the first time any of the six hasn't been
+looked at. Falls back to the original context league only if the team isn't in any tracked domestic
+table. `ApiFootballApi.fetchMyTeamSummary`'s signature changed to take an already-resolved
+`standingsRow: StandingsRow?` instead of a full `standings: List<StandingsRow>` to search, since
+that resolution now happens one layer up. §40's `competitionIsDomestic` gate in `MyTeamHeaderRow`
+stays in place as a safety net for the fallback path, but should now rarely if ever actually fire —
+in the normal case `leagueId` is already domestic.
+
+**Settings.** Every font on the page bumped to a single ceiling size, `Fine` (25) — matching Scores'
+home/away team-name text, per the explicit "largest font should match" request: `SettingRow`'s
+value, `LeaguesRow`'s per-league names, and "Forget My Team" all went `Detail` (20) -> `Fine` (25),
+joining the section labels ("My Team", "Leagues followed", "About") which were already `Fine`. About
+page: removed the sentence naming which competitions this tool covers — it was also stale (named 4
+of the 14 now tracked) and duplicated live in Settings' own "Leagues followed" row.
+
+**Match Detail.** Stats tab: added a curated `STAT_DISPLAY_ORDER` (Ball Possession, xG, shots
+breakdown, passing, fouls/corners/offsides, keeper saves, cards) replacing the previous "whatever
+order the API returns" — **this is the round's one real unverified guess**: the screenshots given
+were from a visibly different, richer data provider (xG on target, "big chances", "duels", an
+attacking-zones map — none of which this API returns), so this isn't a literal copy of those rows;
+it's this app's best approximation of the same overall reading order, built against API-Football's
+publicly documented `type` strings, of which only "Yellow Cards" and "expected_goals" have been
+independently curl-confirmed this session (see this file's own wire-format doc comment). Any real
+`type` string spelled differently than guessed, or not in the map at all, still renders — just after
+everything mapped, in original API order — so a wrong guess here can misorder stats but can't drop
+one. Stat title label bumped `Detail` (20) -> `Fine` (25), now the same size as the values either
+side of it. Lineups tab: removed the grey fill (`contentSecondary` at 8% alpha) behind the pitch
+formation dots, on request — the clip stays (same "harmless if a background returns" reasoning as
+every other background removal this session). Header: `statusLabel` and `GoalScorersRow`'s scorer
+lines bumped `Superfine` (16) -> `Detail` (20); team names (`Detail`, unchanged) and the box score
+(`Copy`, unchanged) deliberately left alone per the request's own exception. Events tab: minute
+column and headline text bumped `Detail` (20) -> `Fine` (25) (one step further than the header,
+matching the Stats tab's own value size); the secondary team/subtext line and the goal/substitution
+glyph icons both `Superfine` (16) -> `Detail` (20).
+
+No compiler or Android SDK in this sandbox — verified by manual diff review and balance_check.py
+across SoccerHomeScreen.kt, SoccerModels.kt, SoccerApi.kt, and SoccerViewModel.kt.

@@ -157,6 +157,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                         MyTeamContent(
                             summary = mode.summary,
                             isLoading = mode.isLoading,
+                            title = "My Team",
                             onBack = viewModel::backFromMyTeam,
                             onMatchClick = viewModel::openMatchDetail,
                             onOpenStandingsTable = viewModel::openStandingsTable,
@@ -174,10 +175,15 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                     is ScoreScreenMode.TeamDetail -> {
                         // Same MyTeamContent rendering "My Team" itself uses — see
                         // ScoreScreenMode.TeamDetail's doc comment for why this is its own mode
-                        // with its own back target rather than reusing MyTeam's.
+                        // with its own back target rather than reusing MyTeam's. title left null:
+                        // "My Team" wouldn't be accurate here (see MyTeamContent's own doc comment
+                        // on this mode showing an arbitrary tapped team, not necessarily the user's
+                        // saved one) and there's no better title available — same gap already
+                        // flagged for this mode before the "My Team" title request came in.
                         MyTeamContent(
                             summary = mode.summary,
                             isLoading = mode.isLoading,
+                            title = null,
                             onBack = viewModel::backFromTeamDetail,
                             onMatchClick = viewModel::openMatchDetail,
                             onOpenStandingsTable = viewModel::openStandingsTable,
@@ -425,12 +431,14 @@ private fun ScoresContent(
     onMatchClick: (Fixture) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // Header text removed on request (this screen, My Team, and Results & Fixtures all dropped
-        // theirs together) — a bare LightTopBar still reserves its usual height, just with nothing
-        // in the center. ScoreScreenMode.Scores.lastUpdated/isRefreshing (and formatUpdatedAt in
-        // SoccerFormatting.kt) are unused by this screen now but left in place in case a future
-        // refresh indicator wants them again.
+        // Header text was removed on request in an earlier round (this screen, My Team, and Results
+        // & Fixtures all dropped theirs together); "Matchday Scores" added back here on request,
+        // now that the app itself is named Matchday. My Team's own title came back the same round —
+        // see MyTeamContent's title param. ScoreScreenMode.Scores.lastUpdated/isRefreshing (and
+        // formatUpdatedAt in SoccerFormatting.kt) are unused by this screen but left in place in
+        // case a future refresh indicator wants them again.
         LightTopBar(
+            center = LightTopBarCenter.Text("Matchday Scores"),
             modifier = Modifier.padding(bottom = 0.25f.gridUnitsAsDp()),
         )
 
@@ -550,7 +558,9 @@ private fun List<Fixture>.groupedByLeagueForDisplay(): List<DayLeagueGroup> = th
  * comment) as well as an even earlier version of this same card, which had gone fully flat with the
  * league's short name repeated on every row instead (see [ScheduleMatchRow]'s doc comment) — on
  * request, back to a shared per-league header now that repeating it on every row read as noisy.
- * Thin grey dividers now separate league groups within a day rather than every individual match row.
+ * Thin grey dividers separate league groups within a day rather than every individual match row —
+ * plus one more, on request, directly under the date label itself, so consecutive day cards read as
+ * visually separated even with no card fill of their own (see the no-fill note below).
  * [teamLogos], keyed by [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] URL, and
  * [lineupsAvailableFixtureIds] both come straight from [ScoreScreenMode.Scores] and are looked up
  * per-match below. [onOpenStandingsTable] is only ever invoked for a league that
@@ -582,6 +592,16 @@ private fun ScheduleDayCard(
             variant = LightTextVariant.Detail,
             lighten = true,
             modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
+        )
+        // Thin grey divider under each date, on request ("add a thin grey line under each date...
+        // to separate days") — same contentSecondary-at-15%-alpha line used between league groups
+        // just below, so every divider in this card reads as one consistent style.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 0.5f.gridUnitsAsDp())
+                .height(1.dp)
+                .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
         )
         val leagueGroups = remember(day) { day.matches.groupedByLeagueForDisplay() }
         leagueGroups.forEachIndexed { groupIndex, group ->
@@ -640,9 +660,10 @@ private fun ScheduleDayCard(
  * names as before — teamShortName only swaps in a shorter name for the researched teams that have
  * one, see its doc comment; every other team's full name renders exactly as before); bottom, this match's
  * status/score, all centered together in one `Row` with `Arrangement.Center`: [MatchStatusBadge] then
- * the score side by side for a live/finished match ([Fixture.showsFinalOrLiveScore] — badge at
- * [LightTextVariant.Copy], score at `Fine`, same size choices the previous full-height-cluster
- * version settled on, just relocated here instead of to their own outer column); the badge alone for
+ * the score side by side for a live/finished match ([Fixture.showsFinalOrLiveScore] — badge and
+ * score both at `Fine`, on request ("make the FT/Min Played element the same size as the
+ * live-score") after this row's own [MatchStatusBadge] calls previously used the (larger) `Copy`
+ * variant; the badge alone for
  * a postponed/cancelled/suspended match (see [Fixture.isPostponedCancelledOrSuspended]) or a
  * still-scheduled one with a posted lineup; or, for a still-scheduled match with nothing posted yet,
  * the plain kickoff time instead of a badge.
@@ -692,10 +713,14 @@ private fun ScheduleMatchRow(
             ) {
                 when {
                     match.showsFinalOrLiveScore() -> {
+                        // Was Copy (30) — bigger than the score text beside it (Fine, 25). On
+                        // request ("the FT/Min Played element is larger than the live-score, can we
+                        // make those the same size?"), matched down to Fine so the badge and score
+                        // read at the same size.
                         MatchStatusBadge(
                             text = match.statusLabel(),
                             isLive = match.status.isLive,
-                            variant = LightTextVariant.Copy,
+                            variant = LightTextVariant.Fine,
                         )
                         LightText(
                             text = match.scoreLabel(),
@@ -711,10 +736,12 @@ private fun ScheduleMatchRow(
                     // through to the plain-kickoff-time branch below and read as an ordinary
                     // still-scheduled match.
                     match.isPostponedCancelledOrSuspended() -> {
-                        MatchStatusBadge(text = match.statusLabel(), isLive = false, variant = LightTextVariant.Copy)
+                        // Matched to Fine along with the live/FT branch above, so this row's badge
+                        // reads at one consistent size regardless of which branch renders it.
+                        MatchStatusBadge(text = match.statusLabel(), isLive = false, variant = LightTextVariant.Fine)
                     }
                     lineupsAvailable -> {
-                        MatchStatusBadge(text = "Lineups", isLive = false, variant = LightTextVariant.Copy)
+                        MatchStatusBadge(text = "Lineups", isLive = false, variant = LightTextVariant.Fine)
                     }
                     else -> {
                         LightText(
@@ -985,13 +1012,15 @@ private fun SettingsContent(
             SettingRow(label = "My Team", value = myTeamName ?: "Not set", onClick = onOpenMyTeamSetup)
             if (myTeamName != null) {
                 // Was Copy (30) before the global one-step-down pass shifted it to Detail (20);
-                // reverted back to Copy along with the rest of Settings' text — then, on request,
-                // sized down again to Detail (20): the section's grey sub-items (this and the team
-                // name/"Not set" value above) read too large next to "My Team"'s own label, so both
-                // are now Detail instead of Copy, one step below the label's new Fine (25).
+                // reverted back to Copy along with the rest of Settings' text — then Detail (20) so
+                // the section's grey sub-items (this and the team name/"Not set" value above) didn't
+                // read too large next to "My Team"'s own label. On request, bumped to Fine (25) —
+                // matching the label above and Scores' home/away team-name text (also Fine) — so the
+                // largest text on this whole page tops out at that size instead of this reading
+                // smaller than everything else.
                 LightText(
                     text = "Forget My Team",
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Fine,
                     lighten = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1052,9 +1081,10 @@ private fun SettingRow(label: String, value: String, onClick: (() -> Unit)?) {
         // Heading was too heavy for a plain settings row. The global one-step-down pass then
         // shifted it to Detail (20); reverted back to Copy, its round-8 size, per the "make
         // Settings text larger again" request — this view no longer follows the global shift. Sized
-        // down again on request, Copy (30) -> Detail (20): now smaller than the label above it
-        // (Fine, 25), matching the same relationship "Forget My Team" now has.
-        LightText(text = value, variant = LightTextVariant.Detail, lighten = true)
+        // down again to Detail (20), smaller than the label above it (Fine, 25) — then, on request,
+        // bumped back up to Fine to match the label, so every row on this page tops out at the same
+        // size as Scores' home/away team-name text (also Fine) rather than this reading smaller.
+        LightText(text = value, variant = LightTextVariant.Fine, lighten = true)
     }
 }
 
@@ -1074,15 +1104,16 @@ private fun LeaguesRow(leagueNames: List<String>, onClick: () -> Unit) {
         // label doc comment above for the full "should all be the same font size" reasoning; each
         // league name below stays Detail (20), already smaller, so no change needed there.
         LightText(text = "Leagues followed", variant = LightTextVariant.Fine)
-        // Was Copy, then Detail (see font-size-audit.md recommendation #3 — with up to 15
+        // Was Copy, then Detail (see font-size-audit.md recommendation #3 — with up to 14
         // trackable competitions, a user following several gets that many stacked lines, so this
-        // matches the label above rather than standing out as heavier). The global one-step-down
-        // pass then shifted it to Superfine (16); reverted back to Detail here — recommendation #3
-        // still holds (matching the label above), this just undoes the global shift on top of it.
+        // matched the label above rather than standing out as heavier). The global one-step-down
+        // pass then shifted it to Superfine (16); reverted back to Detail — then, on request, bumped
+        // to Fine (25) along with the rest of this page's text, matching Scores' home/away
+        // team-name font as this page's new ceiling size.
         leagueNames.forEach { name ->
             LightText(
                 text = name,
-                variant = LightTextVariant.Detail,
+                variant = LightTextVariant.Fine,
                 lighten = true,
                 modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()),
             )
@@ -1110,9 +1141,12 @@ private fun AttributionContent(onBack: () -> Unit) {
             // one-step-down pass shifted it to Detail (20); reverted back to Paragraph along with
             // the rest of Settings' (and its child pages') text.
             LightText(
+                // The sentence naming which specific competitions this tool covers was removed on
+                // request — that list is also shown live in Settings' own "Leagues followed" row, so
+                // this static copy was a second, easily-stale place saying the same thing (it still
+                // named only 4 of the now 14 tracked competitions).
                 text = "Scores are provided by API-Football (api-football.com), a paid football " +
-                    "data API. This tool covers the Premier League, Serie A, and the UEFA " +
-                    "Champions League and Europa League.\n\n" +
+                    "data API.\n\n" +
                     "Requests go through a caching proxy this app's developer runs, which holds " +
                     "the API-Football key and absorbs the request load — there's nothing to set " +
                     "up or configure here. Scores, fixtures, and standings are live, " +
@@ -1435,20 +1469,23 @@ private fun MyTeamTeamPickerContent(
 private fun MyTeamContent(
     summary: MyTeamSummary?,
     isLoading: Boolean,
+    title: String?,
     onBack: () -> Unit,
     onMatchClick: (Fixture) -> Unit,
     onOpenStandingsTable: (Int, String) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // Header text removed on request, along with Today/Results & Fixtures' — this used to show
+        // Header text was removed on request in an earlier round — this used to show
         // summary?.teamName (the actual team's name, not a literal "My Team" label) once loaded,
         // which was also this screen's only on-screen indicator of *which* team you're looking at
         // when reused for ScoreScreenMode.TeamDetail (an arbitrary tapped team, not necessarily the
-        // user's own saved one — see that mode's doc comment). Flagged, not solved here: with the
-        // header gone, Team Detail and My Team now render identically with no in-page way to tell
-        // them apart or see which team Team Detail is showing.
+        // user's own saved one — see that mode's doc comment). "My Team" added back as [title] on
+        // request, but only for the MyTeam call site — TeamDetail still passes null, so Team Detail
+        // and My Team still render identically with no in-page way to tell them apart when [title]
+        // is null; that gap is still flagged, not solved, same as before.
         LightTopBar(
             leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = onBack),
+            center = title?.let { LightTopBarCenter.Text(it) },
             modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
         )
 
@@ -1624,9 +1661,11 @@ private fun MyTeamHeaderRow(
 private fun FeaturedMatchPlaceholder(summary: MyTeamSummary, onMatchClick: (Fixture) -> Unit, modifier: Modifier = Modifier) {
     val fixture = summary.featuredFixture
     if (fixture == null) {
+        // Bumped along with the rest of this placeholder on request, Superfine (16) -> Detail (20)
+        // — this fills the same slot as the date/opponent/kickoff text below when there's no match.
         LightText(
             text = "No upcoming match scheduled.",
-            variant = LightTextVariant.Superfine,
+            variant = LightTextVariant.Detail,
             lighten = true,
             modifier = modifier,
         )
@@ -1643,8 +1682,11 @@ private fun FeaturedMatchPlaceholder(summary: MyTeamSummary, onMatchClick: (Fixt
         remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
     }
 
+    // Whole block bumped one size on request ("increase the font size for all font next to the
+    // badge — date of next match, vs who, kickoff time"): date Superfine (16) -> Detail (20),
+    // opponent name and kickoff/score line Detail (20) -> Fine (25).
     Column(modifier = modifier.lightClickable(onClick = { onMatchClick(fixture) })) {
-        LightText(text = dateLabel, variant = LightTextVariant.Superfine, lighten = true)
+        LightText(text = dateLabel, variant = LightTextVariant.Detail, lighten = true)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()),
@@ -1659,7 +1701,7 @@ private fun FeaturedMatchPlaceholder(summary: MyTeamSummary, onMatchClick: (Fixt
             }
             LightText(
                 text = "vs $opponentName",
-                variant = LightTextVariant.Detail,
+                variant = LightTextVariant.Fine,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -1672,7 +1714,7 @@ private fun FeaturedMatchPlaceholder(summary: MyTeamSummary, onMatchClick: (Fixt
         // case the user asked for, with no separate branch needed here.
         LightText(
             text = if (fixture.hasScore) "${fixture.scoreLabel()} · ${fixture.statusLabel()}" else fixture.statusLabel(),
-            variant = LightTextVariant.Detail,
+            variant = LightTextVariant.Fine,
             lighten = true,
             modifier = Modifier.padding(top = 0.1f.gridUnitsAsDp()),
         )
@@ -1930,12 +1972,14 @@ private fun MatchDetailHeader(
                     .background(LightThemeTokens.colors.content.copy(alpha = 0.12f))
                     .padding(horizontal = 0.4f.gridUnitsAsDp(), vertical = 0.15f.gridUnitsAsDp()),
             ) {
-                LightText(text = statusLabel, variant = LightTextVariant.Superfine)
+                // Bumped one size on request ("increase the font for all elements in the header
+                // except the team names and box score"), Superfine (16) -> Detail (20).
+                LightText(text = statusLabel, variant = LightTextVariant.Detail)
             }
         } else {
             LightText(
                 text = statusLabel,
-                variant = LightTextVariant.Superfine,
+                variant = LightTextVariant.Detail,
                 lighten = true,
                 align = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 0.4f.gridUnitsAsDp()),
@@ -2116,9 +2160,11 @@ private fun GoalScorersRow(
     Row(modifier = modifier.fillMaxWidth()) {
         Column(modifier = Modifier.weight(1f)) {
             homeScorers.forEach { event ->
+                // Bumped one size on request, same header-wide pass as statusLabel above —
+                // Superfine (16) -> Detail (20).
                 LightText(
                     text = event.goalScorerLabel(),
-                    variant = LightTextVariant.Superfine,
+                    variant = LightTextVariant.Detail,
                     lighten = true,
                     align = TextAlign.End,
                     maxLines = 1,
@@ -2132,7 +2178,7 @@ private fun GoalScorersRow(
             awayScorers.forEach { event ->
                 LightText(
                     text = event.goalScorerLabel(),
-                    variant = LightTextVariant.Superfine,
+                    variant = LightTextVariant.Detail,
                     lighten = true,
                     align = TextAlign.Start,
                     maxLines = 1,
@@ -2164,13 +2210,14 @@ private fun MatchStatsSection(stats: List<MatchStatRow>, modifier: Modifier = Mo
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 0.35f.gridUnitsAsDp()),
             ) {
-                // Whole row bumped one size on request: values Detail (20) -> Fine (25), label
-                // Superfine (16) -> Detail (20) — same one-step-larger relationship preserved
-                // between the two.
+                // Whole row bumped one size in an earlier round: values Detail (20) -> Fine (25),
+                // label Superfine (16) -> Detail (20). On request, the label bumped one size again,
+                // Detail (20) -> Fine (25) — now the same size as the values either side of it,
+                // rather than one step smaller.
                 LightText(text = row.homeValue, variant = LightTextVariant.Fine, align = TextAlign.Center, modifier = Modifier.weight(0.25f))
                 LightText(
                     text = prettifyStatLabel(row.label),
-                    variant = LightTextVariant.Detail,
+                    variant = LightTextVariant.Fine,
                     lighten = true,
                     align = TextAlign.Center,
                     modifier = Modifier.weight(0.5f),
@@ -2221,8 +2268,10 @@ private fun EventTimelineSection(events: List<MatchEvent>, modifier: Modifier = 
 private fun MatchEventIcon(event: MatchEvent, modifier: Modifier = Modifier) {
     Box(modifier = modifier.size(1.4f.gridUnitsAsDp()), contentAlignment = Alignment.Center) {
         when (event.type) {
-            MatchEventType.GOAL -> LightText(text = "⚽", variant = LightTextVariant.Superfine, align = TextAlign.Center)
-            MatchEventType.SUBSTITUTION -> LightText(text = "⇄", variant = LightTextVariant.Superfine, align = TextAlign.Center)
+            // Bumped with the rest of this tab's text on request, Superfine (16) -> Detail (20) —
+            // still comfortably inside this Box's fixed 1.4f-grid-unit size.
+            MatchEventType.GOAL -> LightText(text = "⚽", variant = LightTextVariant.Detail, align = TextAlign.Center)
+            MatchEventType.SUBSTITUTION -> LightText(text = "⇄", variant = LightTextVariant.Detail, align = TextAlign.Center)
             MatchEventType.CARD -> {
                 val isRed = event.headline.contains("red", ignoreCase = true)
                 Box(
@@ -2248,11 +2297,13 @@ private val CARD_RED = Color(0xFFD32F2F)
 @Composable
 private fun EventTimelineRow(event: MatchEvent) {
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 0.5f.gridUnitsAsDp())) {
-        // Minute column bumped one size on request, Superfine (16) -> Detail (20) — the secondary
-        // team/subtext line below the headline stays at Superfine, unchanged.
+        // Minute column bumped one size in an earlier round, Superfine (16) -> Detail (20); bumped
+        // one more on request, Detail -> Fine (25), same "increase all text" pass that hit the Stats
+        // tab — the secondary team/subtext line below the headline goes from Superfine to Detail,
+        // one step behind, same relationship as before.
         LightText(
             text = event.minuteLabel,
-            variant = LightTextVariant.Detail,
+            variant = LightTextVariant.Fine,
             lighten = true,
             modifier = Modifier.width(2.4f.gridUnitsAsDp()),
         )
@@ -2264,15 +2315,15 @@ private fun EventTimelineRow(event: MatchEvent) {
             // Was Copy, shrunk to Detail (matching the minute label and the secondary team/subtext
             // line below it, so the whole Events row read at one smaller, consistent size instead
             // of the headline standing out as the biggest text in the tab), then Superfine after a
-            // later global one-step-down pass. Bumped one size on request, back to Detail — this is
-            // the event's own description text ("Goal — Haaland", "Yellow Card — Smith", etc.), see
-            // MatchEvent.headline's doc comment in SoccerModels.kt.
-            LightText(text = event.headline, variant = LightTextVariant.Detail, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // later global one-step-down pass, then back to Detail. Bumped one more size on request,
+            // Detail -> Fine — this is the event's own description text ("Goal — Haaland", "Yellow
+            // Card — Smith", etc.), see MatchEvent.headline's doc comment in SoccerModels.kt.
+            LightText(text = event.headline, variant = LightTextVariant.Fine, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val secondary = listOfNotNull(event.teamName.takeIf { it.isNotBlank() }, event.subtext).joinToString(" · ")
             if (secondary.isNotBlank()) {
                 LightText(
                     text = secondary,
-                    variant = LightTextVariant.Superfine,
+                    variant = LightTextVariant.Detail,
                     lighten = true,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -2396,10 +2447,13 @@ private fun LineupSection(
             )
 
             Column(
+                // Grey fill behind the pitch removed on request ("remove the grey background behind
+                // the formation visualization"). The clip stays — harmless with nothing to clip now,
+                // cheap insurance if a background fill returns here later, same call this codebase's
+                // made for other background removals (see ScheduleDayCard's own doc comment).
                 modifier = Modifier
                     .weight(0.56f)
                     .clip(RoundedCornerShape(1.2f.gridUnitsAsDp()))
-                    .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.08f))
                     .padding(vertical = 0.8f.gridUnitsAsDp(), horizontal = 0.3f.gridUnitsAsDp()),
                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.9f.gridUnitsAsDp()),
             ) {
