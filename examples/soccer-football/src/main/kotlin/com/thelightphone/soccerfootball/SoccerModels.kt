@@ -117,6 +117,118 @@ fun competitionHasStandings(id: Int): Boolean = TRACKED_COMPETITIONS.firstOrNull
  * [competitionShortName]'s same fallback reasoning) sorts last rather than crashing. */
 fun competitionDisplayOrder(id: Int): Int = COMPETITION_DISPLAY_ORDER[id] ?: Int.MAX_VALUE
 
+// Hand-researched shorter display names for teams likely to truncate on Scores' combined
+// "Home - Away" line (see ScheduleMatchRow's doc comment in SoccerHomeScreen.kt) — full-name to
+// short-name pairs, reviewed and approved by the user from a wider CSV of candidates covering every
+// club in this app's six tracked top-flight/second-tier leagues (Premier League, Championship,
+// Serie A, La Liga, Bundesliga, Ligue 1) plus a smaller set of non-tracked-league clubs that can
+// still appear via Champions League/Europa League fixtures (confirmed from real screenshots this
+// session: Club Brugge, AEK Athens, LASK, and FC Porto all showed up in a UCL matchday). Three of
+// the original suggestions (Juventus, Barcelona, Marseille) were explicitly declined by the user and
+// are deliberately absent here — those teams keep their full name.
+//
+// Keyed on the full name as this app's own tracked-league research used it (standard English club
+// names, primarily sourced from Wikipedia's current-season squad lists) — NOT independently verified
+// against what API-Football's `teams.home.name`/`teams.away.name` actually returns for each of these
+// clubs, since there's no live API access or compiler in this sandbox to check that against. If a
+// particular team's row here doesn't shorten anything on screen, a mismatched key (an accent,
+// a "CF"/"SD" prefix, etc. that API-Football includes but this map's key doesn't, or vice versa) is
+// the most likely reason — worth spot-checking a few against real fixture data.
+//
+// Domestic cup fixtures (FA Cup, EFL Cup, Copa del Rey, Coppa Italia, DFB-Pokal, Coupe de France) can
+// pull in lower-league and non-league clubs entirely outside this map — that's the original
+// "Carshalton Athletic" truncation case this whole effort traces back to, and it's out of scope here
+// by design: that pool is enormous and changes every season, so [teamShortName] falls back to the
+// unshortened name for anything not listed rather than guessing at a truncation.
+private val TEAM_SHORT_NAMES: Map<String, String> = mapOf(
+    // Premier League
+    "Aston Villa" to "Villa",
+    "Brighton & Hove Albion" to "Brighton",
+    "Crystal Palace" to "Palace",
+    "Leeds United" to "Leeds",
+    "Manchester City" to "Man City",
+    "Manchester United" to "Man Utd",
+    "Newcastle United" to "Newcastle",
+    "Nottingham Forest" to "Nott'm Forest",
+    "Tottenham Hotspur" to "Spurs",
+    "West Ham United" to "West Ham",
+    "Wolverhampton Wanderers" to "Wolves",
+    // Championship
+    "Birmingham City" to "Birmingham",
+    "Blackburn Rovers" to "Blackburn",
+    "Charlton Athletic" to "Charlton",
+    "Coventry City" to "Coventry",
+    "Derby County" to "Derby",
+    "Hull City" to "Hull",
+    "Ipswich Town" to "Ipswich",
+    "Leicester City" to "Leicester",
+    "Middlesbrough" to "Boro",
+    "Norwich City" to "Norwich",
+    "Oxford United" to "Oxford",
+    "Preston North End" to "Preston",
+    "Queens Park Rangers" to "QPR",
+    "Sheffield United" to "Sheff Utd",
+    "Sheffield Wednesday" to "Sheff Wed",
+    "Stoke City" to "Stoke",
+    "Swansea City" to "Swansea",
+    "West Bromwich Albion" to "West Brom",
+    // Serie A
+    "Hellas Verona" to "Verona",
+    "AC Milan" to "Milan",
+    "Inter Milan" to "Inter",
+    // La Liga
+    "Atlético Madrid" to "Atletico",
+    "Real Betis" to "Betis",
+    "Rayo Vallecano" to "Rayo",
+    "Real Sociedad" to "Sociedad",
+    "Athletic Bilbao" to "Athletic",
+    "Alavés" to "Alaves",
+    "Real Oviedo" to "Oviedo",
+    // Bundesliga
+    "FC Augsburg" to "Augsburg",
+    "Werder Bremen" to "Werder",
+    "Borussia Dortmund" to "Dortmund",
+    "Eintracht Frankfurt" to "Frankfurt",
+    "SC Freiburg" to "Freiburg",
+    "Hamburger SV" to "HSV",
+    "1. FC Heidenheim" to "Heidenheim",
+    "TSG Hoffenheim" to "Hoffenheim",
+    "1. FC Köln" to "Köln",
+    "RB Leipzig" to "Leipzig",
+    "Bayer Leverkusen" to "Leverkusen",
+    "Mainz 05" to "Mainz",
+    "Borussia Mönchengladbach" to "Gladbach",
+    "Bayern Munich" to "Bayern",
+    "FC St. Pauli" to "St. Pauli",
+    "VfB Stuttgart" to "Stuttgart",
+    "VfL Wolfsburg" to "Wolfsburg",
+    // Ligue 1
+    "Paris Saint-Germain" to "PSG",
+    // Other UEFA (seen via UCL/UEL)
+    "Club Brugge KV" to "Club Brugge",
+    "AEK Athens FC" to "AEK Athens",
+    "Lask Linz" to "LASK",
+    "FC Porto" to "Porto",
+    "SL Benfica" to "Benfica",
+    "Sporting CP" to "Sporting",
+    "AFC Ajax" to "Ajax",
+    "PSV Eindhoven" to "PSV",
+    "Fenerbahçe" to "Fenerbahce",
+    "Beşiktaş" to "Besiktas",
+    "Shakhtar Donetsk" to "Shakhtar",
+    "Red Bull Salzburg" to "Salzburg",
+    "Slavia Praha" to "Slavia Prague",
+    "Sparta Praha" to "Sparta Prague",
+    "Crvena Zvezda" to "Red Star Belgrade",
+    "BSC Young Boys" to "Young Boys",
+    "FC Basel" to "Basel",
+)
+
+/** Shorter display name for [fullName], if this app has a researched one — otherwise [fullName]
+ * itself, unshortened. See [TEAM_SHORT_NAMES]'s doc comment for how this list was built, its known
+ * key-matching risk, and why domestic-cup non-league clubs aren't covered. */
+fun teamShortName(fullName: String): String = TEAM_SHORT_NAMES[fullName] ?: fullName
+
 // --- Wire format (API-Football /fixtures response) ----------------------------
 //
 // Confirmed against a real `GET /fixtures?league=39&season=2023&from=2023-08-01&to=2023-08-31`

@@ -632,8 +632,10 @@ private fun ScheduleDayCard(
  * that constant's own up-then-back-down history — after a real-device look, the crest is sized to sit
  * within the middle column's own height rather than dictating the row's height itself); the middle
  * column, taking
- * whatever width is left over, stacks two centered lines — top, the "Home - Away" string (still
- * [LightTextVariant.Fine], unchanged, matching team names as before); bottom, this match's
+ * whatever width is left over, stacks two centered lines — top, the "Home - Away" string, each name
+ * now passed through [teamShortName] first (still [LightTextVariant.Fine], unchanged, matching team
+ * names as before — teamShortName only swaps in a shorter name for the researched teams that have
+ * one, see its doc comment; every other team's full name renders exactly as before); bottom, this match's
  * status/score, all centered together in one `Row` with `Arrangement.Center`: [MatchStatusBadge] then
  * the score side by side for a live/finished match ([Fixture.showsFinalOrLiveScore] — badge at
  * [LightTextVariant.Copy], score at `Fine`, same size choices the previous full-height-cluster
@@ -670,8 +672,10 @@ private fun ScheduleMatchRow(
             modifier = Modifier.padding(end = 0.5f.gridUnitsAsDp()),
         )
         Column(modifier = Modifier.weight(1f)) {
+            // teamShortName is a no-op passthrough for any team without a researched short name
+            // (see its doc comment in SoccerModels.kt) -- most teams render exactly as before.
             LightText(
-                text = "${match.homeTeamName} - ${match.awayTeamName}",
+                text = "${teamShortName(match.homeTeamName)} - ${teamShortName(match.awayTeamName)}",
                 variant = LightTextVariant.Fine,
                 align = TextAlign.Center,
                 maxLines = 1,

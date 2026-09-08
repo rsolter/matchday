@@ -1366,3 +1366,40 @@ comment and to the user — this is the third value this constant has held this 
 No compiler or Android SDK in this sandbox — verified by manual diff review, balance_check.py, and a
 grep confirming the other three `alpha = 0.08f` card backgrounds in this file belong to unrelated
 composables (`MatchGroupCard`, `UnavailableBlock`, `LineupSection`) and were correctly left alone.
+
+## 35. Team short-name lookup table, from user-reviewed research
+
+Separate from font-size tuning, but the same underlying goal as several earlier entries here: reduce
+how often `ScheduleMatchRow`'s combined "Home - Away" line has to ellipsize a team name. Rather than
+another spacing/size adjustment, this round adds actual shorter names for the teams most likely to
+cause it.
+
+**Process:** researched every club across this app's six tracked top-flight/second-tier leagues
+(Premier League, Championship, Serie A, La Liga, Bundesliga, Ligue 1 — current 2025-26 rosters,
+confirmed against Wikipedia rather than assumed from training knowledge, since promotion/relegation
+changes every season) plus ~25 non-tracked-league clubs that can still appear via Champions
+League/Europa League fixtures. Delivered as a 145-row CSV for the user to review; 74 of the 77
+suggested shortenings were approved as-is, 3 (Juventus, Barcelona, Marseille) were explicitly declined
+and kept full-length.
+
+**What shipped:** `TEAM_SHORT_NAMES` (SoccerModels.kt) — a flat `full name -> short name` map for
+those 74 approved teams — and `teamShortName(fullName)`, a passthrough lookup (unlisted teams render
+unchanged) in the same style as the existing `competitionShortName`. Wired into `ScheduleMatchRow`'s
+combined name line only — the one spot that's driven every truncation complaint this session — not
+into crest `contentDescription` (screen readers should still hear the real name) or any other screen.
+
+**Known, flagged risk:** the map's keys are standard English club names (Wikipedia-sourced), not
+independently verified against what API-Football's `teams.home.name`/`teams.away.name` actually
+returns for each club — there's no live API access in this sandbox to check that against. A team
+whose row doesn't shorten on the real device most likely has a key mismatch (an accent, a "CF"/"SD"
+prefix API-Football includes that the map's key doesn't, or vice versa) rather than a bug in the
+lookup logic itself — worth spot-checking a handful against real fixture data.
+
+**Deliberately out of scope:** domestic cup fixtures (FA Cup, EFL Cup, Copa del Rey, Coppa Italia,
+DFB-Pokal, Coupe de France) can pull in lower-league and non-league clubs entirely outside this map —
+the original "Carshalton Athletic" case this whole effort traces back to. That pool is enormous and
+turns over every season, so it's not something a hand-researched table can realistically cover;
+`teamShortName` just falls back to the unshortened name there rather than guessing at a truncation.
+
+No compiler or Android SDK in this sandbox — verified by manual diff review, balance_check.py on both
+touched files, and a grep confirming no duplicate map keys among the 74 entries.
