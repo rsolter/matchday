@@ -70,6 +70,22 @@ android {
         }
         release {
             signingConfig = signingConfigs.getByName(if (hasReleaseKeystore) "release" else "lightsdkDev")
+            // R8 shrinking: this app never calls sdk:ui's LightQrCodeScanner, but depending on
+            // sdk:ui at all pulls in its whole CameraX + ML Kit barcode-scanning dependency chain
+            // (~40MB of dex + native libs across 4 ABIs + TFLite models) regardless of whether
+            // anything actually uses it. Unminified, none of that dead code gets stripped, which is
+            // most of why the unminified release APK runs ~72MB. sdk:client's and sdk:ui's
+            // consumer-rules.pro (bundled in their AARs, applied automatically) already keep every
+            // Light SDK entry point the generated manifest references (LightActivity,
+            // LightSdkApplication, LightSdkReceiver, LightIcons, anything implementing
+            // LightEntryPoint or annotated @InitialScreen) — see proguard-rules.pro for why this app
+            // needs no project-specific rules of its own on top of that.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 
