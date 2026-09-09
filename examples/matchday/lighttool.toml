@@ -6,6 +6,6 @@ versionName = "1.0.0"
 permissions  = ["android.permission.INTERNET"]
 capabilities = []
 # Defaults to the LightOS emulator. Switch to "com.lightos" (and update
-# examples/soccer-football/build.gradle.kts install target) when sideloading
+# examples/matchday/build.gradle.kts install target) when sideloading
 # to a real Light Phone III.
 serverPackage = "com.lightos"

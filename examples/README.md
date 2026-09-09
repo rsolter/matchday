@@ -6,11 +6,11 @@ ship in [Light's own upstream SDK](https://github.com/lightphone/light-sdk) aren
 
 | Module | Package | Description |
 |--------|---------|-------------|
-| `soccer-football` | `com.thelightphone.soccerfootball` | scores, fixtures, standings, and a "My Team" view via API-Football — see [its own README](soccer-football/README.md)
+| `matchday` | `com.thelightphone.soccerfootball` | scores, fixtures, standings, and a "My Team" view via API-Football — see [its own README](matchday/README.md)
 
 ## How to run on device
 
 ```bash
-./gradlew :examples:soccer-football:installDebug
+./gradlew :examples:matchday:installDebug
 adb shell am start -n com.thelightphone.soccerfootball/com.thelightphone.sdk.LightActivity
 ```

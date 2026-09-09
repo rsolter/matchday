@@ -9,12 +9,18 @@ plugins {
     alias(libs.plugins.light.sdk)
 }
 
-// Release signing: reads examples/soccer-football/keystore.properties, a gitignored file holding a
+// Release signing: reads examples/matchday/keystore.properties, a gitignored file holding a
 // private release key (see keystore.properties.example for the format + the README's "Building it"
 // section for how to generate one with keytool). That file intentionally never exists in a fresh
 // clone — including this sandbox — so `hasReleaseKeystore` is false here and `release` falls back to
 // the shared lightsdkDev key below, same as before this change. Only on a machine where that
 // properties file has been created does `assembleRelease` sign with the private key instead.
+//
+// Note the explicit top-level `import java.util.Properties` above rather than the fully-qualified
+// `java.util.Properties()` this originally used: Gradle's Kotlin DSL auto-generates a `java` accessor
+// (the Java plugin extension) on this script, which shadows the `java` package root and made
+// `java.util.Properties` fail to resolve at all ("Unresolved reference 'util'") when this was first
+// written and never actually build-tested. An explicit import sidesteps that shadowing.
 val releaseKeystoreProperties = Properties().apply {
     val propsFile = project.file("keystore.properties")
     if (propsFile.exists()) {
