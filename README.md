@@ -14,6 +14,19 @@ All of the actual app — the API integration, data models, and UI — lives und
 [`examples/matchday`](examples/matchday). See
 [that module's README](examples/matchday/README.md) for the full write-up.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="Sample%20Photos/Matchday_Scores.png" width="220" alt="Scores screen listing today's matches, grouped by competition"></td>
+    <td><img src="Sample%20Photos/Match_View.png" width="220" alt="Match detail screen's Stats tab for a finished match"></td>
+  </tr>
+  <tr>
+    <td><img src="Sample%20Photos/My_Team.png" width="220" alt="My Team screen showing a followed club's league position and recent results"></td>
+    <td><img src="Sample%20Photos/Settings.png" width="220" alt="Settings screen listing followed competitions and the My Team pick"></td>
+  </tr>
+</table>
+
 ## Built on Light's SDK
 
 Everything else in this repository — `sdk/`, `plugin/`, `builder/`, `lint-rules/`, `docs/` — is
