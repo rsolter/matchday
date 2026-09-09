@@ -1,29 +1,16 @@
 # Light SDK demo tools
 
+This fork trims the base Light SDK's demo modules down to just the one tool it actually ships —
+see the root README for why. The others (`ui-demo`, `weather`, `authenticator`, `audio-demo`) that
+ship in [Light's own upstream SDK](https://github.com/lightphone/light-sdk) aren't included here.
+
 | Module | Package | Description |
 |--------|---------|-------------|
-| `ui-demo` | `com.thelightphone.uidemo` | UI toolkit gallery: theme, icons, scroll, text input, modal |
-| `weather` | `com.thelightphone.weather` | weather tool via Open-Meteo API |
-| `authenticator` | `com.thelightphone.authenticator` | 2FA authenticator
-| `audio-demo` | `com.thelightphone.audiodemo` | audio SDK showcase: player, recorder, capture, tone
 | `soccer-football` | `com.thelightphone.soccerfootball` | scores, fixtures, standings, and a "My Team" view via API-Football — see [its own README](soccer-football/README.md)
 
 ## How to run on device
 
 ```bash
-./gradlew :examples:ui-demo:installDebug
-adb shell am start -n com.thelightphone.uidemo/com.thelightphone.sdk.LightActivity
-
-./gradlew :examples:weather:installDebug
-adb shell am start -n com.thelightphone.weather/com.thelightphone.sdk.LightActivity
-
-./gradlew :examples:authenticator:installDebug
-adb shell am start -n com.thelightphone.authenticator/com.thelightphone.sdk.LightActivity
-
-./gradlew :examples:audio-demo:installDebug
-adb shell am start -n com.thelightphone.audiodemo/com.thelightphone.sdk.LightActivity
-
 ./gradlew :examples:soccer-football:installDebug
 adb shell am start -n com.thelightphone.soccerfootball/com.thelightphone.sdk.LightActivity
 ```
-
