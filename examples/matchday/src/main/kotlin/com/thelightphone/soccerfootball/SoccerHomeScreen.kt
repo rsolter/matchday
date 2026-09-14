@@ -82,7 +82,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
             ) {
                 when (val mode = state.mode) {
                     is ScoreScreenMode.Loading -> {
-                        LoadingContent(title = "Matchday", message = mode.message)
+                        LoadingContent(title = "Soccer Pro", message = mode.message)
                     }
 
                     is ScoreScreenMode.Scores -> {
@@ -225,25 +225,27 @@ private fun LoadingContent(title: String, message: String) {
 
 // --- Scores ------------------------------------------------------------------
 
-// Fixed width for MatchRow's leading slot in the common case — a status badge (FT/live-minute), a
-// same-day kickoff time ("19:45", already grouped under a date header so no date prefix needed),
-// or a My Team result badge. Narrowed once already (from 6.5f, sized for the much longer dated
-// kickoff format below, which left a lot of dead space in front of team names for every row that
-// wasn't using the longest case), then narrowed again here on request after a real screenshot
-// still showed a wide gap before the team name — paired with the same round's FT/live-minute/
-// kickoff-time font size dropping to Detail (20, was Fine/25), which is what makes a slot this
-// narrow safe for "45+2'"/"19:45" without clipping. Keeping this as a fixed width at all, rather
-// than letting the slot's content size itself, is what keeps every row's team names starting at
-// the same x position regardless of what leads them. An estimate, not verified on a real device —
-// may need another pass if "45+2'" still clips.
-private val LEFT_SLOT_WIDTH = 2.8f
+// MatchRow's leading slot — now the fixture's abbreviated competition (e.g. "UCL", "EPL",
+// "Serie A" — see competitionShortName in SoccerModels.kt) for both of My Team's cards, on
+// request, so a followed team's mixed league/cup/continental fixtures are distinguishable at a
+// glance without opening the match. A handful of untracked/long competition names (e.g.
+// "Championship", "Copa del Rey") fall back to their full name in competitionShortName and could
+// still clip here — maxLines=1 + Ellipsis at the call site is the safety net for that case. This
+// width, like every other fixed slot width in this file, is an estimate — no compiler/emulator in
+// this sandbox to render-test against.
+private val COMPETITION_SLOT_WIDTH = 4f
 
-// Wider leading-slot width for the one case that doesn't fit LEFT_SLOT_WIDTH: My Team's "UPCOMING"
-// card, whose kickoff label includes a date prefix ("9/25 19:45") since — unlike Scores — it isn't
-// already grouped under a per-day header (see formatKickoffDateAndTime's doc comment in
-// SoccerFormatting.kt). Only ever used for that one card, so it doesn't affect row alignment
-// anywhere else — every other card's rows are internally consistent using LEFT_SLOT_WIDTH.
-private val LEFT_SLOT_WIDTH_DATED = 6.5f
+// MatchRow's trailing slot for My Team's "UPCOMING" card — the dated kickoff label ("9/25 19:45"),
+// moved here from the row's leading slot now that the leading slot is the competition abbreviation
+// instead (see COMPETITION_SLOT_WIDTH above). Same value the old leading "dated" slot used —
+// already sized for this exact text (a date prefix "9/25" plus a 24-hour time), so kept unchanged
+// rather than re-guessed.
+private val DATE_TIME_SLOT_WIDTH = 6.5f
+
+// MatchRow's trailing slot for My Team's "RECENT RESULTS" card — the small single-letter W/D/L
+// [ResultBadge], moved here from the row's leading slot on request so a result row now reads
+// competition / opponent / score / result, left to right.
+private val RESULT_BADGE_SLOT_WIDTH = 1.8f
 
 // Fixed width for MatchRow's trailing score slot (its sole remaining caller) — the badge/kickoff-
 // time content that used to live here moved to the left slot above (see MatchRow's doc comment), so
@@ -274,11 +276,14 @@ private val LIVE_STATUS_GREEN = Color(0xFF4ADE80)
 /** Small rounded badge for a match's status — FT (or Postponed/Cancelled/Suspended) and a live
  * minute counter now share the same pill shape, matching the reference fotmob screenshot's FT
  * badge; only the live case gets green text ([LIVE_STATUS_GREEN]) to set it apart from a finished
- * match. Sized by its own content — [MatchRow] places it inside [LEFT_SLOT_WIDTH]'s fixed-width slot
- * rather than sizing it directly (default [variant] `Detail`, unchanged for that caller).
- * [ScheduleMatchRow] instead passes `Copy` — this app's existing "prominent score" size, the same
- * one Match Detail's own big score label already uses — to render this badge genuinely bigger, on
- * request (see that fun's doc comment for where it sits now). */
+ * match. Sized by its own content. [ScheduleMatchRow] is this badge's only caller now — My Team's
+ * [MatchRow] used to place it in its leading slot, but that slot shows the fixture's competition
+ * instead on request (see [COMPETITION_SLOT_WIDTH]), and My Team's redesigned rows have no badge
+ * slot left for FT/live text (a My Team result shows as its score plus a [ResultBadge] instead —
+ * see [MatchRow]'s doc comment). [ScheduleMatchRow] passes `Copy` — this app's existing "prominent
+ * score" size, the same one Match Detail's own big score label already uses — to render this badge
+ * genuinely bigger, on request (see that fun's doc comment for where it sits now); [variant]
+ * defaults to `Detail` for a hypothetical future caller that doesn't override it. */
 @Composable
 private fun MatchStatusBadge(
     text: String,
@@ -292,11 +297,10 @@ private fun MatchStatusBadge(
             .background(LightThemeTokens.colors.content.copy(alpha = 0.12f))
             .padding(horizontal = 0.4f.gridUnitsAsDp(), vertical = 0.05f.gridUnitsAsDp()),
     ) {
-        // Was Superfine (16), then Detail (20) after round 13's revert, then Fine (25) to match the
-        // rest of MatchRow's text — now back to Detail, on request, alongside LEFT_SLOT_WIDTH
-        // narrowing further, to close the gap a real screenshot showed before the team name. That
-        // history is MatchRow's alone now that variant is a parameter — see this fun's own doc
-        // comment for ScheduleMatchRow's separate, larger choice.
+        // Was Superfine (16), then Detail (20), then Fine (25), then back to Detail — sizing
+        // history from when My Team's own MatchRow was still this badge's other caller (now
+        // ScheduleMatchRow's only caller — see this fun's own doc comment). variant is a plain
+        // parameter now, so ScheduleMatchRow's separate, larger `Copy` choice is unaffected.
         LightText(
             text = text,
             variant = variant,
@@ -317,10 +321,11 @@ private val RESULT_DRAW_COLOR = Color(0xFF9E9E9E)
 private val RESULT_LOSS_COLOR = Color(0xFFD32F2F)
 
 /** Small colored block badge for one match's result relative to My Team's followed team — mirrors
- * the fotmob reference screenshot's Form-column blocks. Used inline per match in [MatchRow]'s left
- * slot, My Team's "RECENT RESULTS" card only — see [Fixture.resultFor]. (Previously also repeated
- * for a league-form summary string on My Team's own standings header via a `FormRow` composable;
- * that header block was dropped entirely on request, and `FormRow` removed with it.) */
+ * the fotmob reference screenshot's Form-column blocks. Used inline per match in [MatchRow]'s
+ * trailing [RESULT_BADGE_SLOT_WIDTH] slot, My Team's "RECENT RESULTS" card only — see
+ * [Fixture.resultFor]. (Previously also repeated for a league-form summary string on My Team's own
+ * standings header via a `FormRow` composable; that header block was dropped entirely on request,
+ * and `FormRow` removed with it.) */
 @Composable
 private fun ResultBadge(result: MatchResult, modifier: Modifier = Modifier) {
     val (background, label) = when (result) {
@@ -768,21 +773,21 @@ private fun ScheduleMatchRow(
  * Scores used to share this too, grouped by competition, before it moved to its own day-grouped
  * [ScheduleDayCard]/[ScheduleMatchRow] on request (see that pair's doc comments); Results & Fixtures
  * shared it even earlier, before that screen moved to its own headerless FixtureLeagueCard/
- * FixtureMatchRow and was later retired outright when Scores absorbed it. [showFinishedStatus]
- * controls whether a finished match still prints its "FT"/"Postponed"/etc. label in the row's left
- * slot. [titleLogoBytes]/[titleLogoLeagueId]/[titleLogoTint]/[onTitleLogoClick] are dead weight now
- * that Scores was this card's only caller to ever pass them (a per-league crest header + Standings
- * tap target) — left in place rather than stripped, since My Team's own calls never reference them
- * by name and a future per-league use of this card isn't out of the question. [highlightTeamId] is
- * only ever passed by My Team's "RECENT RESULTS" card, to color each match's left slot by its result
- * for that team instead — see [MatchRow]. [allowKickoffLabelWrap] is only ever passed by My Team's
- * "UPCOMING" card — see [MatchRow]. [showScoreSlot], only ever set false by My Team's "UPCOMING"
- * card, drops the trailing score column entirely (rather than just leaving it visually empty) so
- * the team-name text gets that width back — see [MatchRow]. No card fill on request, same reasoning
- * and same real-device finding as [ScheduleDayCard]'s own background removal: a low-alpha grey fill
- * rendered as a visibly solid block on the real device rather than the subtle tint it looked like in
- * preview. The divider between individual matches (still `contentSecondary` at 15% alpha) is
- * untouched — that's the "small grey line" the user asked to keep in its place. */
+ * FixtureMatchRow and was later retired outright when Scores absorbed it. [titleLogoBytes]/
+ * [titleLogoLeagueId]/[titleLogoTint]/[onTitleLogoClick] are dead weight now that Scores was this
+ * card's only caller to ever pass them (a per-league crest header + Standings tap target) — left in
+ * place rather than stripped, since My Team's own calls never reference them by name and a future
+ * per-league use of this card isn't out of the question. [focusTeamId] is My Team's own followed
+ * team id, passed by both cards now — it drives each row's opponent-only text (see
+ * [Fixture.opponentLabel]) and, only when [showResultBadge] is also set (My Team's "RECENT RESULTS"
+ * card only), the trailing [ResultBadge] too — see [MatchRow]. [allowKickoffLabelWrap] is only ever
+ * passed by My Team's "UPCOMING" card — see [MatchRow]. [showScoreSlot], only ever set false by My
+ * Team's "UPCOMING" card, drops the score column entirely (rather than just leaving it visually
+ * empty) so the opponent text gets that width back — see [MatchRow]. No card fill on request, same
+ * reasoning and same real-device finding as [ScheduleDayCard]'s own background removal: a low-alpha
+ * grey fill rendered as a visibly solid block on the real device rather than the subtle tint it
+ * looked like in preview. The divider between individual matches (still `contentSecondary` at 15%
+ * alpha) is untouched — that's the "small grey line" the user asked to keep in its place. */
 @Composable
 private fun MatchGroupCard(
     title: String,
@@ -792,9 +797,9 @@ private fun MatchGroupCard(
     titleLogoLeagueId: Int? = null,
     titleLogoTint: ColorFilter? = null,
     onTitleLogoClick: (() -> Unit)? = null,
-    showFinishedStatus: Boolean = true,
     showDate: Boolean = false,
-    highlightTeamId: Int? = null,
+    focusTeamId: Int? = null,
+    showResultBadge: Boolean = false,
     allowKickoffLabelWrap: Boolean = false,
     showScoreSlot: Boolean = true,
     onMatchClick: (Fixture) -> Unit,
@@ -839,9 +844,9 @@ private fun MatchGroupCard(
             }
             MatchRow(
                 match,
-                showFinishedStatus = showFinishedStatus,
                 showDate = showDate,
-                highlightTeamId = highlightTeamId,
+                focusTeamId = focusTeamId,
+                showResultBadge = showResultBadge,
                 allowKickoffLabelWrap = allowKickoffLabelWrap,
                 showScoreSlot = showScoreSlot,
                 onClick = { onMatchClick(match) },
@@ -872,27 +877,35 @@ private fun TeamCrestImage(bytes: ByteArray?, contentDescription: String, modifi
     }
 }
 
-/** One match's row: a leading fixed-width slot ([LEFT_SLOT_WIDTH], or [LEFT_SLOT_WIDTH_DATED] for
- * My Team's "UPCOMING" card) for its status — live minute, "FT", a kickoff time, or (My Team's
- * "RECENT RESULTS" only) a colored [ResultBadge] — then plain team-name text plus a trailing
- * [SCORE_SLOT_WIDTH] score box. My Team's only remaining caller now — Scores moved to its own
- * two-line [ScheduleMatchRow]/[ScheduleDayCard] on request (see that pair's doc comments), which
- * took the crest/combined-cell display this row used to also support ([MatchTeamsAndScoreCell],
- * its `showTeamCrests` param, and the near-kickoff `lineupsAvailable` plumbing) down with it — none
- * of that was ever set by My Team, so removing it here changes nothing about how My Team renders. */
+/** One My Team match row: a leading [COMPETITION_SLOT_WIDTH] slot for the fixture's abbreviated
+ * competition, then opponent-only text ([Fixture.opponentLabel] — the followed team's own name is
+ * never printed here), then an optional [SCORE_SLOT_WIDTH] score box, then a trailing slot that's
+ * either a colored [ResultBadge] ([RESULT_BADGE_SLOT_WIDTH], "RECENT RESULTS") or a dated kickoff
+ * label ([DATE_TIME_SLOT_WIDTH], "UPCOMING") — all four columns left to right, on request. My
+ * Team's only remaining caller now — Scores moved to its own two-line [ScheduleMatchRow]/
+ * [ScheduleDayCard] on request (see that pair's doc comments), which took the crest/combined-cell
+ * display this row used to also support ([MatchTeamsAndScoreCell], its `showTeamCrests` param, and
+ * the near-kickoff `lineupsAvailable` plumbing) down with it — none of that was ever set by My
+ * Team, so removing it here changes nothing about how My Team renders. A live match sitting in
+ * "RECENT RESULTS" (today's game, still in progress) is a known simplification this redesign
+ * doesn't special-case: it renders its live score and a [ResultBadge] computed from that
+ * in-progress score, with no separate "LIVE"/minute indicator — the four-column layout has no
+ * slot left for one. */
 @Composable
 private fun MatchRow(
     match: Fixture,
-    showFinishedStatus: Boolean = true,
     // My Team's "UPCOMING" card is the one caller that isn't already grouped under a per-day
     // header (unlike Scores), so a bare kickoff time there could be mistaken for today's game —
     // see formatKickoffDateAndTime's doc comment in SoccerFormatting.kt.
     showDate: Boolean = false,
-    // Set only by My Team's "RECENT RESULTS" card (showFinishedStatus = false there, so the FT
-    // badge that would otherwise occupy this slot is already suppressed) — shows a colored W/D/L
-    // result badge for this specific team in the same left-hand slot instead. See
-    // Fixture.resultFor/ResultBadge.
-    highlightTeamId: Int? = null,
+    // My Team's followed team id — passed by both cards now (previously only "RECENT RESULTS")
+    // since the opponent-only text ([Fixture.opponentLabel]) below needs it too. Nullable and
+    // defensive, matching Fixture.resultFor's own reasoning, though in practice both real callers
+    // always pass MyTeamSummary.teamId.
+    focusTeamId: Int? = null,
+    // Set only by My Team's "RECENT RESULTS" card — shows a colored W/D/L result badge for
+    // [focusTeamId] in the row's trailing slot. See Fixture.resultFor/ResultBadge.
+    showResultBadge: Boolean = false,
     // Set only by My Team's "UPCOMING" card, where the kickoff label can be a full date + time
     // (e.g. "9/13 19:45") or just a longer local time — letting it wrap to a second line instead
     // of ellipsizing. Left off (default) for Scores/Fixtures, which used their own separate row
@@ -900,15 +913,14 @@ private fun MatchRow(
     allowKickoffLabelWrap: Boolean = false,
     // False only for My Team's "UPCOMING" card, on request — every one of its matches is scheduled
     // (no score to show yet anyway), and dropping the slot entirely rather than just leaving it
-    // empty gives the team-name text that width back, letting most matchups fit on one line.
+    // empty gives the opponent text that width back, letting most matchups fit on one line.
     showScoreSlot: Boolean = true,
     onClick: () -> Unit,
 ) {
     // Only My Team's "UPCOMING" card ever hits the showDate+SCHEDULED branch below (its rows are
-    // all upcoming, so this is consistent card-to-card, not row-to-row within one card) — everyone
-    // else (Scores, and My Team's "RECENT RESULTS") uses the narrower common width.
+    // all upcoming, so this is consistent card-to-card, not row-to-row within one card) — its
+    // "RECENT RESULTS" counterpart never sets showDate at all.
     val usesDatedKickoffLabel = !match.hasScore && showDate && match.status == MatchStatus.SCHEDULED
-    val leftSlotWidth = if (usesDatedKickoffLabel) LEFT_SLOT_WIDTH_DATED else LEFT_SLOT_WIDTH
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -917,45 +929,19 @@ private fun MatchRow(
             .padding(vertical = 0.65f.gridUnitsAsDp()),
     ) {
         Box(
-            modifier = Modifier.width(leftSlotWidth.gridUnitsAsDp()),
+            modifier = Modifier.width(COMPETITION_SLOT_WIDTH.gridUnitsAsDp()),
             contentAlignment = Alignment.CenterStart,
         ) {
-            if (match.hasScore) {
-                if (match.status.isLive) {
-                    MatchStatusBadge(text = match.statusLabel(), isLive = true)
-                } else if (showFinishedStatus) {
-                    MatchStatusBadge(text = match.statusLabel(), isLive = false)
-                } else {
-                    val result = highlightTeamId?.let { match.resultFor(it) }
-                    if (result != null) {
-                        ResultBadge(result)
-                    }
-                }
-            } else {
-                // Upcoming match, no score yet — nothing to color-code, just the kickoff label.
-                val label = if (usesDatedKickoffLabel) {
-                    formatKickoffDateAndTime(match.utcDate)
-                } else {
-                    match.statusLabel()
-                }
-                // Was Superfine (16), then Detail (20) after round 13's revert, then Fine (25) —
-                // now back to Detail, on request, matching MatchStatusBadge's same move (see its
-                // doc comment). maxLines is 2 (wrapping instead of ellipsizing) only where
-                // allowKickoffLabelWrap opts in — see its doc comment above.
-                LightText(
-                    text = label,
-                    variant = LightTextVariant.Detail,
-                    lighten = true,
-                    maxLines = if (allowKickoffLabelWrap) 2 else 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            LightText(
+                text = competitionShortName(match.leagueId),
+                variant = LightTextVariant.Detail,
+                lighten = true,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        // Was Copy (30), then Detail (20) after the global shift, back to Copy (30) after round
-        // 13's revert — now Fine (25): one size down from Copy, on request, matched to the
-        // status badge/kickoff label and score, which moved to Fine at the same time.
         LightText(
-            text = "${match.homeTeamName} vs ${match.awayTeamName}",
+            text = focusTeamId?.let { match.opponentLabel(it) } ?: "${match.homeTeamName} vs ${match.awayTeamName}",
             variant = LightTextVariant.Fine,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -967,8 +953,6 @@ private fun MatchRow(
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 if (match.hasScore) {
-                    // Was Detail (20), then Copy (30) after round 13's revert — now Fine (25),
-                    // matched to the rest of MatchRow's text.
                     LightText(
                         text = match.scoreLabel(),
                         variant = LightTextVariant.Fine,
@@ -977,6 +961,38 @@ private fun MatchRow(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+            }
+        }
+        if (showResultBadge) {
+            Box(
+                modifier = Modifier
+                    .width(RESULT_BADGE_SLOT_WIDTH.gridUnitsAsDp())
+                    .padding(start = 0.3f.gridUnitsAsDp()),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                val result = focusTeamId?.let { match.resultFor(it) }
+                if (result != null) {
+                    ResultBadge(result)
+                }
+            }
+        } else if (showDate) {
+            Box(
+                modifier = Modifier.width(DATE_TIME_SLOT_WIDTH.gridUnitsAsDp()),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                // Upcoming match, no score yet — the dated kickoff label; a postponed/cancelled/
+                // suspended upcoming fixture falls back to its plain status text instead of a
+                // stale kickoff time (see Fixture.isPostponedCancelledOrSuspended's doc comment
+                // for the same gap elsewhere in this file).
+                val label = if (usesDatedKickoffLabel) formatKickoffDateAndTime(match.utcDate) else match.statusLabel()
+                LightText(
+                    text = label,
+                    variant = LightTextVariant.Detail,
+                    lighten = true,
+                    align = TextAlign.End,
+                    maxLines = if (allowKickoffLabelWrap) 2 else 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -1338,11 +1354,20 @@ private fun StandingsTableContent(
                     } else if (index > 0) {
                         // Skipped right under a fresh group header — that header already reads as
                         // its own separator, so a divider directly beneath it would be redundant.
+                        // A heavier, more opaque line marks a promotion/relegation/qualification
+                        // zone boundary (StandingsRow.zone changing between this row and the one
+                        // above it) — e.g. after the last Champions League spot, before the first
+                        // relegation spot — on request, in place of a full colored bar per row
+                        // (see StandingsRow.zone's own doc comment for the not-yet-curl-verified
+                        // caveat on the underlying data this is keyed off).
+                        val isZoneBoundary = rows[index - 1].zone != row.zone
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(1.dp)
-                                .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
+                                .height(if (isZoneBoundary) 2.dp else 1.dp)
+                                .background(
+                                    LightThemeTokens.colors.contentSecondary.copy(alpha = if (isZoneBoundary) 0.45f else 0.15f),
+                                ),
                         )
                     }
                     StandingsTableRow(row)
@@ -1525,8 +1550,8 @@ private fun MyTeamContent(
                         title = "RECENT RESULTS",
                         matches = summary.recentFixtures,
                         modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
-                        showFinishedStatus = false,
-                        highlightTeamId = summary.teamId,
+                        focusTeamId = summary.teamId,
+                        showResultBadge = true,
                         onMatchClick = onMatchClick,
                     )
                 }
@@ -1536,9 +1561,10 @@ private fun MyTeamContent(
                         matches = summary.upcomingFixtures,
                         modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
                         showDate = true,
+                        focusTeamId = summary.teamId,
                         allowKickoffLabelWrap = true,
                         // On request: no match here has a score yet anyway, so the reserved score
-                        // column was always empty — dropping it gives the "X vs Y" text that width
+                        // column was always empty — dropping it gives the opponent text that width
                         // back instead of wrapping to a second line.
                         showScoreSlot = false,
                         onMatchClick = onMatchClick,
@@ -2399,15 +2425,18 @@ private fun NoDataForTab(text: String) {
  * See [groupedByPitchRow] in SoccerModels.kt.
  *
  * Laid out as a vertical pitch: each pitch line (GK, defense, midfield, attack) is a horizontal
- * band of number-only dots, and the bands stack bottom-to-top with the goalkeeper's band at the
- * very bottom — [groupedByPitchRow] returns rows goalkeeper-first, so this reverses that list
- * before rendering, per that function's own doc comment in SoccerModels.kt. Both home and away
- * render the same way; there's no more mirroring one team's pitch left-to-right against the
- * other's the way the old horizontal layout did, since a shared "keeper at the bottom" orientation
- * doesn't need it. Player names moved out of the pitch itself (a name per dot didn't leave enough
- * width when the same players were laid out as up-to-5-wide columns before this rewrite — see the
- * git history if you want that version) and into [LineupRosterList] alongside it, in the same
- * top-to-bottom order as the pitch bands so the two stay easy to cross-reference by number.
+ * band of number dots, and the bands stack bottom-to-top with the goalkeeper's band at the very
+ * bottom — [groupedByPitchRow] returns rows goalkeeper-first, so this reverses that list before
+ * rendering, per that function's own doc comment in SoccerModels.kt. Both home and away render
+ * the same way; there's no mirroring one team's pitch left-to-right against the other's the way
+ * the old horizontal layout did, since a shared "keeper at the bottom" orientation doesn't need
+ * it. On request, each player's last name ([LineupPlayer.lastName]) now sits directly under their
+ * own dot instead of in a separate side list (see [PitchPlayerColumn]) — an earlier round moved
+ * names out of the pitch into a side roster list (`LineupRosterList`, removed) because a name per dot didn't leave
+ * enough width when dots were laid out as up-to-5-wide columns; that side list is gone again now
+ * that a per-dot label is what was actually asked for. Dot size ([PitchNumberDot]) and every
+ * text size in this tab are unchanged from before this round, on request — only the *layout*
+ * (one column beside the pitch vs. one label per dot) moved, not any size.
  */
 @Composable
 private fun LineupSection(
@@ -2447,34 +2476,39 @@ private fun LineupSection(
             lineup.formation?.let { LightText(text = it, variant = LightTextVariant.Detail, lighten = true) }
         }
 
-        Row(modifier = Modifier.fillMaxWidth()) {
-            // Same top-to-bottom order as the pitch bands to the right of it, so a number on the
-            // pitch and its name in this list line up roughly at a glance without needing a legend.
-            LineupRosterList(
-                pitchRows = pitchRows,
-                modifier = Modifier.weight(0.44f).padding(end = 0.6f.gridUnitsAsDp()),
-            )
-
-            Column(
-                // Grey fill behind the pitch removed on request ("remove the grey background behind
-                // the formation visualization"). The clip stays — harmless with nothing to clip now,
-                // cheap insurance if a background fill returns here later, same call this codebase's
-                // made for other background removals (see ScheduleDayCard's own doc comment).
-                modifier = Modifier
-                    .weight(0.56f)
-                    .clip(RoundedCornerShape(1.2f.gridUnitsAsDp()))
-                    .padding(vertical = 0.8f.gridUnitsAsDp(), horizontal = 0.3f.gridUnitsAsDp()),
-                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.9f.gridUnitsAsDp()),
-            ) {
-                pitchRows.forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(
-                            0.3f.gridUnitsAsDp(),
-                            Alignment.CenterHorizontally,
-                        ),
-                    ) {
-                        row.forEach { player -> PitchNumberDot(player, dotColor = teamColor) }
+        // Full-width now that there's no side name list sharing this row with the pitch (see this
+        // fun's own doc comment) — was two weighted columns (0.44f roster list / 0.56f pitch)
+        // before this round.
+        Column(
+            // Grey fill behind the pitch removed on request ("remove the grey background behind
+            // the formation visualization"). The clip stays — harmless with nothing to clip now,
+            // cheap insurance if a background fill returns here later, same call this codebase's
+            // made for other background removals (see ScheduleDayCard's own doc comment).
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(1.2f.gridUnitsAsDp()))
+                .padding(vertical = 0.8f.gridUnitsAsDp(), horizontal = 0.3f.gridUnitsAsDp()),
+            // Widened from 0.9f on request's implied need: each pitch-line band now stacks a name
+            // label under its dots (see PitchPlayerColumn below), taller than the dot-only band
+            // this spacing was originally tuned for, so the old gap would have crowded one row's
+            // name against the next row's dots. An estimate, like every other spacing value in
+            // this file — no compiler/emulator here to render-check it.
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(1.4f.gridUnitsAsDp()),
+        ) {
+            pitchRows.forEach { row ->
+                // Each column takes an equal weighted share of the row's full width — on request
+                // ("use the full width of screen"), replacing a fixed per-column width that left a
+                // 2-3-player row (attack, midfield) bunched dead-center instead of spread out like
+                // a real formation graphic. A 5-player defensive line already read as roughly full
+                // width before this change; this makes every row's width consistent regardless of
+                // player count, and gives a sparser row's longer surnames much more room before
+                // they need PitchPlayerColumn's own maxLines=1 + Ellipsis fallback.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.3f.gridUnitsAsDp()),
+                ) {
+                    row.forEach { player ->
+                        PitchPlayerColumn(player, dotColor = teamColor, modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -2510,51 +2544,35 @@ private fun LineupSection(
     }
 }
 
-/** The starting XI's names, in the same top-to-bottom (most-advanced-line-first) order as
- * [LineupSection]'s pitch bands — same visual role the old per-dot name label used to serve,
- * before there was enough width per player to keep names legible once dots stopped stretching
- * across up to 5 side-by-side columns. Same row shape [SubstitutesBlock] already uses (a
- * fixed-width number column beside a name that can truncate) for a consistent look across the
- * lineup tab. A little extra top padding between each pitch-line group (skipped for the very
- * first) gives a rough visual seam lining this list up with the row bands beside it, without
- * needing an explicit divider or label for every line. */
+/** One pitch dot plus its player's last name directly underneath, on request — replaces the old
+ * side [LineupSection] roster list (see that fun's own doc comment for the "why back to per-dot
+ * labels" history). [PitchNumberDot] itself (dot size, its own number's size/color) is untouched;
+ * this just wraps it with a name label below, both centered so a short jersey number and a longer
+ * surname still line up with each other and with neighboring dots in the same pitch-line band.
+ * [modifier] is always an equal `Modifier.weight(1f)` from [LineupSection]'s pitch-row Row now, on
+ * request ("use the full width of screen") — no fixed width of its own, so this column's actual
+ * width (and therefore how much room the name label below the dot gets before it ellipsizes)
+ * depends entirely on how many players share that row; a fixed width was tried first and rejected
+ * for leaving a sparse 2-3-player row (attack, midfield) bunched dead-center instead of spread
+ * across the pitch. */
 @Composable
-private fun LineupRosterList(pitchRows: List<List<LineupPlayer>>, modifier: Modifier = Modifier) {
-    Column(modifier = modifier) {
-        pitchRows.forEachIndexed { rowIndex, row ->
-            row.forEachIndexed { playerIndex, player ->
-                // Only the first player of each new group (not the very first group) gets the
-                // extra gap above it — this marks the seam between pitch-line groups without
-                // spacing every player within a group apart from their line-mates too.
-                val topPadding = if (rowIndex > 0 && playerIndex == 0) 0.3f.gridUnitsAsDp() else 0.dp
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = topPadding, bottom = 0.15f.gridUnitsAsDp()),
-                ) {
-                    // Was Copy, shrunk to Detail (matching the team name/formation row and
-                    // "Coach: {name}" above and below this list, rather than standing out as
-                    // noticeably bigger), then Superfine after a later global one-step-down pass.
-                    // Bumped back to Detail on request, along with the rest of this tab — except
-                    // PitchNumberDot's own number (the pitch-diagram circles), which stays put.
-                    // This roster-list number is plain text, not "behind a circle", so it's
-                    // included in the bump.
-                    LightText(
-                        text = player.number?.toString() ?: "-",
-                        variant = LightTextVariant.Detail,
-                        lighten = true,
-                        modifier = Modifier.width(1.6f.gridUnitsAsDp()),
-                    )
-                    LightText(
-                        text = player.name,
-                        variant = LightTextVariant.Detail,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-        }
+private fun PitchPlayerColumn(player: LineupPlayer, dotColor: Color?, modifier: Modifier = Modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier,
+    ) {
+        PitchNumberDot(player, dotColor = dotColor)
+        // Same Detail size the old side roster list used for names (see this fun's doc comment) —
+        // "keep all the same sizes of text and dots" was explicit on request, so only this label's
+        // position moved, not its size.
+        LightText(
+            text = player.lastName,
+            variant = LightTextVariant.Detail,
+            align = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()),
+        )
     }
 }
 
@@ -2574,7 +2592,7 @@ private fun PitchNumberDot(player: LineupPlayer, dotColor: Color?, modifier: Mod
         // Deliberately left at Superfine (not bumped with the rest of the Lineup tab) — the user
         // asked to enlarge "all text one size Except for the numbers behind the circles", and this
         // dot's number is exactly that: it's already visually prominent inside its own colored
-        // circle, unlike the roster list's plain-text numbers.
+        // circle, unlike the (now per-dot, see PitchPlayerColumn) name label's plain text.
         LightText(text = player.number?.toString() ?: "-", variant = LightTextVariant.Superfine, color = numberColor)
     }
 }

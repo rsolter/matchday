@@ -631,6 +631,15 @@ internal data class ApiFootballStandingsRowDto(
     val goalsDiff: Int = 0,
     val group: String? = null,
     val form: String? = null,
+    // Promotion/relegation/continental-qualification zone label for this rank, e.g. "Promotion -
+    // Champions League (Group Stage)" or "Relegation - Championship" — blank/absent for an
+    // ordinary mid-table row with no zone significance. NOT independently curl-verified against
+    // this project's own proxy this round — the field name and general shape come from
+    // API-Football's own public documentation and a third-party client library that mirrors their
+    // schema, not a real response this codebase has actually seen (see [StandingsRow.zone]'s doc
+    // comment for the same caveat carried forward to where this is rendered). Worth a real check
+    // against a live response before leaning on it further.
+    val description: String? = null,
     val all: ApiFootballStandingsStatsDto = ApiFootballStandingsStatsDto(),
 )
 
@@ -683,6 +692,7 @@ private fun ApiFootballStandingsRowDto.toStandingsRow(isGrouped: Boolean): Stand
     points = points,
     form = form?.takeIf { it.isNotBlank() },
     group = if (isGrouped) group else null,
+    zone = description?.takeIf { it.isNotBlank() },
 )
 
 // --- Wire format (API-Football /injuries response) ----------------------------
@@ -807,6 +817,19 @@ data class Fixture(
  * fetches; no new API call needed. */
 enum class MatchResult { WIN, DRAW, LOSS }
 
+/** Opponent-only match text for My Team's "RECENT RESULTS"/"UPCOMING" rows, on request — the
+ * followed team's own name is dropped entirely rather than printed alongside the opponent's:
+ * "vs {opponent}" when [focusTeamId] is the home side, "at {opponent}" when it's the away side
+ * (the common shorthand for a home/away fixture). Falls back to the full "Home vs Away" text if
+ * [focusTeamId] isn't actually one of the two sides — shouldn't happen, since every real caller
+ * passes [MyTeamSummary.teamId] against that same team's own fixtures, but this stays defensive
+ * rather than showing a blank opponent, same reasoning as [resultFor] below. */
+fun Fixture.opponentLabel(focusTeamId: Int): String = when (focusTeamId) {
+    homeTeamId -> "vs $awayTeamName"
+    awayTeamId -> "at $homeTeamName"
+    else -> "$homeTeamName vs $awayTeamName"
+}
+
 /** Null when the match has no final score yet, or [teamId] isn't one of the two sides — callers
  * (My Team's "RECENT RESULTS" list) only ever pass a team that is actually in the fixture, but this
  * stays defensive rather than throwing. */
@@ -868,6 +891,14 @@ data class StandingsRow(
     /** Recent-form string, e.g. "WWDLW" — most recent last, per API-Football's own ordering. */
     val form: String?,
     val group: String?,
+    /** Promotion/relegation/continental-qualification zone label for this rank straight from
+     * API-Football (e.g. "Promotion - Champions League (Group Stage)", "Relegation -
+     * Championship"), null for an ordinary row with no zone significance — see
+     * [ApiFootballStandingsRowDto.description]'s doc comment for the same not-yet-curl-verified
+     * caveat. Used by [StandingsTableContent] (SoccerHomeScreen.kt) only to detect *where* a zone
+     * boundary falls (a heavier divider between the last row of one zone and the first row of the
+     * next, on request) — the label text itself isn't rendered anywhere yet. */
+    val zone: String?,
 )
 
 enum class MatchEventType { GOAL, SUBSTITUTION, CARD, VAR, OTHER }
@@ -898,6 +929,38 @@ data class LineupPlayer(
      * Null for substitutes (API-Football sends no grid for the bench). */
     val grid: String?,
 )
+
+// Matches a leading "F. " (single initial, period, space) prefix — some API-Football responses
+// send lineup names that way (e.g. "R. Kolo Muani", "K. De Bruyne"). Covers accented initials too
+// (e.g. "É. Choupo-Moting"). [LineupPlayer.lastName] checks this first; the *more commonly seen*
+// shape in practice — confirmed against a real Torino lineup screenshot this round — is instead a
+// full, un-abbreviated "First Last" name (e.g. "Giovanni Simeone", "Nikola Vlašić") with no
+// initial at all, which this pattern correctly does NOT match, falling through to the plain
+// drop-first-word split below.
+private val LEADING_INITIAL_PATTERN = Regex("^[A-Za-zÀ-ÖØ-öø-ÿ]\\.\\s+")
+
+/** [name] cut down to a bare surname for the pitch dot visualization's per-dot label
+ * ([PitchPlayerColumn] in SoccerHomeScreen.kt) — there's only room under a dot for one short
+ * word. Two strategies, in this order:
+ * 1. Strip a leading "F. " initial if [name] has one ([LEADING_INITIAL_PATTERN]) — e.g.
+ *    "R. Kolo Muani" -> "Kolo Muani".
+ * 2. Otherwise, for the far more common un-abbreviated "First Last" (or "First Middle Last")
+ *    shape, drop just the first word and keep the rest — e.g. "Giovanni Simeone" -> "Simeone",
+ *    "Kevin De Bruyne" -> "De Bruyne". A first-round version of this property assumed every name
+ *    used strategy 1 and left full names like these completely unshortened, so they clipped
+ *    mid-word instead ("Niccolò…") — the bug a real screenshot surfaced this round. Dropping only
+ *    the first word (rather than keeping only the *last* word) is deliberate: it keeps a
+ *    multi-word surname like "Kolo Muani" or "De Bruyne" intact instead of wrongly cutting it
+ *    down to just "Muani"/"Bruyne".
+ * Falls back to the bare [name] unchanged when it's already just one word (a handful of
+ * API-Football entries are, e.g. "Neymar") — nothing left to drop. */
+val LineupPlayer.lastName: String
+    get() {
+        val strippedInitial = name.replace(LEADING_INITIAL_PATTERN, "")
+        if (strippedInitial != name) return strippedInitial
+        val words = name.trim().split(Regex("\\s+"))
+        return if (words.size > 1) words.drop(1).joinToString(" ") else name
+    }
 
 data class TeamLineup(
     val teamName: String,
