@@ -454,9 +454,14 @@ private fun ScoresContent(
             ) {
                 // Was "No matches today in your leagues." before this screen absorbed the former
                 // Fixtures screen's whole window on request — reworded since an empty result now
-                // means the entire two-week span came back empty, not just today.
+                // means the entire fetch window came back empty, not just today. Kept deliberately
+                // vague about the exact span ("right now" rather than restating specific week
+                // counts) so this string doesn't also need editing every time
+                // SoccerViewModel's SCHEDULE_PAST_DAYS/SCHEDULE_FUTURE_DAYS window changes — this
+                // round's asymmetric 2-weeks-back/4-weeks-ahead change is exactly the kind of edit
+                // that would have silently gone stale here otherwise.
                 LightText(
-                    text = "No matches in your leagues these two weeks.",
+                    text = "No matches in your leagues right now.",
                     variant = LightTextVariant.Copy,
                     align = TextAlign.Center,
                     lighten = true,
@@ -1119,7 +1124,11 @@ private fun LeaguesRow(leagueNames: List<String>, onClick: () -> Unit) {
         // secondary/grey one. Bumped one size on request, Detail (20) -> Fine (25) — see SettingRow's
         // label doc comment above for the full "should all be the same font size" reasoning; each
         // league name below stays Detail (20), already smaller, so no change needed there.
-        LightText(text = "Leagues followed", variant = LightTextVariant.Fine)
+        // Label text changed from "Leagues followed" to "Competitions followed" on request — this
+        // row already lists cups (FA Cup, Coppa Italia, etc.) and UEFA competitions alongside the
+        // domestic leagues, so "Competitions" is the more accurate umbrella term; nothing else about
+        // this row (what it lists, its onClick target, its own fun name) changed.
+        LightText(text = "Competitions followed", variant = LightTextVariant.Fine)
         // Was Copy, then Detail (see font-size-audit.md recommendation #3 — with up to 14
         // trackable competitions, a user following several gets that many stacked lines, so this
         // matched the label above rather than standing out as heavier). The global one-step-down
@@ -1158,15 +1167,25 @@ private fun AttributionContent(onBack: () -> Unit) {
             // the rest of Settings' (and its child pages') text.
             LightText(
                 // The sentence naming which specific competitions this tool covers was removed on
-                // request — that list is also shown live in Settings' own "Leagues followed" row, so
-                // this static copy was a second, easily-stale place saying the same thing (it still
-                // named only 4 of the now 14 tracked competitions).
+                // request — that list is also shown live in Settings' own "Competitions followed"
+                // row, so this static copy was a second, easily-stale place saying the same thing
+                // (it still named only 4 of the now 14 tracked competitions).
+                //
+                // The scores-window sentence below is new, on request (see SoccerViewModel.kt's
+                // SCHEDULE_PAST_DAYS/SCHEDULE_FUTURE_DAYS doc comment, which asks for this to stay in
+                // sync with those constants if the window changes again) — written as "past two
+                // weeks... upcoming four weeks" rather than restating the exact day counts, so it
+                // doesn't need editing for a small day-count tweak, only if the window's actual
+                // rough shape changes.
                 text = "Scores are provided by API-Football (api-football.com), a paid football " +
                     "data API.\n\n" +
                     "Requests go through a caching proxy this app's developer runs, which holds " +
                     "the API-Football key and absorbs the request load — there's nothing to set " +
                     "up or configure here. Scores, fixtures, and standings are live, " +
-                    "current-season data.",
+                    "current-season data.\n\n" +
+                    "The Matchday Scores feed shows matches from the past two weeks through the " +
+                    "upcoming four weeks, so you can look back at recent results and ahead at " +
+                    "what's coming up.",
                 variant = LightTextVariant.Paragraph,
             )
         }
@@ -1175,6 +1194,13 @@ private fun AttributionContent(onBack: () -> Unit) {
 
 // --- League selection ------------------------------------------------------------------
 
+/** Grouped by [LeagueSelectionRow.region] into one section per country (plus "International
+ * Club" for UCL/UEL), on request ("Reorganize 'Leagues followed' selection to be grouped by
+ * country... e.g. Premier League, Championship, FA Cup would all be under England"). [rows]
+ * arrives pre-ordered by [TRACKED_COMPETITIONS]' own declared order (England, Italy, Spain,
+ * Germany, France, International Club — see that val's own grouping comments), and Kotlin's
+ * [groupBy] preserves first-seen key order, so this doesn't need to sort the section headers
+ * itself — they simply come out in that same order. */
 @Composable
 private fun LeagueSelectionContent(
     rows: List<LeagueSelectionRow>,
@@ -1185,48 +1211,62 @@ private fun LeagueSelectionContent(
     Column(modifier = Modifier.fillMaxSize()) {
         LightTopBar(
             leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = onBack),
-            center = LightTopBarCenter.Text("Leagues"),
+            center = LightTopBarCenter.Text("Competitions"),
             modifier = Modifier.padding(bottom = 1f.gridUnitsAsDp()),
         )
 
         LightScrollView(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
         ) {
-            rows.forEach { row ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+            val grouped = remember(rows) { rows.groupBy { it.region } }
+            grouped.forEach { (region, regionRows) ->
+                LightText(
+                    text = region.uppercase(),
+                    variant = LightTextVariant.Detail,
+                    lighten = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .lightClickable(onClick = { onToggle(row.id) })
-                        .padding(vertical = 0.85f.gridUnitsAsDp()),
-                ) {
-                    // Same decodeLeagueLogo (recolor-on-decode) treatment Scores/Fixtures/Standings
-                    // already give a league crest, so e.g. Premier League/UCL still read as white
-                    // here instead of the dark-on-black original. Bytes come from leagueLogos, keyed
-                    // by id (see ScoreScreenMode.LeagueSelection's doc comment) rather than the
-                    // URL-keyed maps every other screen uses. Row simply renders without an icon
-                    // until the fetch resolves, or permanently if it fails — never a broken image.
-                    val bytes = leagueLogos[row.id]
-                    val logoBitmap = bytes?.let { b -> remember(b, row.id) { decodeLeagueLogo(b, row.id) } }
-                    if (logoBitmap != null) {
-                        Image(
-                            bitmap = logoBitmap,
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            colorFilter = leagueLogoColorFilter(row.id),
-                            modifier = Modifier
-                                .size(1.4f.gridUnitsAsDp())
-                                .padding(end = 0.6f.gridUnitsAsDp()),
+                        .padding(end = 1f.gridUnitsAsDp())
+                        .padding(top = 0.9f.gridUnitsAsDp(), bottom = 0.2f.gridUnitsAsDp()),
+                )
+                regionRows.forEach { row ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .lightClickable(onClick = { onToggle(row.id) })
+                            .padding(vertical = 0.85f.gridUnitsAsDp()),
+                    ) {
+                        // Same decodeLeagueLogo (recolor-on-decode) treatment Scores/Fixtures/
+                        // Standings already give a league crest, so e.g. Premier League/UCL still
+                        // read as white here instead of the dark-on-black original. Bytes come from
+                        // leagueLogos, keyed by id (see ScoreScreenMode.LeagueSelection's doc
+                        // comment) rather than the URL-keyed maps every other screen uses. Row
+                        // simply renders without an icon until the fetch resolves, or permanently
+                        // if it fails — never a broken image.
+                        val bytes = leagueLogos[row.id]
+                        val logoBitmap = bytes?.let { b -> remember(b, row.id) { decodeLeagueLogo(b, row.id) } }
+                        if (logoBitmap != null) {
+                            Image(
+                                bitmap = logoBitmap,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                colorFilter = leagueLogoColorFilter(row.id),
+                                modifier = Modifier
+                                    .size(1.4f.gridUnitsAsDp())
+                                    .padding(end = 0.6f.gridUnitsAsDp()),
+                            )
+                        }
+                        // Was Copy (30) before the global one-step-down pass shifted it to Detail
+                        // (20); reverted back to Copy — this is a Settings child page, same
+                        // treatment.
+                        LightText(text = row.name, variant = LightTextVariant.Copy, modifier = Modifier.weight(1f))
+                        LightIcon(
+                            icon = if (row.selected) LightIcons.TOGGLE_STATE_ON else LightIcons.TOGGLE_STATE_OFF,
+                            size = 2f,
+                            contentDescription = if (row.selected) "Following" else "Not following",
                         )
                     }
-                    // Was Copy (30) before the global one-step-down pass shifted it to Detail (20);
-                    // reverted back to Copy — this is a Settings child page, same treatment.
-                    LightText(text = row.name, variant = LightTextVariant.Copy, modifier = Modifier.weight(1f))
-                    LightIcon(
-                        icon = if (row.selected) LightIcons.TOGGLE_STATE_ON else LightIcons.TOGGLE_STATE_OFF,
-                        size = 2f,
-                        contentDescription = if (row.selected) "Following" else "Not following",
-                    )
                 }
             }
         }
@@ -1280,9 +1320,19 @@ private fun CompetitionPickerContent(
 // for a runaway title race's occasional 3-digit total. Still a first estimate for the stat columns
 // specifically — explicitly framed as an experiment now that team names can be shortened via
 // [teamShortName] — just no longer for POS, which is back to a size already confirmed to read well.
+//
+// GF/GA condensed into one "+/-" column (e.g. "16-5") and GD reinstated as its own column, on
+// request, matching the FotMob screenshot given as a reference. That's a net-zero column count (two
+// removed, two added), but the new "+/-" column needs real room for a 5-character "10-12"-style
+// value, unlike every other stat column here which never exceeds 2 digits — so it gets its own,
+// wider [STANDINGS_DIFF_WEIGHT] rather than sharing [STANDINGS_STAT_WEIGHT]. That extra width comes
+// half from the freed-up GF/GA space and half from TEAM (0.37 -> 0.325) — TEAM is still the widest
+// column by a wide margin, but this is the second time it's given ground to a growing stat section;
+// worth watching [teamShortName] ellipsizing more on a long name if that continues.
 private val STANDINGS_POS_WEIGHT = 0.08f
-private val STANDINGS_TEAM_WEIGHT = 0.37f
-private val STANDINGS_STAT_WEIGHT = 0.075f // MP, W, D, L, GF, GA all share this
+private val STANDINGS_TEAM_WEIGHT = 0.325f
+private val STANDINGS_STAT_WEIGHT = 0.075f // MP, W, D, L, and now GD all share this
+private val STANDINGS_DIFF_WEIGHT = 0.12f // "+/-" (goals-for–goals-against, e.g. "16-5")
 private val STANDINGS_PTS_WEIGHT = 0.10f
 
 @Composable
@@ -1327,12 +1377,26 @@ private fun StandingsTableContent(
             // comment in SoccerModels.kt for the two real shapes this was built against.
             val showGroupHeaders = rows.any { it.group != null }
 
+            // Traced against LightScrollView.kt's own source this round (the earlier "+ 1f" here
+            // was an unverified guess — see StandingsHeaderRow's doc comment history — this is now
+            // measured against the SDK, not estimated): LightScrollView's Box takes the *exact*
+            // modifier passed to it (here, `.weight(1f).fillMaxWidth().padding(start = 1f)` on the
+            // LightScrollView call below), then internally gives its scrollable content Column
+            // `fillMaxSize().padding(end = scrollBarGutterUnits(...))` — so that content's real
+            // width is (this screen's width - 1f start - scrollBarGutterUnits end), nothing more.
+            // This header Column was adding an *extra* leading "1f +" on top of the gutter, making
+            // it a full grid unit (screenWidthDp / 27) narrower than the data rows actually are —
+            // exactly the kind of proportional, rightward-increasing drift the screenshot showed
+            // (a narrower header Row compresses every weighted column toward the left, and that
+            // compression compounds moving right, matching what was reported). Fixed by dropping
+            // that extra 1f so this end-padding is exactly [scrollBarGutterUnits], matching
+            // LightScrollView's own internal end-padding on the content it wraps.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(
                         start = 1f.gridUnitsAsDp(),
-                        end = (1f + scrollBarGutterUnits(LightScrollBarPosition.Outside)).gridUnitsAsDp(),
+                        end = scrollBarGutterUnits(LightScrollBarPosition.Outside).gridUnitsAsDp(),
                     ),
             ) {
                 StandingsHeaderRow()
@@ -1377,20 +1441,52 @@ private fun StandingsTableContent(
     }
 }
 
-// MP/W/D/L/GF/GA/PTS switched from end- to center-aligned on request, header and data cells both
+// MP/W/D/L/+/-/GD/PTS switched from end- to center-aligned on request, header and data cells both
 // (they have to move together — a header sitting somewhere its column's data doesn't just reads as
-// misaligned). TEAM/# stay as they were (start-aligned, no explicit align set).
+// misaligned). # stays as it was (start-aligned, no explicit align set); the TEAM column's own
+// header label is gone now (see the blank LightText below), but the column itself keeps the same
+// start alignment its team-name cells always had.
+//
+// Real bug found and fixed this round, from a second "still looks off" report with a real
+// screenshot showing the drift growing larger column-by-column moving right (MP off by a little,
+// PTS off by a lot) — that specific shape is what gave this away as a *width* mismatch between the
+// header Row and the data Rows, not a per-column weight/align mismatch (those were already checked
+// last round and are fine — see [StandingsTableRow]'s own cells). Traced against
+// `sdk/ui/.../LightScrollView.kt`'s actual source (not available to re-render, but readable):
+// LightScrollView gives its scrollable content Column `fillMaxSize().padding(end =
+// scrollBarGutterUnits(position))`, on top of whatever modifier the caller already passed it (here,
+// `.padding(start = 1f)`) — so the data rows' real width is (screen width - 1f start -
+// scrollBarGutterUnits end). [StandingsTableContent]'s header Column, by contrast, was padded
+// `end = (1f + scrollBarGutterUnits(...))` — an extra, un-traced "1f +" that made it a full grid
+// unit narrower than the data rows. A narrower weighted Row compresses every column toward the
+// left, and that compression compounds moving rightward across columns — exactly the growing drift
+// reported. Fixed at the source: [StandingsTableContent]'s header Column now uses exactly
+// `scrollBarGutterUnits(...)` for its end padding, matching LightScrollView's own internal
+// end-padding on the content it wraps, no extra term. This one is measured against the SDK's actual
+// layout code, not a render-tested guess.
 @Composable
 private fun StandingsHeaderRow() {
     Row(modifier = Modifier.fillMaxWidth().padding(bottom = 0.4f.gridUnitsAsDp())) {
         LightText(text = "#", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(STANDINGS_POS_WEIGHT))
-        LightText(text = "TEAM", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT))
+        // "TEAM" label dropped on request (matches the FotMob reference screenshot, whose team
+        // column has no header text at all — just the numbered rank column and then straight into
+        // the stat columns). Still an empty LightText with the same STANDINGS_TEAM_WEIGHT, not a
+        // Spacer, so this column keeps reserving exactly the width [StandingsTableRow]'s own
+        // team-name cell expects — removing the weighted slot entirely would have shifted every
+        // column after it left, the same class of bug this round's alignment fix was about.
+        LightText(text = "", variant = LightTextVariant.Detail, modifier = Modifier.weight(STANDINGS_TEAM_WEIGHT))
         LightText(text = "MP", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
         LightText(text = "W", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
         LightText(text = "D", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
         LightText(text = "L", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = "GF", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = "GA", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        // Was separate "GF"/"GA" columns — condensed into one "+/-" column (e.g. "16-5") on request,
+        // matching the FotMob reference screenshot. See [STANDINGS_DIFF_WEIGHT]'s doc comment for
+        // why this gets its own, wider weight instead of sharing STANDINGS_STAT_WEIGHT.
+        LightText(text = "+/-", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_DIFF_WEIGHT))
+        // Goal difference, reinstated as its own column on request (it was dropped from this table
+        // in an earlier round to make room for W/D/L — see this val block's own doc comment history
+        // above). Shares STANDINGS_STAT_WEIGHT: same shape as MP/W/D/L, a short signed number.
+        LightText(text = "GD", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
         LightText(text = "PTS", variant = LightTextVariant.Detail, lighten = true, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
 }
@@ -1421,8 +1517,11 @@ private fun StandingsTableRow(row: StandingsRow) {
         LightText(text = row.win.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
         LightText(text = row.draw.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
         LightText(text = row.lose.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = row.goalsFor.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
-        LightText(text = row.goalsAgainst.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
+        // "+/-" (goalsFor-goalsAgainst) and "GD" (signed goal difference) — see
+        // StandingsHeaderRow's doc comment and SoccerFormatting.kt's goalsForAgainstLabel/
+        // goalDifferenceLabel for why these replaced the old separate GF/GA columns.
+        LightText(text = row.goalsForAgainstLabel(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_DIFF_WEIGHT))
+        LightText(text = row.goalDifferenceLabel(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_STAT_WEIGHT))
         LightText(text = row.points.toString(), variant = LightTextVariant.Detail, align = TextAlign.Center, modifier = Modifier.weight(STANDINGS_PTS_WEIGHT))
     }
 }
@@ -1936,6 +2035,7 @@ private fun MatchDetailContent(
                             lineup = detail.lineups.home,
                             teamColor = homeTeamColor,
                             coachPhotoBytes = mode.homeCoachPhotoBytes,
+                            playerPhotosById = mode.playerPhotosById,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
                         DetailTab.AWAY_LINEUP -> LineupSection(
@@ -1943,6 +2043,7 @@ private fun MatchDetailContent(
                             lineup = detail.lineups.away,
                             teamColor = awayTeamColor,
                             coachPhotoBytes = mode.awayCoachPhotoBytes,
+                            playerPhotosById = mode.playerPhotosById,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
                     }
@@ -2435,8 +2536,16 @@ private fun NoDataForTab(text: String) {
  * names out of the pitch into a side roster list (`LineupRosterList`, removed) because a name per dot didn't leave
  * enough width when dots were laid out as up-to-5-wide columns; that side list is gone again now
  * that a per-dot label is what was actually asked for. Dot size ([PitchNumberDot]) and every
- * text size in this tab are unchanged from before this round, on request — only the *layout*
- * (one column beside the pitch vs. one label per dot) moved, not any size.
+ * text size in this tab were unchanged by that particular round, on request — only the *layout*
+ * (one column beside the pitch vs. one label per dot) moved, not any size. Dot/headshot size did
+ * later grow on its own separate request — see [PITCH_DOT_SIZE_UNITS]'s doc comment — while the
+ * name label size stayed exactly as it was here.
+ *
+ * The header row's leading slot (beneath the Stats/Events/Home/Away tab buttons) shows the coach's
+ * name now, on request, not [teamName] — [teamName] is still this fun's early-return empty-state
+ * text, and the coach-name slot's own fallback when there's no coach in the response, just no
+ * longer the header's first choice. The "Coach: {name}" line that used to sit below the pitch is
+ * gone with it (moved, not duplicated).
  */
 @Composable
 private fun LineupSection(
@@ -2444,6 +2553,7 @@ private fun LineupSection(
     lineup: TeamLineup?,
     teamColor: Color?,
     coachPhotoBytes: ByteArray?,
+    playerPhotosById: Map<Int, ByteArray>,
     modifier: Modifier = Modifier,
 ) {
     if (lineup == null || lineup.startXI.isEmpty()) {
@@ -2460,13 +2570,16 @@ private fun LineupSection(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().padding(bottom = 0.6f.gridUnitsAsDp()),
         ) {
-            // This row already shares its width with the formation label, so even Detail-size
-            // team names ("Manchester City") can still be too wide to fit on one line — maxLines=1
-            // + Ellipsis trades a truncated name ("Mancheste…") for avoiding an ugly mid-word wrap.
-            // Bumped one size on request (Superfine -> Detail), along with the rest of this tab
-            // except PitchNumberDot's own number — see that composable's call site below.
+            // On request, this leading slot now shows the coach's name instead of the team name —
+            // moved up from its own line below the pitch (see this fun's own doc comment for what
+            // used to live there). Falls back to [teamName] when [TeamLineup.coachName] is null (no
+            // coach in this response) so the header never goes blank — [teamName] itself is still
+            // guaranteed non-null (it's also this fun's early-return empty-state text above), just
+            // no longer the *first* choice here. This row already shares its width with the
+            // formation label, so even a Detail-size long name can still be too wide for one line —
+            // maxLines=1 + Ellipsis trades a truncated name for avoiding an ugly mid-word wrap.
             LightText(
-                text = teamName,
+                text = lineup.coachName ?: teamName,
                 variant = LightTextVariant.Detail,
                 lighten = true,
                 maxLines = 1,
@@ -2508,35 +2621,26 @@ private fun LineupSection(
                     horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.3f.gridUnitsAsDp()),
                 ) {
                     row.forEach { player ->
-                        PitchPlayerColumn(player, dotColor = teamColor, modifier = Modifier.weight(1f))
+                        PitchPlayerColumn(
+                            player,
+                            dotColor = teamColor,
+                            photoBytes = player.id?.let { playerPhotosById[it] },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
             }
         }
 
-        lineup.coachName?.let { coachName ->
-            // Headshot Image dropped on request ("drop the coach images on home/away views") —
-            // keeping the text label, which is what actually carries the information. This left
-            // [coachPhotoBytes] unused inside this composable; the parameter itself, its call-site
-            // plumbing (see [MatchDetailContent]'s two [LineupSection] calls), and the underlying
-            // fetch (ApiFootballApi.fetchMatchDetail's coach-photo follow-up, MatchDetail's
-            // homeCoachPhotoBytes/awayCoachPhotoBytes) are deliberately left in place rather than
-            // unwound — this was a UI-only removal request, and ripping out the fetch chain too
-            // would touch SoccerViewModel.kt/ApiFootballApi.kt well beyond what was asked, with no
-            // compiler here to catch a mistake made along the way.
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()),
-            ) {
-                // Was Fine, fixed to Detail — see the font-size audit doc: Fine (25, design units)
-                // is bigger than Detail (20) in this SDK's real type scale despite the name
-                // suggesting the opposite, so this caption was rendering almost as large as the
-                // primary player names above it. Shrunk to Superfine (16) by a later global
-                // one-step-down pass, now bumped back to Detail on request along with the rest of
-                // this tab (except PitchNumberDot's own number).
-                LightText(text = "Coach: $coachName", variant = LightTextVariant.Detail, lighten = true)
-            }
-        }
+        // The "Coach: {name}" line that used to live here moved up to this fun's header row on
+        // request — see that row's own doc comment. [coachPhotoBytes] stays unused in this
+        // composable (a headshot Image was dropped from that line in an earlier round, before the
+        // line itself moved) — the parameter itself, its call-site plumbing (see
+        // [MatchDetailContent]'s two [LineupSection] calls), and the underlying fetch
+        // (ApiFootballApi.fetchMatchDetail's coach-photo follow-up, MatchDetail's
+        // homeCoachPhotoBytes/awayCoachPhotoBytes) are deliberately left in place rather than
+        // unwound — unwinding that fetch chain too would touch SoccerViewModel.kt/ApiFootballApi.kt
+        // well beyond what was asked, with no compiler here to catch a mistake made along the way.
 
         if (lineup.substitutes.isNotEmpty()) {
             SubstitutesBlock(lineup.substitutes, modifier = Modifier.padding(top = 1f.gridUnitsAsDp()))
@@ -2546,9 +2650,12 @@ private fun LineupSection(
 
 /** One pitch dot plus its player's last name directly underneath, on request — replaces the old
  * side [LineupSection] roster list (see that fun's own doc comment for the "why back to per-dot
- * labels" history). [PitchNumberDot] itself (dot size, its own number's size/color) is untouched;
- * this just wraps it with a name label below, both centered so a short jersey number and a longer
- * surname still line up with each other and with neighboring dots in the same pitch-line band.
+ * labels" history). [PitchNumberDot] now renders a headshot image in place of the number-in-circle
+ * when [photoBytes] is available (see that fun's own doc comment, on request: "replace icons with
+ * numbers with head shot images... If the headshot is not available, please have the number in
+ * circle as a stand in") — dot *size* is unchanged either way. This just wraps the dot with a name
+ * label below, both centered so a short jersey number/headshot and a longer surname still line up
+ * with each other and with neighboring dots in the same pitch-line band.
  * [modifier] is always an equal `Modifier.weight(1f)` from [LineupSection]'s pitch-row Row now, on
  * request ("use the full width of screen") — no fixed width of its own, so this column's actual
  * width (and therefore how much room the name label below the dot gets before it ellipsizes)
@@ -2556,12 +2663,12 @@ private fun LineupSection(
  * for leaving a sparse 2-3-player row (attack, midfield) bunched dead-center instead of spread
  * across the pitch. */
 @Composable
-private fun PitchPlayerColumn(player: LineupPlayer, dotColor: Color?, modifier: Modifier = Modifier) {
+private fun PitchPlayerColumn(player: LineupPlayer, dotColor: Color?, photoBytes: ByteArray?, modifier: Modifier = Modifier) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier,
     ) {
-        PitchNumberDot(player, dotColor = dotColor)
+        PitchNumberDot(player, dotColor = dotColor, photoBytes = photoBytes)
         // Same Detail size the old side roster list used for names (see this fun's doc comment) —
         // "keep all the same sizes of text and dots" was explicit on request, so only this label's
         // position moved, not its size.
@@ -2576,8 +2683,54 @@ private fun PitchPlayerColumn(player: LineupPlayer, dotColor: Color?, modifier: 
     }
 }
 
+// Bumped from 2.3f on request ("images themselves should be larger"), sized against the *tightest*
+// row this dot ever appears in — a 5-across defensive or midfield line, the widest [LineupSection]
+// ever renders per that fun's own doc comment ("at most 5 players will ever be included in a single
+// line"). Traced the same way the standings-column alignment fix was (see [StandingsTableContent]'s
+// doc comment) — real padding chain, not a guess:
+//   27 (LightGrid.WIDTH, full screen)
+//   -  1 (MatchDetailContent's LightScrollView: Modifier.padding(start = 1f))
+//   -  2 (LightScrollView's own unconditional end padding — scrollBarGutterUnits(Outside), see that
+//         fun's doc comment)
+//   = 24 available inside the scroll view
+//   -  0.6 (LineupSection's pitch Column: padding(horizontal = 0.3f) on each side)
+//   = 23.4 for the pitch-row Row's fillMaxWidth width
+//   -  1.2 (that Row's Arrangement.spacedBy(0.3f) — 4 gaps between 5 columns)
+//   = 22.2, split 5 equal PitchPlayerColumn weights = 4.44 grid units per column in a 5-wide row.
+// 3.4f leaves 1.04 grid units of slack in that tightest case — split across both sides of the dot
+// plus the 0.3f column gap, that's ~1.34 grid units of breathing room between two neighboring dots
+// in a 5-across line, comfortably more than the dots' own gap was even at the old 2.3f size. A wider
+// row (2-4 players) only has more room than this, never less, so 5-across is the only case that
+// needed checking. Like every size in this file, this is a real measured-against-the-layout number,
+// not a render-checked one — there's no compiler/emulator in this pipeline to confirm it on device.
+private const val PITCH_DOT_SIZE_UNITS = 3.4f
+
+/** [photoBytes] — this player's headshot, if [SoccerViewModel.openMatchDetail]'s follow-up fetch
+ * (see [ScoreScreenMode.MatchDetailScreen.playerPhotosById]'s doc comment) found one — renders as a
+ * circular image at [PITCH_DOT_SIZE_UNITS] (see that const's doc comment for why that size), no
+ * fixed-width-then-fallback layout shift either way. Null (no id on this player, fetch failed, or
+ * hasn't resolved yet) falls back to the pre-existing number-in-circle rendering, exactly per the
+ * request ("If the headshot is not available, please have the number in circle as a stand in") —
+ * this fallback is the *only* path for a substitute row too, since only the starting XI's own pitch
+ * dots use this composable at all ([SubstitutesBlock] below has always rendered substitutes as a
+ * plain number without a dot). The player *name* label below this dot ([PitchPlayerColumn]) is
+ * deliberately untouched by this size bump — on request, only the image grows, not the text. */
 @Composable
-private fun PitchNumberDot(player: LineupPlayer, dotColor: Color?, modifier: Modifier = Modifier) {
+private fun PitchNumberDot(player: LineupPlayer, dotColor: Color?, photoBytes: ByteArray?, modifier: Modifier = Modifier) {
+    val photoBitmap = photoBytes?.let { bytes ->
+        remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    }
+    if (photoBitmap != null) {
+        Image(
+            bitmap = photoBitmap,
+            contentDescription = player.name,
+            contentScale = ContentScale.Crop,
+            modifier = modifier
+                .size(PITCH_DOT_SIZE_UNITS.gridUnitsAsDp())
+                .clip(CircleShape),
+        )
+        return
+    }
     // A saturated dotColor needs its own text color to stay legible — the theme's default content
     // color assumes the neutral, low-alpha background this dot had before team colors existed, and
     // can end up light-on-light or dark-on-dark against a real team hue.
@@ -2585,7 +2738,7 @@ private fun PitchNumberDot(player: LineupPlayer, dotColor: Color?, modifier: Mod
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
-            .size(2.3f.gridUnitsAsDp())
+            .size(PITCH_DOT_SIZE_UNITS.gridUnitsAsDp())
             .clip(CircleShape)
             .background(dotColor?.copy(alpha = 0.55f) ?: LightThemeTokens.colors.contentSecondary.copy(alpha = 0.22f)),
     ) {

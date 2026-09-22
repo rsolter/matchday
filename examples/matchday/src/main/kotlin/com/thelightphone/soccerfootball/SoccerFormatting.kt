@@ -37,6 +37,18 @@ fun Fixture.statusLabel(lineupsAvailable: Boolean = false): String = when (statu
 fun Fixture.scoreLabel(): String =
     if (hasScore) "${homeGoals ?: 0} - ${awayGoals ?: 0}" else "vs"
 
+/** "13-5" — [StandingsRow.goalsFor]-[StandingsRow.goalsAgainst], condensed into one column on
+ * request (was two separate GF/GA columns) to make room for [StandingsRow] reinstating its own
+ * GD column — matches the FotMob reference screenshot's "+/-" column exactly (no spaces around
+ * the hyphen there either). */
+fun StandingsRow.goalsForAgainstLabel(): String = "$goalsFor-$goalsAgainst"
+
+/** "+8", "0", or "-9" — [StandingsRow.goalDifference] with an explicit "+" prefix for a positive
+ * value (its own [Int.toString] already carries the "-" for a negative one, and 0 needs no sign
+ * at all), matching the FotMob reference screenshot's "GD" column. */
+fun StandingsRow.goalDifferenceLabel(): String =
+    if (goalDifference > 0) "+$goalDifference" else goalDifference.toString()
+
 fun formatKickoffTime(isoDate: String): String =
     parseIso(isoDate)?.toLocalDateTime(TimeZone.currentSystemDefault())?.to24HourTime() ?: "--:--"
 

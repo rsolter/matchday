@@ -34,6 +34,17 @@ private const val REQUEST_TIMEOUT_MS = 15_000L
 // see fetchLeagueLogosByCompetitionId's doc comment.
 private const val API_SPORTS_LEAGUE_LOGO_BASE = "https://media.api-sports.io/football/leagues"
 
+// Same convention as API_SPORTS_LEAGUE_LOGO_BASE above, for player headshots — see
+// fetchPlayerPhotos's doc comment. Not itself curl-verified against a live /fixtures/lineups
+// response this session (no live API/curl access in this sandbox); the /fixtures/lineups shape
+// this app parses has no per-player photo field to confirm it against directly, but this exact
+// media.api-sports.io/football/<category>/<id>.png pattern is already confirmed working for both
+// leagues (this constant's sibling) and coaches (ApiFootballCoachDto.photo, which IS a real
+// curl-verified media.api-sports.io/football/coachs/{id}.png URL) — players are documented by
+// API-Football as following the same CDN convention off the player id from /players or
+// /players/squads (which does carry a photo field, unlike the lineups DTO this app maps from).
+private const val API_SPORTS_PLAYER_PHOTO_BASE = "https://media.api-sports.io/football/players"
+
 /**
  * Client for this app's own caching proxy (`https://soccer-proxy.ravisolter.com`), not
  * API-Football directly — Phase 3 onward, the proxy holds the real API-Football key server-side
@@ -222,19 +233,29 @@ internal class ApiFootballApi {
 
     // --- Injuries / unavailability (My Team) ------------------------------------
 
-    /** Who's unavailable for one specific fixture — confirmed against a real
-     * `GET /injuries?fixture=1035037` response (1 row). This is the fixture-scoped call, not the
+    /** Who's unavailable for one specific fixture, filtered down to [teamId]'s own side — confirmed
+     * against a real `GET /injuries?fixture=1035037` response (1 row, so that particular test never
+     * actually exercised the both-teams case below). This is the fixture-scoped call, not the
      * team+season "whole log" one (`GET /injuries?league=...&season=...&team=...`, confirmed
      * separately but returns one row per fixture across the *entire* season — see the gotcha
      * documented on [ApiFootballInjuryDto]) — My Team picks one reference fixture (its team's next
      * upcoming match, or most recent if none upcoming) and calls this instead of pulling the whole
      * season log and filtering client-side, since the fixture-scoped call already does exactly
-     * that filtering server-side. */
-    suspend fun fetchUnavailableForFixture(fixtureId: Int): Result<List<UnavailablePlayer>> = runCatching {
+     * that filtering server-side... except by *team*: `fixture` alone doesn't scope the response to
+     * one side, and a real fixture involves two teams, so an unfiltered response can (per
+     * API-Football's documented behavior for this endpoint — not itself re-curled this round) come
+     * back with both teams' unavailable players interleaved. [ApiFootballInjuryDto.team] carries
+     * exactly the id needed to tell them apart, but was previously discarded entirely in
+     * [toUnavailablePlayer] — found from a user question ("is it possible this shows unavailable
+     * players from both selected team and the opponent") rather than a report of actually seeing it
+     * happen, so this is a real gap being closed proactively, not a confirmed-live bug. Filtering
+     * here, not in the mapper, keeps [UnavailablePlayer] itself free of a team field it has no other
+     * use for. */
+    suspend fun fetchUnavailableForFixture(fixtureId: Int, teamId: Int): Result<List<UnavailablePlayer>> = runCatching {
         val body: ApiFootballInjuriesResponse = getChecked("$API_BASE/injuries") {
             parameter("fixture", fixtureId)
         }
-        body.response.map { it.toUnavailablePlayer() }
+        body.response.filter { it.team.id == teamId }.map { it.toUnavailablePlayer() }
     }
 
     // --- My Team -----------------------------------------------------------------
@@ -276,7 +297,7 @@ internal class ApiFootballApi {
         // docs don't explain why, so this dedupes defensively by player name rather than assuming
         // a specific cause. Keeps whichever row for that name came first.
         val unavailable = referenceFixtureId
-            ?.let { fetchUnavailableForFixture(it).getOrElse { emptyList() } }
+            ?.let { fetchUnavailableForFixture(it, teamId).getOrElse { emptyList() } }
             ?.distinctBy { it.playerName }
             ?: emptyList()
 
@@ -381,6 +402,24 @@ internal class ApiFootballApi {
             .toMap()
     }
 
+    /** Player headshot bytes for a lineup's starting XI + substitutes, keyed by [LineupPlayer.id] —
+     * same "construct the URL from a bare id" approach as [fetchLeagueLogosByCompetitionId] above,
+     * for the same reason: the `/fixtures/lineups` response this app parses players from has no
+     * `photo` field of its own (only `coach` does — see [ApiFootballCoachDto]'s doc comment), so
+     * there's no URL the API ever hands this app for a player, only the id to build one from. A
+     * player with no id, or whose fetch 404s/fails, is simply absent from the result map — the
+     * caller (see PitchPlayerColumn in SoccerHomeScreen.kt) falls back to the existing number-in-
+     * circle rendering for any id missing here, same "omit rather than show broken" convention as
+     * every other image fetch in this file. Concurrency is bounded implicitly by [ids] itself — a
+     * full matchday lineup tab is at most ~36 players (2 × 18 starters+subs), well under any rate
+     * concern for this proxy-fronted flow. */
+    suspend fun fetchPlayerPhotos(ids: Collection<Int>): Map<Int, ByteArray> = coroutineScope {
+        ids.distinct()
+            .map { id -> id to async { fetchImageBytes("$API_SPORTS_PLAYER_PHOTO_BASE/$id.png").getOrNull() } }
+            .mapNotNull { (id, deferred) -> deferred.await()?.let { id to it } }
+            .toMap()
+    }
+
     /** Team crest bytes for one or more [Fixture.homeTeamLogo]/[Fixture.awayTeamLogo] URLs, keyed
      * by URL — used by Scores' own two-line rows (see ScheduleMatchRow in SoccerHomeScreen.kt).
      * Mechanically identical to [fetchLeagueLogos] (fetch each distinct URL once, keyed by URL, omit
@@ -454,7 +493,7 @@ internal class ApiFootballApi {
                 ApiFootballApiException.Kind.PLAN_RESTRICTED,
             )
             403 -> throw ApiFootballApiException(
-                "This league isn't turned on for Matchday yet — try again once the proxy is updated.",
+                "This league isn't turned on for Soccer Pro yet — try again once the proxy is updated.",
                 ApiFootballApiException.Kind.UNKNOWN,
             )
             502 -> throw ApiFootballApiException(

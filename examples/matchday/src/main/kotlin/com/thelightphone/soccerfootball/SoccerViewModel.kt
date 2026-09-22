@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.viewModelScope
 import com.thelightphone.sdk.LightViewModel
 import com.thelightphone.sdk.SimpleLightScreen
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -152,10 +153,23 @@ sealed class ScoreScreenMode {
          * a side had no coach/photo. */
         val homeCoachPhotoBytes: ByteArray? = null,
         val awayCoachPhotoBytes: ByteArray? = null,
+        /** Player headshot bytes for the lineup pitch, keyed by [LineupPlayer.id] — fetched in the
+         * same follow-up phase as the coach photos above (once [detail]'s lineups are known, since
+         * that's the only place [LineupPlayer.id] comes from) via
+         * [ApiFootballApi.fetchPlayerPhotos]. One shared map for both teams (player ids are globally
+         * unique, not per-team) rather than separate home/away maps, since [LineupSection]
+         * (SoccerHomeScreen.kt) is called once per team anyway and just looks up each of its own
+         * players' ids in it. A player missing from this map — no id, fetch failed, or this phase
+         * hasn't resolved yet — falls back to the existing number-in-circle rendering, never a
+         * blank space. */
+        val playerPhotosById: Map<Int, ByteArray> = emptyMap(),
     ) : ScoreScreenMode()
 }
 
-data class LeagueSelectionRow(val id: Int, val name: String, val selected: Boolean)
+/** [region] carries [Competition.region] through to [LeagueSelectionContent] (SoccerHomeScreen.kt)
+ * so that screen can render one section header per country (plus "International Club" for
+ * UCL/UEL) instead of one flat list — on request. */
+data class LeagueSelectionRow(val id: Int, val name: String, val selected: Boolean, val region: String)
 
 data class ScoreUiState(
     val mode: ScoreScreenMode = ScoreScreenMode.Loading(LOADING_MESSAGE),
@@ -167,19 +181,21 @@ private const val FETCHING_MESSAGE = "fetching today's scores..."
 private val MIN_LOADING_DISPLAY = 1.seconds
 
 private const val NETWORK_ERROR_MESSAGE =
-    "Matchday requires a network connection. Connect to wi-fi or insert a data SIM to see scores."
+    "Soccer Pro requires a network connection. Connect to wi-fi or insert a data SIM to see scores."
 private const val MIN_LEAGUES_MESSAGE = "Keep at least one league selected."
 
 /** How far back/forward the Fixtures mode's window reaches from [todayLocalDate]. Wide enough to
  * cover a handful of matchdays either side without pulling a whole season's worth of matches —
  * matches the ESPN variant's window (see its README). */
 /** How far back/forward [refresh]'s fetch window reaches from [todayLocalDate] — on request, the
- * merged Scores/schedule list defaults to two weeks either side (was today-only for Scores, a wider
- * but separate 10-past/21-future window for the now-retired standalone Fixtures screen — see that
- * mode's own doc comment history). Symmetric on purpose, matching what was actually asked for
- * ("2 weeks behind and ahead"), unlike the old Fixtures window's asymmetric past/future split. */
+ * merged Scores/schedule list now looks back 2 weeks and ahead 4 weeks (was a symmetric 2 weeks
+ * either side; before that, today-only for Scores, plus a separate 10-past/21-future window for the
+ * now-retired standalone Fixtures screen — see that mode's own doc comment history). Asymmetric on
+ * purpose this round, matching what was actually asked for; SettingsContent's About section
+ * mentions this window in plain language too, on request, so keep the two in sync if this changes
+ * again. */
 private const val SCHEDULE_PAST_DAYS = 14
-private const val SCHEDULE_FUTURE_DAYS = 14
+private const val SCHEDULE_FUTURE_DAYS = 28
 
 /** How far ahead of kickoff [refresh] starts spending an extra API call per still-scheduled match
  * to check whether its lineup has been posted yet (see [ApiFootballApi.fetchLineupAvailability]).
@@ -211,6 +227,22 @@ class SoccerViewModel(
     private val _uiState = MutableStateFlow(ScoreUiState())
     val uiState: StateFlow<ScoreUiState> = _uiState.asStateFlow()
 
+    /** Completed once [loadInitialState] has read [SoccerPreferences.SELECTED_COMPETITIONS] from
+     * disk and [selectedIds] holds the user's real, persisted selection — not [selectedIds]'s
+     * all-competitions default below. Root-caused a real bug this round ("competitions followed
+     * doesn't always reflect what's filtered after an app/device restart, other leagues like FA Cup
+     * show anyway") that turned out to be a startup race, not a data/persistence bug: [init] and
+     * [onScreenShow] each independently launch a coroutine on `Dispatchers.IO`, and
+     * `Dispatchers.IO` has no ordering guarantee between two separately-launched coroutines — on a
+     * cold start, [onScreenShow]'s `if (lastScores == null)` branch (true on first launch, since
+     * nothing's loaded yet) could reach its own [refresh] call *before* [loadInitialState]'s
+     * `dataStore.data.first()` had actually resolved, reading [selectedIds] while it still held its
+     * all-competitions default — exactly the reported symptom, and exactly why it was intermittent
+     * ("does not always") rather than every time: real coroutine-scheduling timing, not a
+     * deterministic bug. Every [refresh] call site now awaits this before running, closing that
+     * window instead of just narrowing it. */
+    private val selectionLoaded = CompletableDeferred<Unit>()
+
     private var selectedIds: Set<Int> = TRACKED_COMPETITIONS.map { it.id }.toSet()
     private var lastScores: ScoreScreenMode.Scores? = null
     private var modeBeforeAttribution: ScoreScreenMode? = null
@@ -234,7 +266,18 @@ class SoccerViewModel(
 
     init {
         viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
-            loadInitialState()
+            // The `finally` guarantees [selectionLoaded] always completes, even if
+            // loadInitialState() throws (a bad/corrupt DataStore read, say) — without it, a failure
+            // here would leave onScreenShow's own coroutine awaiting [selectionLoaded] forever,
+            // trading the old intermittent "wrong leagues" bug for a new "stuck on Loading forever"
+            // one on the unlucky case where the very read this is all guarding against also happens
+            // to fail. [CompletableDeferred.complete] is a no-op (returns false) if
+            // loadInitialState() already completed it normally, so this is never a double-signal.
+            try {
+                loadInitialState()
+            } finally {
+                selectionLoaded.complete(Unit)
+            }
         }
     }
 
@@ -244,6 +287,13 @@ class SoccerViewModel(
         // there's no poll-on-every-return here.
         if (lastScores == null) {
             viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
+                // Waits for loadInitialState()'s own dataStore read to finish before touching
+                // selectedIds at all — see [selectionLoaded]'s doc comment for the real bug this
+                // closes (a cold-start race that could fetch with the all-competitions default
+                // instead of the user's persisted selection). This suspends at most as long as that
+                // one DataStore read takes, and not at all once it's already completed — by the time
+                // any *later* onScreenShow fires, this Deferred is already resolved.
+                selectionLoaded.await()
                 refresh(showSpinner = _uiState.value.mode is ScoreScreenMode.Scores)
             }
         }
@@ -261,6 +311,16 @@ class SoccerViewModel(
         myTeamId = prefs[SoccerPreferences.MY_TEAM_ID]
         myTeamName = prefs[SoccerPreferences.MY_TEAM_NAME]
         myTeamLeagueId = prefs[SoccerPreferences.MY_TEAM_LEAGUE_ID]
+        // selectedIds now holds the user's real, persisted selection (or the correct
+        // all-competitions default if they've genuinely never touched League Selection) — safe for
+        // any refresh() call, including onScreenShow's own, to read from this point on. See
+        // [selectionLoaded]'s doc comment. Completed here, right away, rather than waiting for this
+        // whole function (cache load + its own refresh()) to finish, so onScreenShow's awaiting
+        // coroutine unblocks as early as possible — [init]'s `finally` also completes this same
+        // Deferred as a fallback for the loadInitialState() *throws* case; [CompletableDeferred.
+        // complete] is a no-op on an already-completed Deferred, so having both is deliberate, not
+        // a bug.
+        selectionLoaded.complete(Unit)
 
         val cached = loadCachedMatches(prefs)
         if (cached != null) {
@@ -511,7 +571,7 @@ class SoccerViewModel(
     }
 
     private fun buildLeagueRows(): List<LeagueSelectionRow> =
-        TRACKED_COMPETITIONS.map { LeagueSelectionRow(it.id, it.name, it.id in selectedIds) }
+        TRACKED_COMPETITIONS.map { LeagueSelectionRow(it.id, it.name, it.id in selectedIds, it.region) }
 
     // --- Standings -----------------------------------------------------------------
     //
@@ -879,6 +939,26 @@ class SoccerViewModel(
                             state.copy(mode = current.copy(homeCoachPhotoBytes = homeCoachBytes, awayCoachPhotoBytes = awayCoachBytes))
                         } else {
                             state
+                        }
+                    }
+                    // Player headshots — same "only fetchable once detail.lineups is known" reasoning
+                    // as the coach photos just above (see MatchDetailScreen.playerPhotosById's doc
+                    // comment), so folded into this same follow-up phase rather than a fourth launch.
+                    // Silent on failure, same as coach photos/crests: a missing headshot just means
+                    // that player's pitch dot falls back to the number-in-circle rendering.
+                    val playerIds = (
+                        (detail.lineups.home?.startXI.orEmpty() + detail.lineups.home?.substitutes.orEmpty()) +
+                            (detail.lineups.away?.startXI.orEmpty() + detail.lineups.away?.substitutes.orEmpty())
+                        ).mapNotNull { it.id }
+                    if (playerIds.isNotEmpty()) {
+                        val playerPhotos = api.fetchPlayerPhotos(playerIds)
+                        updateState { state ->
+                            val current = state.mode as? ScoreScreenMode.MatchDetailScreen
+                            if (current != null && current.fixtureId == match.id) {
+                                state.copy(mode = current.copy(playerPhotosById = playerPhotos))
+                            } else {
+                                state
+                            }
                         }
                     }
                 },

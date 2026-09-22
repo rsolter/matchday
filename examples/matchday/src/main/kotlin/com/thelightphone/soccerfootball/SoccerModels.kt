@@ -48,6 +48,15 @@ data class Competition(
     // MyTeamHeaderRow's doc comment in SoccerHomeScreen.kt): a UCL/UEL group-stage position reads
     // as noise next to the domestic-table rank the request actually wants there.
     val isDomestic: Boolean = true,
+    /** Country this competition's Settings/"Competitions followed" league-selection row groups
+     * under (on request: "Reorganize 'Leagues followed' selection to be grouped by country... As
+     * an exception, place UCL and Europa under 'International Club'") — plain English names, not
+     * ISO codes, since this is display text, not a lookup key. The two UEFA competitions are the
+     * only entries that don't use an actual country name, per that explicit exception. This exists
+     * purely for [LeagueSelectionContent]'s grouping (SoccerHomeScreen.kt via
+     * [SoccerViewModel.LeagueSelectionRow]) — every other screen in this app still shows a
+     * competition's plain [name]/[shortName], unchanged. */
+    val region: String = "",
 )
 
 // MLS (id 253) was tracked here through an earlier round, in the "recalled from general knowledge
@@ -59,25 +68,26 @@ data class Competition(
 // seeing it — no migration needed, nothing left dangling.
 val TRACKED_COMPETITIONS: List<Competition> = listOf(
     // England
-    Competition(id = 39, name = "Premier League", shortName = "EPL"),
-    Competition(id = 40, name = "Championship"),
-    Competition(id = 45, name = "FA Cup", hasStandings = false),
-    Competition(id = 48, name = "EFL Cup", hasStandings = false),
+    Competition(id = 39, name = "Premier League", shortName = "EPL", region = "England"),
+    Competition(id = 40, name = "Championship", region = "England"),
+    Competition(id = 45, name = "FA Cup", hasStandings = false, region = "England"),
+    Competition(id = 48, name = "EFL Cup", hasStandings = false, region = "England"),
     // Italy
-    Competition(id = 135, name = "Serie A"),
-    Competition(id = 137, name = "Coppa Italia", hasStandings = false),
+    Competition(id = 135, name = "Serie A", region = "Italy"),
+    Competition(id = 137, name = "Coppa Italia", hasStandings = false, region = "Italy"),
     // Spain
-    Competition(id = 140, name = "La Liga"),
-    Competition(id = 143, name = "Copa del Rey", hasStandings = false),
+    Competition(id = 140, name = "La Liga", region = "Spain"),
+    Competition(id = 143, name = "Copa del Rey", hasStandings = false, region = "Spain"),
     // Germany
-    Competition(id = 78, name = "Bundesliga"),
-    Competition(id = 81, name = "DFB-Pokal", hasStandings = false),
+    Competition(id = 78, name = "Bundesliga", region = "Germany"),
+    Competition(id = 81, name = "DFB-Pokal", hasStandings = false, region = "Germany"),
     // France
-    Competition(id = 61, name = "Ligue 1"),
-    Competition(id = 66, name = "Coupe de France", shortName = "Coupe Fr."),
-    // Europe
-    Competition(id = 2, name = "UEFA Champions League", shortName = "UCL", isDomestic = false),
-    Competition(id = 3, name = "UEFA Europa League", shortName = "UEL", isDomestic = false),
+    Competition(id = 61, name = "Ligue 1", region = "France"),
+    Competition(id = 66, name = "Coupe de France", shortName = "Coupe Fr.", region = "France"),
+    // Europe — grouped as "International Club" rather than a country, on request (see
+    // Competition.region's doc comment for the exact wording asked for).
+    Competition(id = 2, name = "UEFA Champions League", shortName = "UCL", isDomestic = false, region = "International Club"),
+    Competition(id = 3, name = "UEFA Europa League", shortName = "UEL", isDomestic = false, region = "International Club"),
 )
 
 /**
@@ -592,6 +602,7 @@ private fun ApiFootballLineupPlayerDto.toLineupPlayer(): LineupPlayer = LineupPl
     number = number,
     position = pos,
     grid = grid,
+    id = id,
 )
 
 // --- Wire format (API-Football /standings response) ---------------------------
@@ -928,6 +939,12 @@ data class LineupPlayer(
     /** "row:col" pitch position — row 1 is the goalkeeper, increasing rows move toward attack.
      * Null for substitutes (API-Football sends no grid for the bench). */
     val grid: String?,
+    /** API-Football's numeric player id, used only to construct a headshot URL client-side (see
+     * [ApiFootballApi.fetchPlayerPhotos]'s doc comment) — the `/fixtures/lineups` response this
+     * app pulls players from has no `photo` field of its own (unlike `coach`, which does), so this
+     * id is the only handle this app has on a player's photo. Null on the rare row where
+     * API-Football itself omits the id. */
+    val id: Int? = null,
 )
 
 // Matches a leading "F. " (single initial, period, space) prefix — some API-Football responses
