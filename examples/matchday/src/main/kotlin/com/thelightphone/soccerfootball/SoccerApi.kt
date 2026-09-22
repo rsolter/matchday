@@ -24,9 +24,11 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
+import okhttp3.Dispatcher
 
 private const val API_BASE = "https://soccer-proxy.ravisolter.com"
 private const val REQUEST_TIMEOUT_MS = 15_000L
+private const val IMAGE_MAX_CONCURRENT_DOWNLOADS = 16
 
 // Crests, league badges, and player headshots come from the proxy's own stored copies
 // (soccer-pro-proxy's GET /img/{kind}/{id}.png), not API-Sports' media CDN directly — the proxy
@@ -78,6 +80,25 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
             requestTimeoutMillis = REQUEST_TIMEOUT_MS
             connectTimeoutMillis = REQUEST_TIMEOUT_MS
             socketTimeoutMillis = REQUEST_TIMEOUT_MS
+        }
+    }
+
+    /** Images get a client of their own, and with it their own OkHttp [Dispatcher]. A dispatcher
+     * runs at most `maxRequestsPerHost` requests to one host at a time (5 by default) and queues
+     * the rest — and now that images and JSON both come from the proxy, sharing one would mean a
+     * first Scores refresh's few hundred crest downloads sit in front of a Match Detail's own
+     * stats/events/lineups calls. Separately, the image dispatcher allows more at once than the
+     * default: they're small files the proxy serves straight off disk. */
+    private val imageClient = HttpClient(OkHttp) {
+        install(HttpTimeout) {
+            requestTimeoutMillis = REQUEST_TIMEOUT_MS
+            connectTimeoutMillis = REQUEST_TIMEOUT_MS
+            socketTimeoutMillis = REQUEST_TIMEOUT_MS
+        }
+        engine {
+            config {
+                dispatcher(Dispatcher().apply { maxRequestsPerHost = IMAGE_MAX_CONCURRENT_DOWNLOADS })
+            }
         }
     }
 
@@ -430,8 +451,8 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
      * Deliberately bypasses [get]/[getChecked] below: there's no JSON body here to run through
      * [apiFootballErrorMessage]'s success/failure check. Image requests don't count against the
      * proxy's API-Football budget (the proxy serves them from its own disk) and have their own,
-     * larger per-IP rate limit there. Reuses this class's [client] (same timeouts) rather than
-     * standing up a second HTTP client just for images. */
+     * larger per-IP rate limit there. Downloads go through [imageClient], not [client] — see
+     * [imageClient]'s doc comment for why. */
     private suspend fun fetchImageBytes(url: String): Result<ByteArray> = withContext(Dispatchers.IO) {
         runCatching {
             val imageUrl = proxiedImageUrl(url)
@@ -454,7 +475,7 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
 
     private suspend fun downloadImage(url: String): ByteArray {
         val response = try {
-            client.get(url)
+            imageClient.get(url)
         } catch (e: Exception) {
             throw ApiFootballApiException(e.message ?: "Image fetch failed.", ApiFootballApiException.Kind.NETWORK)
         }
