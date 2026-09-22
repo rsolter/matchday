@@ -5,7 +5,7 @@ standings, sourced from [API-Football](https://www.api-football.com).*
 
 ## What it is
 
-Live Scores and Fixtures across 14 tracked competitions (the Premier League, Serie A, La Liga,
+Live Scores and Fixtures across 13 tracked competitions (the Premier League, Serie A, La Liga,
 Bundesliga, Ligue 1, and Europe's Champions League and Europa League among them), league
 Standings, a "My Team" view for whichever club you follow, and a per-match Stats / Timeline /
 Lineups detail screen.

@@ -238,6 +238,16 @@ class SoccerViewModel(
      * window instead of just narrowing it. */
     private val selectionLoaded = CompletableDeferred<Unit>()
 
+    /** True until [loadInitialState] (including its own [refresh]) has finished, successfully or
+     * not. [onScreenShow] skips its fetch while this is set: on a cold start both run at once, and
+     * without this check each fired its own full refresh — every followed league requested twice
+     * per launch, which on its own used up half the proxy's per-minute allowance. */
+    @Volatile
+    private var initialLoadPending = true
+
+    /** Set by [toggleLeague], cleared by [closeLeagueSelection] — see the latter. */
+    private var selectionChangedSinceRefresh = false
+
     private var selectedIds: Set<Int> = TRACKED_COMPETITIONS.map { it.id }.toSet()
     private var lastScores: ScoreScreenMode.Scores? = null
     private var modeBeforeAttribution: ScoreScreenMode? = null
@@ -272,15 +282,17 @@ class SoccerViewModel(
                 loadInitialState()
             } finally {
                 selectionLoaded.complete(Unit)
+                initialLoadPending = false
             }
         }
     }
 
     override fun onScreenShow(screen: SimpleLightScreen<Unit>) {
         super.onScreenShow(screen)
-        // Only fetches if nothing's loaded yet (first launch) — see the class doc comment for why
-        // there's no poll-on-every-return here.
-        if (lastScores == null) {
+        // Only fetches if nothing's loaded yet — see the class doc comment for why there's no
+        // poll-on-every-return here. Not on a cold start, where loadInitialState() is already
+        // fetching (see [initialLoadPending]); this is the retry for a first load that failed.
+        if (lastScores == null && !initialLoadPending) {
             viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
                 // Waits for loadInitialState()'s own dataStore read to finish before touching
                 // selectedIds at all — see [selectionLoaded]'s doc comment for the real bug this
@@ -301,8 +313,13 @@ class SoccerViewModel(
 
     private suspend fun loadInitialState() {
         val prefs = dataStore.data.first()
-        selectedIds = prefs[SoccerPreferences.SELECTED_COMPETITIONS]?.mapNotNull { it.toIntOrNull() }?.toSet()
-            ?.takeIf { it.isNotEmpty() } ?: TRACKED_COMPETITIONS.map { it.id }.toSet()
+        // Filtered to what TRACKED_COMPETITIONS still lists: [refresh] requests selectedIds as-is, so
+        // a competition dropped from the app (EFL Cup, MLS before it) would otherwise still be
+        // requested — and rejected by the proxy — on every refresh for anyone who'd followed it.
+        val trackedIds = TRACKED_COMPETITIONS.map { it.id }.toSet()
+        selectedIds = prefs[SoccerPreferences.SELECTED_COMPETITIONS]?.mapNotNull { it.toIntOrNull() }
+            ?.filter { it in trackedIds }?.toSet()
+            ?.takeIf { it.isNotEmpty() } ?: trackedIds
         myTeamId = prefs[SoccerPreferences.MY_TEAM_ID]
         myTeamName = prefs[SoccerPreferences.MY_TEAM_NAME]
         myTeamLeagueId = prefs[SoccerPreferences.MY_TEAM_LEAGUE_ID]
@@ -540,8 +557,16 @@ class SoccerViewModel(
         }
     }
 
+    /** Refreshes once here, on the way out, if the selection changed — not once per tap in
+     * [toggleLeague]. Every refresh requests every followed league, so a user turning several
+     * leagues on/off in a row used to fire a full round per tap and run straight into the proxy's
+     * per-minute rate limit. */
     fun closeLeagueSelection() {
         updateState { it.copy(mode = settingsMode(), errorModal = null) }
+        if (selectionChangedSinceRefresh) {
+            selectionChangedSinceRefresh = false
+            viewModelScope.launch(Dispatchers.IO + exceptionHandler) { refresh(showSpinner = false) }
+        }
     }
 
     fun toggleLeague(id: Int) {
@@ -562,7 +587,7 @@ class SoccerViewModel(
             val mode = state.mode as? ScoreScreenMode.LeagueSelection ?: return@updateState state
             state.copy(mode = mode.copy(rows = buildLeagueRows()))
         }
-        viewModelScope.launch(Dispatchers.IO + exceptionHandler) { refresh(showSpinner = false) }
+        selectionChangedSinceRefresh = true
     }
 
     private fun buildLeagueRows(): List<LeagueSelectionRow> =

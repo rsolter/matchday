@@ -1,8 +1,8 @@
 # Matchday
 
 A Light Phone III tool for live soccer scores, fixtures, and standings, sourced from
-[API-Football](https://www.api-football.com) — 14 competitions across England (Premier League,
-Championship, FA Cup, EFL Cup), Italy (Serie A, Coppa Italia), Spain (La Liga, Copa del Rey),
+[API-Football](https://www.api-football.com) — 13 competitions across England (Premier League,
+Championship, FA Cup), Italy (Serie A, Coppa Italia), Spain (La Liga, Copa del Rey),
 Germany (Bundesliga, DFB-Pokal), France (Ligue 1, Coupe de France), and Europe (UEFA Champions
 League, UEFA Europa League).
 

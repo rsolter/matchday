@@ -28,9 +28,9 @@ import kotlinx.serialization.json.JsonPrimitive
  *   (La Liga), 135 (Serie A), 78 (Bundesliga), 61 (Ligue 1), 3 (UEFA Europa League), 45 (FA Cup),
  *   143 (Copa del Rey), 137 (Coppa Italia), 81 (DFB-Pokal), 66 (Coupe de France).
  * - **Recalled from general knowledge only, no independent source found** — the riskiest two left,
- *   worth checking first once live: 40 (Championship), 48 (EFL Cup). MLS (253) used to sit in this
- *   same tier; dropped from [TRACKED_COMPETITIONS] entirely on request rather than re-verified —
- *   see that val's doc comment.
+ *   worth checking first once live: 40 (Championship). 48 (EFL Cup) and MLS (253) used to sit in
+ *   this same tier; both dropped from [TRACKED_COMPETITIONS] entirely on request rather than
+ *   re-verified — see that val's doc comment.
  */
 data class Competition(
     val id: Int,
@@ -62,16 +62,17 @@ data class Competition(
 // MLS (id 253) was tracked here through an earlier round, in the "recalled from general knowledge
 // only" (least-verified) ID tier above, and ran into a real standings-parsing bug live (see
 // SoccerViewModel.apiErrorMessage's doc comment on "the MLS standings bug"). Dropped entirely on
-// request rather than re-verified or fixed. Safe to remove outright: SoccerViewModel.selectedIds
-// is read from persisted prefs and filtered against this list (`TRACKED_COMPETITIONS.filter { it.id
-// in selectedIds }`), so a device that had MLS selected before this change just silently stops
-// seeing it — no migration needed, nothing left dangling.
+// request rather than re-verified or fixed. EFL Cup (id 48) was dropped the same way in 1.3.2: it
+// was never on the proxy's league whitelist, so every request for it came back 403. Safe to remove
+// either outright: SoccerViewModel.loadInitialState filters the persisted selection against this
+// list, so a device that had one selected just silently stops requesting and showing it — no
+// migration needed, nothing left dangling. (Before 1.3.2 only the *display* was filtered; refresh
+// still requested a dropped id on every fetch.)
 val TRACKED_COMPETITIONS: List<Competition> = listOf(
     // England
     Competition(id = 39, name = "Premier League", shortName = "EPL", region = "England"),
     Competition(id = 40, name = "Championship", region = "England"),
     Competition(id = 45, name = "FA Cup", hasStandings = false, region = "England"),
-    Competition(id = 48, name = "EFL Cup", hasStandings = false, region = "England"),
     // Italy
     Competition(id = 135, name = "Serie A", region = "Italy"),
     Competition(id = 137, name = "Coppa Italia", hasStandings = false, region = "Italy"),
@@ -170,7 +171,7 @@ fun competitionDisplayOrder(id: Int): Int = COMPETITION_DISPLAY_ORDER[id] ?: Int
 // those teams just render unshortened (safe, same fallback as always) until they show up in a
 // future re-pull of this same process and get a real, confirmed entry.
 //
-// Domestic cup fixtures (FA Cup, EFL Cup, Copa del Rey, Coppa Italia, DFB-Pokal, Coupe de France) can
+// Domestic cup fixtures (FA Cup, Copa del Rey, Coppa Italia, DFB-Pokal, Coupe de France) can
 // pull in lower-league and non-league clubs entirely outside this map — the original "Carshalton
 // Athletic" truncation case this whole effort traces back to — and that's still out of scope by
 // design: a live FA Cup fixtures fetch confirmed that pool is qualifying-round non-league football
