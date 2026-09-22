@@ -22,6 +22,7 @@ import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.serialization.json.Json
+import java.io.File
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
@@ -146,16 +147,9 @@ sealed class ScoreScreenMode {
          * URL / the fetch failed. */
         val homeTeamLogoBytes: ByteArray? = null,
         val awayTeamLogoBytes: ByteArray? = null,
-        /** Coach headshot bytes for the lineup tab — fetched after [detail] resolves, since a
-         * coach's photo URL lives inside the lineups response itself (see
-         * [ApiFootballApi.fetchCoachPhotos]'s doc comment), unlike the crests above which are
-         * already known from the tapped [Fixture]. Null until that follow-up fetch resolves, or if
-         * a side had no coach/photo. */
-        val homeCoachPhotoBytes: ByteArray? = null,
-        val awayCoachPhotoBytes: ByteArray? = null,
-        /** Player headshot bytes for the lineup pitch, keyed by [LineupPlayer.id] — fetched in the
-         * same follow-up phase as the coach photos above (once [detail]'s lineups are known, since
-         * that's the only place [LineupPlayer.id] comes from) via
+        /** Player headshot bytes for the lineup pitch, keyed by [LineupPlayer.id] — fetched as a
+         * follow-up once [detail]'s lineups are known (that's the only place [LineupPlayer.id]
+         * comes from) via
          * [ApiFootballApi.fetchPlayerPhotos]. One shared map for both teams (player ids are globally
          * unique, not per-team) rather than separate home/away maps, since [LineupSection]
          * (SoccerHomeScreen.kt) is called once per team anyway and just looks up each of its own
@@ -181,7 +175,7 @@ private const val FETCHING_MESSAGE = "fetching today's scores..."
 private val MIN_LOADING_DISPLAY = 1.seconds
 
 private const val NETWORK_ERROR_MESSAGE =
-    "Soccer Pro requires a network connection. Connect to wi-fi or insert a data SIM to see scores."
+    "Matchday requires a network connection. Connect to wi-fi or insert a data SIM to see scores."
 private const val MIN_LEAGUES_MESSAGE = "Keep at least one league selected."
 
 /** How far back/forward the Fixtures mode's window reaches from [todayLocalDate]. Wide enough to
@@ -220,8 +214,9 @@ private val LINEUP_CHECK_WINDOW = 1.hours
  */
 class SoccerViewModel(
     private val dataStore: DataStore<Preferences>,
+    imageCacheDir: File,
 ) : LightViewModel<Unit>() {
-    private val api = ApiFootballApi()
+    private val api = ApiFootballApi(ImageDiskCache(imageCacheDir))
     private val json = Json { ignoreUnknownKeys = true }
 
     private val _uiState = MutableStateFlow(ScoreUiState())
@@ -924,28 +919,11 @@ class SoccerViewModel(
                             state
                         }
                     }
-                    // Coach photos fetch only now, not alongside the crests fetch below — their
-                    // URLs live inside detail.lineups itself (see fetchCoachPhotos's doc comment),
-                    // so there's nothing to fetch until this point. Silent on failure, same as the
-                    // crests: a missing headshot just means the "Coach: {name}" line renders
-                    // without one, not something worth an errorModal over.
-                    val (homeCoachBytes, awayCoachBytes) = api.fetchCoachPhotos(
-                        detail.lineups.home?.coachPhotoUrl,
-                        detail.lineups.away?.coachPhotoUrl,
-                    )
-                    updateState { state ->
-                        val current = state.mode as? ScoreScreenMode.MatchDetailScreen
-                        if (current != null && current.fixtureId == match.id) {
-                            state.copy(mode = current.copy(homeCoachPhotoBytes = homeCoachBytes, awayCoachPhotoBytes = awayCoachBytes))
-                        } else {
-                            state
-                        }
-                    }
-                    // Player headshots — same "only fetchable once detail.lineups is known" reasoning
-                    // as the coach photos just above (see MatchDetailScreen.playerPhotosById's doc
-                    // comment), so folded into this same follow-up phase rather than a fourth launch.
-                    // Silent on failure, same as coach photos/crests: a missing headshot just means
-                    // that player's pitch dot falls back to the number-in-circle rendering.
+                    // Player headshots fetch only now, not alongside the crests fetch below — player
+                    // ids live inside detail.lineups itself (see MatchDetailScreen.playerPhotosById's
+                    // doc comment), so there's nothing to fetch until this point. Silent on failure,
+                    // same as the crests: a missing headshot just means that player's pitch dot
+                    // falls back to the number-in-circle rendering.
                     val playerIds = (
                         (detail.lineups.home?.startXI.orEmpty() + detail.lineups.home?.substitutes.orEmpty()) +
                             (detail.lineups.away?.startXI.orEmpty() + detail.lineups.away?.substitutes.orEmpty())

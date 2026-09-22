@@ -32,6 +32,10 @@ API-Football key server-side, so a single request budget is shared across every 
 rather than each one needing its own key. No client-side API key or setup is needed — the app
 shows real, current data on first launch.
 
+Team crests, league badges, and player headshots come from the proxy too (its `/img/` routes, which
+serve stored copies of API-Football's images), and each one is kept on the phone after its first
+download — so they load instantly on later screens and still show up offline.
+
 ## Building it
 
 Standard Light SDK tool module layout — `build.gradle.kts`/`lighttool.toml` plus a
@@ -80,5 +84,3 @@ sign it themselves from a public git commit.
 
 - The Stats tab shows raw API-Football stat types, lightly reformatted (underscores → spaces,
   title case) but not curated into a fixed display order.
-- Team crest images are fetched directly from API-Football's media CDN rather than through the
-  caching proxy, so they bypass its caching and rate limiting.

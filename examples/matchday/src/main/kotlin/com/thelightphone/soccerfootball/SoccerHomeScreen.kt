@@ -59,6 +59,7 @@ import com.thelightphone.sdk.ui.LightTopBarCenter
 import com.thelightphone.sdk.ui.gridUnitsAsDp
 import com.thelightphone.sdk.ui.lightClickable
 import com.thelightphone.sdk.ui.scrollBarGutterUnits
+import java.io.File
 
 @InitialScreen
 class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
@@ -67,7 +68,8 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
     override val viewModelClass: Class<SoccerViewModel>
         get() = SoccerViewModel::class.java
 
-    override fun createViewModel(): SoccerViewModel = SoccerViewModel(lightContext.dataStore)
+    override fun createViewModel(): SoccerViewModel =
+        SoccerViewModel(lightContext.dataStore, imageCacheDir = File(lightContext.filesDir, "image-cache"))
 
     @Composable
     override fun Content() {
@@ -82,7 +84,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
             ) {
                 when (val mode = state.mode) {
                     is ScoreScreenMode.Loading -> {
-                        LoadingContent(title = "Soccer Pro", message = mode.message)
+                        LoadingContent(title = "Matchday", message = mode.message)
                     }
 
                     is ScoreScreenMode.Scores -> {
@@ -2034,7 +2036,6 @@ private fun MatchDetailContent(
                             teamName = mode.homeTeamName,
                             lineup = detail.lineups.home,
                             teamColor = homeTeamColor,
-                            coachPhotoBytes = mode.homeCoachPhotoBytes,
                             playerPhotosById = mode.playerPhotosById,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
@@ -2042,7 +2043,6 @@ private fun MatchDetailContent(
                             teamName = mode.awayTeamName,
                             lineup = detail.lineups.away,
                             teamColor = awayTeamColor,
-                            coachPhotoBytes = mode.awayCoachPhotoBytes,
                             playerPhotosById = mode.playerPhotosById,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
@@ -2552,7 +2552,6 @@ private fun LineupSection(
     teamName: String,
     lineup: TeamLineup?,
     teamColor: Color?,
-    coachPhotoBytes: ByteArray?,
     playerPhotosById: Map<Int, ByteArray>,
     modifier: Modifier = Modifier,
 ) {
@@ -2633,14 +2632,8 @@ private fun LineupSection(
         }
 
         // The "Coach: {name}" line that used to live here moved up to this fun's header row on
-        // request — see that row's own doc comment. [coachPhotoBytes] stays unused in this
-        // composable (a headshot Image was dropped from that line in an earlier round, before the
-        // line itself moved) — the parameter itself, its call-site plumbing (see
-        // [MatchDetailContent]'s two [LineupSection] calls), and the underlying fetch
-        // (ApiFootballApi.fetchMatchDetail's coach-photo follow-up, MatchDetail's
-        // homeCoachPhotoBytes/awayCoachPhotoBytes) are deliberately left in place rather than
-        // unwound — unwinding that fetch chain too would touch SoccerViewModel.kt/ApiFootballApi.kt
-        // well beyond what was asked, with no compiler here to catch a mistake made along the way.
+        // request — see that row's own doc comment. Its headshot was dropped in an earlier round,
+        // and the coach-photo fetch behind it has since been removed too.
 
         if (lineup.substitutes.isNotEmpty()) {
             SubstitutesBlock(lineup.substitutes, modifier = Modifier.padding(top = 1f.gridUnitsAsDp()))

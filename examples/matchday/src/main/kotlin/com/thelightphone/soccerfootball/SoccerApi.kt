@@ -10,8 +10,11 @@ import io.ktor.client.request.parameter
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
@@ -25,25 +28,22 @@ import kotlinx.serialization.json.decodeFromJsonElement
 private const val API_BASE = "https://soccer-proxy.ravisolter.com"
 private const val REQUEST_TIMEOUT_MS = 15_000L
 
-// API-Football/API-Sports' own documented media CDN for league crests — a static image host, not
-// part of the proxied/whitelisted API surface (same "bypasses the proxy entirely" category as every
-// other image fetch in this file — see fetchImageBytes's doc comment). Confirmed against a real
-// example URL in API-Football's own BunnyCDN integration guide (media.api-sports.io/football/
-// leagues/39.png for id 39 / Premier League, which matches this app's own curl-confirmed id for
-// that league) — not confirmed against every individual league id this app constructs a URL for,
-// see fetchLeagueLogosByCompetitionId's doc comment.
-private const val API_SPORTS_LEAGUE_LOGO_BASE = "https://media.api-sports.io/football/leagues"
+// Crests, league badges, and player headshots come from the proxy's own stored copies
+// (soccer-pro-proxy's GET /img/{kind}/{id}.png), not API-Sports' media CDN directly — the proxy
+// mirrors media.api-sports.io/football/{kind}/{id}.png under the same kind/id path, so an image URL
+// the API hands back (a fixture's team logo, say) maps onto it one-to-one; see [proxiedImageUrl].
+// Coach photos ("coachs" on the CDN) aren't mirrored — the app no longer fetches them.
+internal const val PROXY_IMAGE_BASE = "$API_BASE/img"
+internal val PROXIED_IMAGE_KINDS = setOf("teams", "leagues", "players")
+private const val API_SPORTS_MEDIA_BASE = "https://media.api-sports.io/football"
 
-// Same convention as API_SPORTS_LEAGUE_LOGO_BASE above, for player headshots — see
-// fetchPlayerPhotos's doc comment. Not itself curl-verified against a live /fixtures/lineups
-// response this session (no live API/curl access in this sandbox); the /fixtures/lineups shape
-// this app parses has no per-player photo field to confirm it against directly, but this exact
-// media.api-sports.io/football/<category>/<id>.png pattern is already confirmed working for both
-// leagues (this constant's sibling) and coaches (ApiFootballCoachDto.photo, which IS a real
-// curl-verified media.api-sports.io/football/coachs/{id}.png URL) — players are documented by
-// API-Football as following the same CDN convention off the player id from /players or
-// /players/squads (which does carry a photo field, unlike the lineups DTO this app maps from).
-private const val API_SPORTS_PLAYER_PHOTO_BASE = "https://media.api-sports.io/football/players"
+/** Rewrites an API-Sports media-CDN URL for a kind the proxy mirrors to that proxy route, e.g.
+ * `https://media.api-sports.io/football/teams/33.png` → `$PROXY_IMAGE_BASE/teams/33.png`. Any
+ * other URL is returned unchanged. */
+internal fun proxiedImageUrl(url: String): String {
+    val path = url.substringAfter("$API_SPORTS_MEDIA_BASE/", missingDelimiterValue = "")
+    return if (path.substringBefore('/') in PROXIED_IMAGE_KINDS) "$PROXY_IMAGE_BASE/$path" else url
+}
 
 /**
  * Client for this app's own caching proxy (`https://soccer-proxy.ravisolter.com`), not
@@ -68,7 +68,9 @@ internal class ApiFootballApiException(
     enum class Kind { RATE_LIMITED, PLAN_RESTRICTED, NETWORK, UNKNOWN }
 }
 
-internal class ApiFootballApi {
+/** [imageCache] — on-device copies of downloaded images, see [fetchImageBytes]. Null skips caching
+ * entirely (every image is downloaded every time), which is also what happens if it can't write. */
+internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
     private val json = Json { ignoreUnknownKeys = true }
 
     private val client = HttpClient(OkHttp) {
@@ -303,9 +305,9 @@ internal class ApiFootballApi {
 
         // No standalone "team" endpoint call for this — the crest URL rides along on every fixture's
         // team object (see ApiFootballFixtureTeamDto.logo), so the first fixture that actually
-        // mentions teamId (home or away side) is enough; costs zero extra requests against the proxy
-        // (the crest fetch below hits a separate image host directly, not the proxy, so it doesn't
-        // touch that budget either — see [fetchImageBytes]'s doc comment).
+        // mentions teamId (home or away side) is enough; costs zero extra API requests (the crest
+        // itself comes from the proxy's image store, which isn't metered against the API budget —
+        // see [fetchImageBytes]'s doc comment).
         val teamLogoUrl = fixtures.firstNotNullOfOrNull { f ->
             when (teamId) {
                 f.homeTeamId -> f.homeTeamLogo.takeIf { it.isNotBlank() }
@@ -316,8 +318,7 @@ internal class ApiFootballApi {
         val teamLogoBytes = teamLogoUrl?.let { fetchImageBytes(it).getOrNull() }
 
         // Same idea, but for the featured fixture's *other* side — the small opponent badge next to
-        // the today/next match placeholder. Same "hits the image CDN directly, not the proxy" cost
-        // profile as teamLogoBytes above.
+        // the today/next match placeholder. Same cost profile as teamLogoBytes above.
         val featuredOpponentLogoUrl = featuredFixture?.let { f ->
             when (teamId) {
                 f.homeTeamId -> f.awayTeamLogo.takeIf { it.isNotBlank() }
@@ -354,18 +355,6 @@ internal class ApiFootballApi {
         homeDeferred.await() to awayDeferred.await()
     }
 
-    /** Home/away coach headshot bytes for the lineup tab — see [TeamLineup.coachPhotoUrl]'s doc
-     * comment for where that URL comes from. Unlike [fetchMatchCrests], the URLs here aren't known
-     * until [fetchMatchDetail]'s lineups section has already resolved (a coach's photo URL only
-     * exists once the lineups response itself has arrived), so this takes nullable URLs rather than
-     * being kicked off alongside the initial fixture tap. Either side is null if that team had no
-     * lineup/coach/photo, or the fetch failed. */
-    suspend fun fetchCoachPhotos(homePhotoUrl: String?, awayPhotoUrl: String?): Pair<ByteArray?, ByteArray?> = coroutineScope {
-        val homeDeferred = async { homePhotoUrl?.takeIf { it.isNotBlank() }?.let { fetchImageBytes(it).getOrNull() } }
-        val awayDeferred = async { awayPhotoUrl?.takeIf { it.isNotBlank() }?.let { fetchImageBytes(it).getOrNull() } }
-        homeDeferred.await() to awayDeferred.await()
-    }
-
     /** League badge bytes for one or more league logo URLs (see [ApiFootballFixtureLeagueDto.logo] /
      * [ApiFootballStandingsLeagueDto.logo]), fetched concurrently and keyed by URL so a caller with
      * several distinct leagues on screen at once (Scores' competition groups) can look each one up
@@ -386,10 +375,10 @@ internal class ApiFootballApi {
      * every other logo fetch in this app gets its URL *from*, via [ApiFootballFixtureLeagueDto.logo]
      * / [ApiFootballStandingsLeagueDto.logo]) has necessarily been fetched — a followed-but-currently-
      * fixtureless cup, or a league not yet followed at all, would otherwise have no known logo URL to
-     * fetch by. Instead this constructs the URL itself from [API_SPORTS_LEAGUE_LOGO_BASE] + the
-     * league's own numeric id — API-Football's documented media-CDN convention for league crests
-     * (confirmed against a real example URL in their own BunnyCDN integration guide, using id 39 /
-     * Premier League, which matches this app's own curl-confirmed id for that league). This is the
+     * fetch by. Instead this constructs the URL itself from the proxy's `/img/leagues/{id}.png`
+     * route + the league's own numeric id — the proxy mirrors API-Football's media-CDN convention
+     * for league crests (all 13 whitelisted league ids confirmed present there when the proxy's
+     * image store was first filled). This is the
      * first place in this app that constructs an image URL itself rather than only ever using one
      * the API handed back — every other crest/logo fetch in this file deliberately avoided that. If
      * the convention turns out to be wrong for some league id, the fetch for that one id just fails
@@ -397,7 +386,7 @@ internal class ApiFootballApi {
      * broken" convention as every other image fetch here — never a crash. */
     suspend fun fetchLeagueLogosByCompetitionId(ids: Collection<Int>): Map<Int, ByteArray> = coroutineScope {
         ids.distinct()
-            .map { id -> id to async { fetchImageBytes("$API_SPORTS_LEAGUE_LOGO_BASE/$id.png").getOrNull() } }
+            .map { id -> id to async { fetchImageBytes("$PROXY_IMAGE_BASE/leagues/$id.png").getOrNull() } }
             .mapNotNull { (id, deferred) -> deferred.await()?.let { id to it } }
             .toMap()
     }
@@ -415,7 +404,7 @@ internal class ApiFootballApi {
      * concern for this proxy-fronted flow. */
     suspend fun fetchPlayerPhotos(ids: Collection<Int>): Map<Int, ByteArray> = coroutineScope {
         ids.distinct()
-            .map { id -> id to async { fetchImageBytes("$API_SPORTS_PLAYER_PHOTO_BASE/$id.png").getOrNull() } }
+            .map { id -> id to async { fetchImageBytes("$PROXY_IMAGE_BASE/players/$id.png").getOrNull() } }
             .mapNotNull { (id, deferred) -> deferred.await()?.let { id to it } }
             .toMap()
     }
@@ -427,15 +416,43 @@ internal class ApiFootballApi {
      * the fetch itself differs at all. */
     suspend fun fetchTeamLogos(urls: Collection<String>): Map<String, ByteArray> = fetchLeagueLogos(urls)
 
-    /** Fetches a hosted image as raw bytes — used for team crest URLs off [ApiFootballFixtureTeamDto.logo].
+    /** Fetches an image as raw bytes — every crest, badge, and headshot in the app goes through here.
+     *
+     * [url] is rewritten to the proxy's stored copy first (see [proxiedImageUrl]), so an API-Sports
+     * CDN URL straight off an API response is fine to pass in. Then, for any proxy image URL:
+     *  1. a copy in [imageCache] younger than 30 days is returned without touching the network;
+     *  2. otherwise it's downloaded and written to [imageCache];
+     *  3. if that download fails (offline, proxy down), an older cached copy is returned instead.
+     * A 404 means the proxy has no image for that id — it fails like any other miss, and callers
+     * fall back to their no-image rendering. Not cached on the phone, so a photo added later still
+     * shows up; the proxy (and Cloudflare in front of it) answer those repeat 404s cheaply.
+     *
      * Deliberately bypasses [get]/[getChecked] below: there's no JSON body here to run through
-     * [apiFootballErrorMessage]'s success/failure check, and the crest URL points at whatever CDN
-     * actually serves the image (not this app's proxy), so it's a plain unauthenticated GET either
-     * way. Note this means crest fetches don't go through the proxy at all — they bypass its
-     * caching, its request budget, and its rate limiter, hitting the image CDN directly every time.
-     * Reuses this class's [client] (same timeouts) rather than standing up a second HTTP client
-     * just for images. */
-    private suspend fun fetchImageBytes(url: String): Result<ByteArray> = runCatching {
+     * [apiFootballErrorMessage]'s success/failure check. Image requests don't count against the
+     * proxy's API-Football budget (the proxy serves them from its own disk) and have their own,
+     * larger per-IP rate limit there. Reuses this class's [client] (same timeouts) rather than
+     * standing up a second HTTP client just for images. */
+    private suspend fun fetchImageBytes(url: String): Result<ByteArray> = withContext(Dispatchers.IO) {
+        runCatching {
+            val imageUrl = proxiedImageUrl(url)
+            val cacheKey = imageCacheKey(imageUrl)
+            cacheKey?.let { imageCache?.readFresh(it) }?.let { return@runCatching it }
+
+            val bytes = try {
+                downloadImage(imageUrl)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Returned as-is, not re-written: re-writing would reset its age and stop the next
+                // call from trying to refresh it.
+                return@runCatching cacheKey?.let { imageCache?.readAny(it) } ?: throw e
+            }
+            cacheKey?.let { imageCache?.write(it, bytes) }
+            bytes
+        }
+    }
+
+    private suspend fun downloadImage(url: String): ByteArray {
         val response = try {
             client.get(url)
         } catch (e: Exception) {
@@ -447,7 +464,7 @@ internal class ApiFootballApi {
                 ApiFootballApiException.Kind.NETWORK,
             )
         }
-        response.bodyAsBytes()
+        return response.bodyAsBytes()
     }
 
     // --- HTTP plumbing -------------------------------------------------------------
@@ -493,7 +510,7 @@ internal class ApiFootballApi {
                 ApiFootballApiException.Kind.PLAN_RESTRICTED,
             )
             403 -> throw ApiFootballApiException(
-                "This league isn't turned on for Soccer Pro yet — try again once the proxy is updated.",
+                "This league isn't turned on for Matchday yet — try again once the proxy is updated.",
                 ApiFootballApiException.Kind.UNKNOWN,
             )
             502 -> throw ApiFootballApiException(
