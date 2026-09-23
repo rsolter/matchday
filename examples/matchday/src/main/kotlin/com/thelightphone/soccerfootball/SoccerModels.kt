@@ -62,17 +62,21 @@ data class Competition(
 // MLS (id 253) was tracked here through an earlier round, in the "recalled from general knowledge
 // only" (least-verified) ID tier above, and ran into a real standings-parsing bug live (see
 // SoccerViewModel.apiErrorMessage's doc comment on "the MLS standings bug"). Dropped entirely on
-// request rather than re-verified or fixed. EFL Cup (id 48) was dropped the same way in 1.3.2: it
-// was never on the proxy's league whitelist, so every request for it came back 403. Safe to remove
-// either outright: SoccerViewModel.loadInitialState filters the persisted selection against this
+// request rather than re-verified or fixed. EFL Cup (id 48) was dropped the same way in 1.3.2 —
+// it wasn't on the proxy's league whitelist yet, so every request for it came back 403 — and
+// re-added in 1.4.0 once the proxy whitelisted it. Removing a competition is safe: SoccerViewModel.loadInitialState filters the persisted selection against this
 // list, so a device that had one selected just silently stops requesting and showing it — no
 // migration needed, nothing left dangling. (Before 1.3.2 only the *display* was filtered; refresh
-// still requested a dropped id on every fetch.)
+// still requested a dropped id on every fetch.) Adding one needs the proxy to whitelist it first
+// (soccer-pro-proxy's LEAGUE_WHITELIST) — every id here must be on that list. Existing installs
+// don't start following a newly added competition until the user turns it on in Settings; new
+// installs follow everything by default.
 val TRACKED_COMPETITIONS: List<Competition> = listOf(
     // England
     Competition(id = 39, name = "Premier League", shortName = "EPL", region = "England"),
     Competition(id = 40, name = "Championship", region = "England"),
     Competition(id = 45, name = "FA Cup", hasStandings = false, region = "England"),
+    Competition(id = 48, name = "EFL Cup", hasStandings = false, region = "England"),
     // Italy
     Competition(id = 135, name = "Serie A", region = "Italy"),
     Competition(id = 137, name = "Coppa Italia", hasStandings = false, region = "Italy"),
@@ -85,10 +89,15 @@ val TRACKED_COMPETITIONS: List<Competition> = listOf(
     // France
     Competition(id = 61, name = "Ligue 1", region = "France"),
     Competition(id = 66, name = "Coupe de France", shortName = "Coupe Fr.", region = "France"),
+    // Netherlands, Portugal, Turkey — top flights only, added in 1.4.0
+    Competition(id = 88, name = "Eredivisie", region = "Netherlands"),
+    Competition(id = 94, name = "Primeira Liga", region = "Portugal"),
+    Competition(id = 203, name = "Süper Lig", region = "Turkey"),
     // Europe — grouped as "International Club" rather than a country, on request (see
     // Competition.region's doc comment for the exact wording asked for).
     Competition(id = 2, name = "UEFA Champions League", shortName = "UCL", isDomestic = false, region = "International Club"),
     Competition(id = 3, name = "UEFA Europa League", shortName = "UEL", isDomestic = false, region = "International Club"),
+    Competition(id = 848, name = "UEFA Conference League", shortName = "UECL", isDomestic = false, region = "International Club"),
 )
 
 /**

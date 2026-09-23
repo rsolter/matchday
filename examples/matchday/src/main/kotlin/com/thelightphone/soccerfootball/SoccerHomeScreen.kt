@@ -356,7 +356,10 @@ private fun ResultBadge(result: MatchResult, modifier: Modifier = Modifier) {
 // crest) without depending on what that fetch happens to return. UEFA Europa League (3) wants a
 // *different* treatment — white except its orange parts — which a stateless ColorFilter can't
 // express at all; see ORANGE_PRESERVE_LEAGUE_IDS/recolorWhiteExceptOrange below for that one.
-private val WHITE_TINTED_LEAGUE_IDS = setOf(39, 61, 2)
+// Eredivisie (88, navy), Süper Lig (203, black wordmark), and UEFA Conference League (848, black
+// wordmark) joined in 1.4.0 for the same reason. Primeira Liga (94) and EFL Cup (48) ship on their
+// own white/green backgrounds and read fine untinted.
+private val WHITE_TINTED_LEAGUE_IDS = setOf(39, 61, 2, 88, 203, 848)
 
 /** [BlendMode.SrcIn] paints solid white everywhere the source bitmap has any alpha (i.e. the
  * badge's actual crest shape) and leaves fully-transparent pixels untouched — a plain silhouette
