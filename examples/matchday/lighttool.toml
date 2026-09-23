@@ -1,8 +1,8 @@
 [tool]
 id          = "com.thelightphone.soccerfootball"
 label       = "Matchday"
-versionCode = 8
-versionName = "1.4.0"
+versionCode = 9
+versionName = "1.4.1"
 permissions  = ["android.permission.INTERNET"]
 capabilities = []
 # Defaults to the LightOS emulator. Switch to "com.lightos" (and update

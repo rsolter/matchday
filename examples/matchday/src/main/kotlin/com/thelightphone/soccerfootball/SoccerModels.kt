@@ -88,7 +88,7 @@ val TRACKED_COMPETITIONS: List<Competition> = listOf(
     Competition(id = 81, name = "DFB-Pokal", hasStandings = false, region = "Germany"),
     // France
     Competition(id = 61, name = "Ligue 1", region = "France"),
-    Competition(id = 66, name = "Coupe de France", shortName = "Coupe Fr.", region = "France"),
+    Competition(id = 66, name = "Coupe de France", shortName = "Coupe Fr.", hasStandings = false, region = "France"),
     // Netherlands, Portugal, Turkey — top flights only, added in 1.4.0
     Competition(id = 88, name = "Eredivisie", region = "Netherlands"),
     Competition(id = 94, name = "Primeira Liga", region = "Portugal"),
