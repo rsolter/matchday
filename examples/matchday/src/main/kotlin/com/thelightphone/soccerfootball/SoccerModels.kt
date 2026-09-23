@@ -1074,3 +1074,99 @@ data class MyTeamSummary(
      * its logo URL was blank, or the fetch failed. */
     val featuredOpponentLogoBytes: ByteArray?,
 )
+
+// --- Player (this app's own proxy: GET /players/{id}) -------------------------------------------
+//
+// Not an API-Football shape: the proxy builds this from its nightly player database (see
+// soccer-pro-proxy's app/players.py), so field names are the proxy's own snake_case. Public rather
+// than internal like the API-Football DTOs above, because [ScoreScreenMode.PlayerDetailScreen]
+// (public) holds one directly.
+
+/** One player's season: profile, all-competition [totals] and per-competition [competitions]
+ * (each with per-90 figures), the season's [matches], and their [career]. Season stats leave out
+ * domestic cups ([excludesDomesticCups]); [matches] include them. [career] is null if the proxy
+ * couldn't fetch it. */
+@Serializable
+data class PlayerDetail(
+    val player: PlayerProfile,
+    val season: Int,
+    val competitions: List<PlayerSeasonStats> = emptyList(),
+    val totals: PlayerSeasonStats? = null,
+    @SerialName("excludes_domestic_cups") val excludesDomesticCups: Boolean = false,
+    val matches: List<PlayerMatch> = emptyList(),
+    val career: List<PlayerCareerTeam>? = null,
+)
+
+@Serializable
+data class PlayerProfile(
+    @SerialName("player_id") val id: Int,
+    val name: String,
+    val age: Int? = null,
+    val nationality: String? = null,
+    val height: String? = null,
+)
+
+/** Either one competition's stats (league/team fields set) or the all-competition totals (those
+ * fields null). Every stat is nullable — API-Football leaves some unrecorded. [per90] is keyed by
+ * the proxy's field names ("shots", "key_passes"...); a key maps to null when [minutes] is 0. */
+@Serializable
+data class PlayerSeasonStats(
+    @SerialName("league_id") val leagueId: Int? = null,
+    @SerialName("league_name") val leagueName: String? = null,
+    @SerialName("team_name") val teamName: String? = null,
+    val position: String? = null,
+    val appearances: Int? = null,
+    val starts: Int? = null,
+    val minutes: Int? = null,
+    val rating: Double? = null,
+    val goals: Int? = null,
+    val assists: Int? = null,
+    val shots: Int? = null,
+    @SerialName("shots_on_target") val shotsOnTarget: Int? = null,
+    val passes: Int? = null,
+    @SerialName("key_passes") val keyPasses: Int? = null,
+    @SerialName("pass_accuracy") val passAccuracy: Double? = null,
+    val tackles: Int? = null,
+    val interceptions: Int? = null,
+    @SerialName("duels_won") val duelsWon: Int? = null,
+    @SerialName("dribbles_won") val dribblesWon: Int? = null,
+    @SerialName("fouls_drawn") val foulsDrawn: Int? = null,
+    @SerialName("fouls_committed") val foulsCommitted: Int? = null,
+    @SerialName("yellow_cards") val yellowCards: Int? = null,
+    @SerialName("red_cards") val redCards: Int? = null,
+    val saves: Int? = null,
+    @SerialName("goals_conceded") val goalsConceded: Int? = null,
+    @SerialName("per_90") val per90: Map<String, Double?> = emptyMap(),
+)
+
+/** One match from the player's own team's point of view. [result] is "W"/"D"/"L", null if the
+ * score is missing. [started] false with 0 [minutes] means an unused substitute. */
+@Serializable
+data class PlayerMatch(
+    @SerialName("fixture_id") val fixtureId: Int,
+    val kickoff: String? = null,
+    @SerialName("league_id") val leagueId: Int? = null,
+    val home: Boolean = true,
+    @SerialName("opponent_name") val opponentName: String? = null,
+    @SerialName("goals_for") val goalsFor: Int? = null,
+    @SerialName("goals_against") val goalsAgainst: Int? = null,
+    val result: String? = null,
+    val started: Boolean? = null,
+    val minutes: Int? = null,
+    val rating: Double? = null,
+    val goals: Int? = null,
+    val assists: Int? = null,
+    @SerialName("yellow_cards") val yellowCards: Int? = null,
+    @SerialName("red_cards") val redCards: Int? = null,
+)
+
+/** A club or national team and the seasons (start years) the player was with it. [kind] is
+ * "club", "youth", or "national" — the proxy's own classification by team name. */
+@Serializable
+data class PlayerCareerTeam(
+    @SerialName("team_id") val teamId: Int,
+    @SerialName("team_name") val teamName: String,
+    val kind: String = "club",
+    @SerialName("first_season") val firstSeason: Int,
+    @SerialName("last_season") val lastSeason: Int,
+)

@@ -157,6 +157,24 @@ sealed class ScoreScreenMode {
          * hasn't resolved yet — falls back to the existing number-in-circle rendering, never a
          * blank space. */
         val playerPhotosById: Map<Int, ByteArray> = emptyMap(),
+        /** Index into SoccerHomeScreen.kt's DetailTab entries. Kept here rather than as local UI
+         * state so that coming back from a player opened from the Home/Away lineup lands on that
+         * same lineup tab, not back on Stats — the screen leaves composition while the player is
+         * shown, which would reset a remembered local value. */
+        val selectedTab: Int = 0,
+    ) : ScoreScreenMode()
+
+    /** A player's season, opened by tapping them in a match lineup (see [openPlayer]). [detail] is
+     * null while [isLoading], and stays null when the proxy has no stats for this player
+     * ([notFound]) or the fetch failed. [playerName]/[photoBytes] come from the tapped lineup
+     * entry, so the header has something to show before [detail] arrives. */
+    data class PlayerDetailScreen(
+        val playerId: Int,
+        val playerName: String,
+        val photoBytes: ByteArray?,
+        val detail: PlayerDetail?,
+        val isLoading: Boolean,
+        val notFound: Boolean = false,
     ) : ScoreScreenMode()
 }
 
@@ -254,6 +272,7 @@ class SoccerViewModel(
     private var modeBeforeMatchDetail: ScoreScreenMode? = null
     private var modeBeforeMyTeamSetup: ScoreScreenMode? = null
     private var modeBeforeTeamDetail: ScoreScreenMode? = null
+    private var modeBeforePlayer: ScoreScreenMode? = null
     private var modeBeforeStandings: ScoreScreenMode? = null
 
     private var myTeamId: Int? = null
@@ -1003,6 +1022,63 @@ class SoccerViewModel(
                 }
             }
         }
+    }
+
+    fun selectMatchDetailTab(index: Int) {
+        updateState { state ->
+            val current = state.mode as? ScoreScreenMode.MatchDetailScreen ?: return@updateState state
+            state.copy(mode = current.copy(selectedTab = index))
+        }
+    }
+
+    // --- Player ------------------------------------------------------------------
+
+    /** Opens [player]'s season from a match lineup. Players without an API-Football id can't be
+     * looked up, so tapping one does nothing. [photoBytes] is the headshot the lineup already
+     * downloaded, reused for the header. */
+    fun openPlayer(player: LineupPlayer, photoBytes: ByteArray?) {
+        val playerId = player.id ?: return
+        modeBeforePlayer = _uiState.value.mode
+        updateState {
+            it.copy(
+                mode = ScoreScreenMode.PlayerDetailScreen(
+                    playerId = playerId,
+                    playerName = player.name,
+                    photoBytes = photoBytes,
+                    detail = null,
+                    isLoading = true,
+                ),
+                errorModal = null,
+            )
+        }
+        viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
+            val result = api.fetchPlayer(playerId)
+            updateState { state ->
+                val current = state.mode as? ScoreScreenMode.PlayerDetailScreen
+                if (current == null || current.playerId != playerId) return@updateState state
+                result.fold(
+                    onSuccess = { detail ->
+                        state.copy(mode = current.copy(detail = detail, isLoading = false), errorModal = null)
+                    },
+                    onFailure = { error ->
+                        // A player the proxy has no stats for isn't an error worth a modal — the
+                        // screen says so itself (see PlayerDetailScreen.notFound).
+                        val notFound = error is ApiFootballApiException &&
+                            error.kind == ApiFootballApiException.Kind.NOT_FOUND
+                        state.copy(
+                            mode = current.copy(isLoading = false, notFound = notFound),
+                            errorModal = if (notFound) null else apiErrorMessage(error),
+                        )
+                    },
+                )
+            }
+        }
+    }
+
+    fun backFromPlayer() {
+        val previous = modeBeforePlayer ?: lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE)
+        modeBeforePlayer = null
+        updateState { it.copy(mode = previous, errorModal = null) }
     }
 
     fun backFromMatchDetail() {

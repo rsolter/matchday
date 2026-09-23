@@ -106,6 +106,13 @@ fun formatKickoffDateAndTime(isoDate: String): String {
     return "${dateTime.date.monthNumber}/${dateTime.date.dayOfMonth} ${dateTime.to24HourTime()}"
 }
 
+/** Just the short numeric month/day of an ISO-8601 instant, e.g. "9/20" — a player's match list,
+ * where the time of day doesn't matter. */
+fun formatShortDate(isoDate: String): String {
+    val date = parseIso(isoDate)?.toLocalDateTime(TimeZone.currentSystemDefault())?.date ?: return "--/--"
+    return "${date.monthNumber}/${date.dayOfMonth}"
+}
+
 /** The calendar date (device-local timezone) a fixture's kickoff falls on, or null if
  * [Fixture.utcDate] couldn't be parsed. API-Football sends full ISO-8601 with an explicit offset
  * (e.g. "2023-08-11T19:00:00+00:00"), so unlike the ESPN variant of this tool, no padding/repair

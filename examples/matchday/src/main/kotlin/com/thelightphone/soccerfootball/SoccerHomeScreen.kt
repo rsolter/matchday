@@ -171,7 +171,13 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             mode = mode,
                             onBack = viewModel::backFromMatchDetail,
                             onTeamClick = viewModel::openTeamDetail,
+                            onSelectTab = viewModel::selectMatchDetailTab,
+                            onPlayerClick = viewModel::openPlayer,
                         )
+                    }
+
+                    is ScoreScreenMode.PlayerDetailScreen -> {
+                        PlayerDetailContent(mode = mode, onBack = viewModel::backFromPlayer)
                     }
 
                     is ScoreScreenMode.TeamDetail -> {
@@ -1955,8 +1961,14 @@ private fun MatchDetailContent(
     mode: ScoreScreenMode.MatchDetailScreen,
     onBack: () -> Unit,
     onTeamClick: (teamId: Int, teamName: String, leagueId: Int) -> Unit,
+    onSelectTab: (Int) -> Unit,
+    onPlayerClick: (player: LineupPlayer, photoBytes: ByteArray?) -> Unit,
 ) {
-    var selectedTab by remember(mode.fixtureId) { mutableStateOf(DetailTab.STATS) }
+    // Held in the view model (see MatchDetailScreen.selectedTab) so it survives a trip to a player.
+    val selectedTab = DetailTab.entries.getOrElse(mode.selectedTab) { DetailTab.STATS }
+    val onLineupPlayerClick: (LineupPlayer) -> Unit = { player ->
+        onPlayerClick(player, player.id?.let { mode.playerPhotosById[it] })
+    }
 
     // No team-colors dataset exists anywhere in this app (API-Football's crest/logo field is the
     // only per-team visual data it sends — kit colors aren't part of that response), so this reads
@@ -2015,9 +2027,10 @@ private fun MatchDetailContent(
                 }
 
                 else -> {
-                    DetailTabRow(
-                        selected = selectedTab,
-                        onSelect = { selectedTab = it },
+                    LabeledTabRow(
+                        labels = DetailTab.entries.map { it.label },
+                        selectedIndex = selectedTab.ordinal,
+                        onSelect = onSelectTab,
                         modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
                     )
                     when (selectedTab) {
@@ -2040,6 +2053,7 @@ private fun MatchDetailContent(
                             lineup = detail.lineups.home,
                             teamColor = homeTeamColor,
                             playerPhotosById = mode.playerPhotosById,
+                            onPlayerClick = onLineupPlayerClick,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
                         DetailTab.AWAY_LINEUP -> LineupSection(
@@ -2047,6 +2061,7 @@ private fun MatchDetailContent(
                             lineup = detail.lineups.away,
                             teamColor = awayTeamColor,
                             playerPhotosById = mode.playerPhotosById,
+                            onPlayerClick = onLineupPlayerClick,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
                     }
@@ -2471,17 +2486,24 @@ private fun EventTimelineRow(event: MatchEvent) {
     }
 }
 
+/** The row of equal-width tab buttons under a detail screen's header — Match Detail's
+ * Stats/Events/Home/Away, and the player screen's Summary/Stats/Matches/Career. */
 @Composable
-private fun DetailTabRow(selected: DetailTab, onSelect: (DetailTab) -> Unit, modifier: Modifier = Modifier) {
+private fun LabeledTabRow(
+    labels: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.4f.gridUnitsAsDp()),
     ) {
-        DetailTab.entries.forEach { tab ->
+        labels.forEachIndexed { index, label ->
             DetailTabButton(
-                text = tab.label,
-                isSelected = tab == selected,
-                onClick = { onSelect(tab) },
+                text = label,
+                isSelected = index == selectedIndex,
+                onClick = { onSelect(index) },
                 modifier = Modifier.weight(1f),
             )
         }
@@ -2556,6 +2578,7 @@ private fun LineupSection(
     lineup: TeamLineup?,
     teamColor: Color?,
     playerPhotosById: Map<Int, ByteArray>,
+    onPlayerClick: (LineupPlayer) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (lineup == null || lineup.startXI.isEmpty()) {
@@ -2627,7 +2650,9 @@ private fun LineupSection(
                             player,
                             dotColor = teamColor,
                             photoBytes = player.id?.let { playerPhotosById[it] },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .lightClickable(enabled = player.id != null) { onPlayerClick(player) },
                         )
                     }
                 }
@@ -2639,7 +2664,11 @@ private fun LineupSection(
         // and the coach-photo fetch behind it has since been removed too.
 
         if (lineup.substitutes.isNotEmpty()) {
-            SubstitutesBlock(lineup.substitutes, modifier = Modifier.padding(top = 1f.gridUnitsAsDp()))
+            SubstitutesBlock(
+                lineup.substitutes,
+                onPlayerClick = onPlayerClick,
+                modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
+            )
         }
     }
 }
@@ -2747,13 +2776,22 @@ private fun PitchNumberDot(player: LineupPlayer, dotColor: Color?, photoBytes: B
 }
 
 @Composable
-private fun SubstitutesBlock(substitutes: List<LineupPlayer>, modifier: Modifier = Modifier) {
+private fun SubstitutesBlock(
+    substitutes: List<LineupPlayer>,
+    onPlayerClick: (LineupPlayer) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier = modifier.fillMaxWidth()) {
         // Whole block bumped one size on request (Superfine -> Detail), same as the rest of the
         // Lineup tab except PitchNumberDot's own number.
         LightText(text = "SUBSTITUTES", variant = LightTextVariant.Detail, lighten = true, modifier = Modifier.padding(bottom = 0.4f.gridUnitsAsDp()))
         substitutes.forEach { player ->
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 0.1f.gridUnitsAsDp())) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .lightClickable(enabled = player.id != null) { onPlayerClick(player) }
+                    .padding(vertical = 0.1f.gridUnitsAsDp()),
+            ) {
                 // Was Copy, shrunk to Detail (matching the starting XI roster list above, and the
                 // team name/coach line, for one consistent size across the whole lineup tab rather
                 // than the starters' names being smaller than the substitutes' own), then Superfine
@@ -2776,5 +2814,321 @@ private fun SubstitutesBlock(substitutes: List<LineupPlayer>, modifier: Modifier
                 }
             }
         }
+    }
+}
+
+// --- Player ------------------------------------------------------------------------------------
+
+private enum class PlayerTab(val label: String) {
+    SUMMARY("Summary"),
+    STATS("Stats"),
+    MATCHES("Matches"),
+    CAREER("Career"),
+}
+
+private const val PLAYER_PHOTO_SIZE_UNITS = 4f
+// Right-aligned number columns in the Summary/Stats rows — wide enough for "72.52" or "1,234" at
+// Detail size, measured against the 24 grid units inside the scroll view (see PITCH_DOT_SIZE_UNITS'
+// comment for that padding chain).
+private const val PLAYER_VALUE_COLUMN_UNITS = 4f
+
+/** A player's season (see [ScoreScreenMode.PlayerDetailScreen]), opened from a match lineup: a
+ * header, then the same tab row Match Detail uses, switching between Summary (appearances, goals,
+ * minutes... for the season, plus a per-competition line each), Stats (totals and per 90),
+ * Matches (the season's match list), and Career (clubs and national teams). The selected tab is
+ * plain local state: nothing navigates away from this screen and back into it. */
+@Composable
+private fun PlayerDetailContent(mode: ScoreScreenMode.PlayerDetailScreen, onBack: () -> Unit) {
+    var selectedTab by remember(mode.playerId) { mutableStateOf(PlayerTab.SUMMARY) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        LightTopBar(
+            leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = onBack),
+            center = LightTopBarCenter.Text("Player"),
+            modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
+        )
+
+        LightScrollView(
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
+        ) {
+            PlayerHeader(mode)
+
+            val detail = mode.detail
+            when {
+                mode.isLoading -> NoDataForTab(text = "fetching player...")
+                detail == null -> NoDataForTab(
+                    text = if (mode.notFound) "No stats for this player yet." else "Couldn't load this player.",
+                )
+                else -> {
+                    LabeledTabRow(
+                        labels = PlayerTab.entries.map { it.label },
+                        selectedIndex = selectedTab.ordinal,
+                        onSelect = { selectedTab = PlayerTab.entries[it] },
+                        modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
+                    )
+                    val sectionModifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp())
+                    when (selectedTab) {
+                        PlayerTab.SUMMARY -> PlayerSummarySection(detail, sectionModifier)
+                        PlayerTab.STATS -> PlayerStatsSection(detail, sectionModifier)
+                        PlayerTab.MATCHES -> PlayerMatchesSection(detail.matches, sectionModifier)
+                        PlayerTab.CAREER -> PlayerCareerSection(detail.career, sectionModifier)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Headshot (the one the lineup already downloaded), name, then team · position and age ·
+ * nationality. Team and position come from the competition the player has the most minutes in —
+ * the proxy lists competitions most-played first. */
+@Composable
+private fun PlayerHeader(mode: ScoreScreenMode.PlayerDetailScreen, modifier: Modifier = Modifier) {
+    val detail = mode.detail
+    val mainCompetition = detail?.competitions?.firstOrNull()
+    val photo = mode.photoBytes?.let { bytes ->
+        remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.fillMaxWidth().padding(end = 1f.gridUnitsAsDp()),
+    ) {
+        if (photo != null) {
+            Image(
+                bitmap = photo,
+                contentDescription = mode.playerName,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(PLAYER_PHOTO_SIZE_UNITS.gridUnitsAsDp()).clip(CircleShape),
+            )
+        }
+        Column(modifier = Modifier.weight(1f).padding(start = (if (photo != null) 0.8f else 0f).gridUnitsAsDp())) {
+            LightText(
+                text = detail?.player?.name ?: mode.playerName,
+                variant = LightTextVariant.Copy,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            listOfNotNull(mainCompetition?.teamName, mainCompetition?.position)
+                .joinToString(" · ")
+                .takeIf { it.isNotEmpty() }
+                ?.let { LightText(text = it, variant = LightTextVariant.Detail, lighten = true, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            listOfNotNull(detail?.player?.age?.let { "Age $it" }, detail?.player?.nationality)
+                .joinToString(" · ")
+                .takeIf { it.isNotEmpty() }
+                ?.let { LightText(text = it, variant = LightTextVariant.Detail, lighten = true, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+    }
+}
+
+@Composable
+private fun PlayerSectionLabel(text: String, modifier: Modifier = Modifier) {
+    LightText(text = text, variant = LightTextVariant.Detail, lighten = true, modifier = modifier.padding(bottom = 0.4f.gridUnitsAsDp()))
+}
+
+/** One label/value row, optionally with a second (per 90) value column. */
+@Composable
+private fun PlayerStatRow(label: String, value: String, per90: String? = null, showPer90Column: Boolean = false) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(end = 1f.gridUnitsAsDp(), top = 0.15f.gridUnitsAsDp(), bottom = 0.15f.gridUnitsAsDp()),
+    ) {
+        LightText(text = label, variant = LightTextVariant.Detail, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        LightText(text = value, variant = LightTextVariant.Detail, align = TextAlign.End, modifier = Modifier.width(PLAYER_VALUE_COLUMN_UNITS.gridUnitsAsDp()))
+        if (showPer90Column) {
+            LightText(
+                text = per90 ?: "",
+                variant = LightTextVariant.Detail,
+                lighten = true,
+                align = TextAlign.End,
+                modifier = Modifier.width(PLAYER_VALUE_COLUMN_UNITS.gridUnitsAsDp()),
+            )
+        }
+    }
+}
+
+private fun Int?.statLabel(): String = this?.toString() ?: "-"
+
+private fun Double?.twoDecimals(): String = this?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "-"
+
+@Composable
+private fun PlayerSummarySection(detail: PlayerDetail, modifier: Modifier = Modifier) {
+    val totals = detail.totals
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (totals == null) {
+            NoDataForTab(text = "No league or European appearances this season yet.")
+        } else {
+            PlayerSectionLabel("THIS SEASON")
+            PlayerStatRow("Matches", totals.appearances.statLabel())
+            PlayerStatRow("Started", totals.starts.statLabel())
+            PlayerStatRow("Minutes", totals.minutes.statLabel())
+            PlayerStatRow("Goals", totals.goals.statLabel())
+            PlayerStatRow("Assists", totals.assists.statLabel())
+            PlayerStatRow("Rating", totals.rating.twoDecimals())
+            PlayerStatRow("Yellow cards", totals.yellowCards.statLabel())
+            PlayerStatRow("Red cards", totals.redCards.statLabel())
+            if (detail.excludesDomesticCups) {
+                LightText(
+                    text = "League and European matches only — domestic cups aren't included.",
+                    variant = LightTextVariant.Superfine,
+                    lighten = true,
+                    modifier = Modifier.padding(top = 0.4f.gridUnitsAsDp(), end = 1f.gridUnitsAsDp()),
+                )
+            }
+            if (detail.competitions.size > 1) {
+                PlayerSectionLabel("BY COMPETITION", modifier = Modifier.padding(top = 1f.gridUnitsAsDp()))
+                detail.competitions.forEach { c ->
+                    PlayerStatRow(
+                        label = c.leagueId?.let { competitionShortName(it) } ?: c.leagueName ?: "-",
+                        value = "${c.appearances.statLabel()} apps",
+                        per90 = "${c.goals ?: 0}G ${c.assists ?: 0}A",
+                        showPer90Column = true,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Totals and per-90 figures for the season. Goalkeepers lead with saves and goals conceded. */
+@Composable
+private fun PlayerStatsSection(detail: PlayerDetail, modifier: Modifier = Modifier) {
+    val totals = detail.totals
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (totals == null) {
+            NoDataForTab(text = "No league or European appearances this season yet.")
+        } else {
+            val isGoalkeeper = detail.competitions.firstOrNull()?.position == "Goalkeeper"
+            // (label, total, per-90 key in PlayerSeasonStats.per90 — null for no per-90 figure)
+            val outfield = listOf(
+                Triple("Goals", totals.goals.statLabel(), "goals"),
+                Triple("Assists", totals.assists.statLabel(), "assists"),
+                Triple("Shots", totals.shots.statLabel(), "shots"),
+                Triple("Shots on target", totals.shotsOnTarget.statLabel(), "shots_on_target"),
+                Triple("Key passes", totals.keyPasses.statLabel(), "key_passes"),
+                Triple("Passes", totals.passes.statLabel(), "passes"),
+                Triple("Pass accuracy", totals.passAccuracy?.let { "${it.toInt()}%" } ?: "-", null),
+                Triple("Tackles", totals.tackles.statLabel(), "tackles"),
+                Triple("Interceptions", totals.interceptions.statLabel(), "interceptions"),
+                Triple("Duels won", totals.duelsWon.statLabel(), "duels_won"),
+                Triple("Dribbles won", totals.dribblesWon.statLabel(), "dribbles_won"),
+                Triple("Fouls drawn", totals.foulsDrawn.statLabel(), "fouls_drawn"),
+                Triple("Fouls committed", totals.foulsCommitted.statLabel(), "fouls_committed"),
+            )
+            val keeper = listOf(
+                Triple("Saves", totals.saves.statLabel(), "saves"),
+                Triple("Goals conceded", totals.goalsConceded.statLabel(), null),
+            )
+            val rows = if (isGoalkeeper) keeper + outfield else outfield
+            Row(modifier = Modifier.fillMaxWidth().padding(end = 1f.gridUnitsAsDp(), bottom = 0.2f.gridUnitsAsDp())) {
+                LightText(text = "${totals.minutes ?: 0} MIN PLAYED", variant = LightTextVariant.Superfine, lighten = true, modifier = Modifier.weight(1f))
+                LightText(text = "TOTAL", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.width(PLAYER_VALUE_COLUMN_UNITS.gridUnitsAsDp()))
+                LightText(text = "PER 90", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.width(PLAYER_VALUE_COLUMN_UNITS.gridUnitsAsDp()))
+            }
+            rows.forEach { (label, total, per90Key) ->
+                PlayerStatRow(
+                    label = label,
+                    value = total,
+                    per90 = per90Key?.let { totals.per90[it].twoDecimals() },
+                    showPer90Column = true,
+                )
+            }
+        }
+    }
+}
+
+/** The season's matches, newest first — domestic cups included, unlike the season totals. */
+@Composable
+private fun PlayerMatchesSection(matches: List<PlayerMatch>, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (matches.isEmpty()) {
+            NoDataForTab(text = "No matches this season yet.")
+        } else {
+            matches.forEach { match -> PlayerMatchRow(match) }
+        }
+    }
+}
+
+@Composable
+private fun PlayerMatchRow(match: PlayerMatch) {
+    val result = when (match.result) {
+        "W" -> MatchResult.WIN
+        "D" -> MatchResult.DRAW
+        "L" -> MatchResult.LOSS
+        else -> null
+    }
+    Column(modifier = Modifier.fillMaxWidth().padding(end = 1f.gridUnitsAsDp(), top = 0.3f.gridUnitsAsDp(), bottom = 0.3f.gridUnitsAsDp())) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            LightText(
+                text = "${if (match.home) "vs" else "@"} ${match.opponentName ?: "-"}",
+                variant = LightTextVariant.Detail,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (result != null) {
+                ResultBadge(result, modifier = Modifier.padding(horizontal = 0.4f.gridUnitsAsDp()))
+            }
+            LightText(text = "${match.goalsFor ?: "-"}-${match.goalsAgainst ?: "-"}", variant = LightTextVariant.Detail)
+        }
+        val played = if ((match.minutes ?: 0) > 0) "${match.minutes}'" else "Unused sub"
+        val contributions = listOfNotNull(
+            match.goals?.takeIf { it > 0 }?.let { if (it == 1) "1 goal" else "$it goals" },
+            match.assists?.takeIf { it > 0 }?.let { if (it == 1) "1 assist" else "$it assists" },
+            match.redCards?.takeIf { it > 0 }?.let { "red card" },
+        )
+        LightText(
+            text = listOfNotNull(
+                match.kickoff?.let { formatShortDate(it) },
+                match.leagueId?.let { competitionShortName(it) },
+                played,
+                match.rating?.let { String.format(java.util.Locale.US, "%.1f", it) },
+                *contributions.toTypedArray(),
+            ).joinToString(" · "),
+            variant = LightTextVariant.Superfine,
+            lighten = true,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** Clubs (youth sides dimmed), then national teams, each with the seasons the player was there. */
+@Composable
+private fun PlayerCareerSection(career: List<PlayerCareerTeam>?, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (career.isNullOrEmpty()) {
+            NoDataForTab(text = "No career history available.")
+        } else {
+            val (national, clubs) = career.partition { it.kind == "national" }
+            if (clubs.isNotEmpty()) {
+                PlayerSectionLabel("CLUBS")
+                clubs.forEach { PlayerCareerRow(it) }
+            }
+            if (national.isNotEmpty()) {
+                PlayerSectionLabel("NATIONAL TEAM", modifier = Modifier.padding(top = if (clubs.isNotEmpty()) 1f.gridUnitsAsDp() else 0f.gridUnitsAsDp()))
+                national.forEach { PlayerCareerRow(it) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerCareerRow(team: PlayerCareerTeam) {
+    Row(modifier = Modifier.fillMaxWidth().padding(end = 1f.gridUnitsAsDp(), top = 0.15f.gridUnitsAsDp(), bottom = 0.15f.gridUnitsAsDp())) {
+        LightText(
+            text = team.teamName,
+            variant = LightTextVariant.Detail,
+            lighten = team.kind == "youth",
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        LightText(
+            // Seasons are API-Football's start years ("2022" = 2022/23).
+            text = if (team.firstSeason == team.lastSeason) "${team.firstSeason}" else "${team.firstSeason}–${team.lastSeason}",
+            variant = LightTextVariant.Detail,
+            lighten = true,
+            align = TextAlign.End,
+        )
     }
 }

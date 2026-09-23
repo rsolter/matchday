@@ -67,7 +67,7 @@ internal class ApiFootballApiException(
     message: String,
     val kind: Kind,
 ) : Exception(message) {
-    enum class Kind { RATE_LIMITED, PLAN_RESTRICTED, NETWORK, UNKNOWN }
+    enum class Kind { RATE_LIMITED, PLAN_RESTRICTED, NETWORK, NOT_FOUND, UNKNOWN }
 }
 
 /** [imageCache] — on-device copies of downloaded images, see [fetchImageBytes]. Null skips caching
@@ -495,6 +495,15 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
         return response.bodyAsBytes()
     }
 
+    // --- Players --------------------------------------------------------------------
+
+    /** One player's current season from the proxy's nightly player database — see
+     * [PlayerDetail]. Fails with [ApiFootballApiException.Kind.NOT_FOUND] for a player the proxy
+     * has no stats for (e.g. only ever played in a domestic cup, or signed since last night). */
+    suspend fun fetchPlayer(playerId: Int): Result<PlayerDetail> = runCatching {
+        getChecked<PlayerDetail>("$API_BASE/players/$playerId")
+    }
+
     // --- HTTP plumbing -------------------------------------------------------------
 
     private suspend inline fun <reified T> getChecked(
@@ -541,6 +550,9 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
                 "This league isn't turned on for Matchday yet — try again once the proxy is updated.",
                 ApiFootballApiException.Kind.UNKNOWN,
             )
+            // Only the proxy's own player lookup answers 404 (a player not in its database yet);
+            // callers of that treat it as "no data", not an error.
+            404 -> throw ApiFootballApiException("Not found.", ApiFootballApiException.Kind.NOT_FOUND)
             502 -> throw ApiFootballApiException(
                 "The proxy couldn't reach API-Football — try again shortly.",
                 ApiFootballApiException.Kind.NETWORK,
@@ -555,7 +567,10 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
         return response
     }
 
-    fun close() = client.close()
+    fun close() {
+        client.close()
+        imageClient.close()
+    }
 }
 
 /** API-Football's `errors` field is `[]` (empty array) on a real success — confirmed against every

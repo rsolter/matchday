@@ -21,6 +21,10 @@ Conference League).
 - **Match detail**: tap any match for four tabs — Stats, Timeline (a flat, chronological,
   text-only feed of goals, substitutions, cards, and VAR reviews), and Home/Away Lineup (starting
   XI by real pitch position, formation, coach, and substitutes).
+- **Player**: tap any player in a lineup for their season — Summary (appearances, goals,
+  minutes, rating, per competition), Stats (totals and per 90), Matches (the season's match list),
+  and Career (clubs and national teams). Season totals cover leagues and European competitions;
+  the match list includes domestic cups too. Stats update nightly.
 - **Settings**: which competitions you follow, your My Team pick, and a manual refresh — there's
   no auto-refresh/poll loop, by design.
 
