@@ -80,8 +80,8 @@ sealed class ScoreScreenMode {
         val rows: List<StandingsRow>,
         val isLoading: Boolean,
         val lastUpdated: Instant?,
-        /** Fetched as a follow-up once [rows] resolves, same pattern as [MatchDetailScreen]'s coach
-         * photos — see [StandingsFetchResult] for where the URL comes from. Null while unresolved,
+        /** Fetched as a follow-up once [rows] resolves, same pattern as [MatchDetailScreen]'s player
+         * headshots — see [StandingsFetchResult] for where the URL comes from. Null while unresolved,
          * on fetch failure, or if this league had no logo. */
         val leagueLogoBytes: ByteArray? = null,
     ) : ScoreScreenMode()
@@ -147,10 +147,10 @@ sealed class ScoreScreenMode {
          * URL / the fetch failed. */
         val homeTeamLogoBytes: ByteArray? = null,
         val awayTeamLogoBytes: ByteArray? = null,
-        /** Player headshot bytes for the lineup pitch, keyed by [LineupPlayer.id] — fetched as a
-         * follow-up once [detail]'s lineups are known (that's the only place [LineupPlayer.id]
-         * comes from) via
-         * [ApiFootballApi.fetchPlayerPhotos]. One shared map for both teams (player ids are globally
+        /** Player headshot bytes for the lineup pitch, keyed by [LineupPlayer.id] — fetched via
+         * [ApiFootballApi.fetchPlayerPhotos] as soon as the lineups response arrives (that's the
+         * only place [LineupPlayer.id] comes from), possibly before [detail] itself is set; see
+         * [SoccerViewModel.loadPlayerPhotos]. One shared map for both teams (player ids are globally
          * unique, not per-team) rather than separate home/away maps, since [LineupSection]
          * (SoccerHomeScreen.kt) is called once per team anyway and just looks up each of its own
          * players' ids in it. A player missing from this map — no id, fetch failed, or this phase
@@ -933,7 +933,12 @@ class SoccerViewModel(
         )
         updateState { it.copy(mode = mode, errorModal = null) }
         viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
-            val result = api.fetchMatchDetail(match.id, match.homeTeamId, match.awayTeamId)
+            val result = api.fetchMatchDetail(
+                match.id,
+                match.homeTeamId,
+                match.awayTeamId,
+                onLineups = { lineups -> loadPlayerPhotos(match.id, lineups) },
+            )
             result.fold(
                 onSuccess = { detail ->
                     updateState { state ->
@@ -942,26 +947,6 @@ class SoccerViewModel(
                             state.copy(mode = current.copy(detail = detail, isLoading = false), errorModal = null)
                         } else {
                             state
-                        }
-                    }
-                    // Player headshots fetch only now, not alongside the crests fetch below — player
-                    // ids live inside detail.lineups itself (see MatchDetailScreen.playerPhotosById's
-                    // doc comment), so there's nothing to fetch until this point. Silent on failure,
-                    // same as the crests: a missing headshot just means that player's pitch dot
-                    // falls back to the number-in-circle rendering.
-                    val playerIds = (
-                        (detail.lineups.home?.startXI.orEmpty() + detail.lineups.home?.substitutes.orEmpty()) +
-                            (detail.lineups.away?.startXI.orEmpty() + detail.lineups.away?.substitutes.orEmpty())
-                        ).mapNotNull { it.id }
-                    if (playerIds.isNotEmpty()) {
-                        val playerPhotos = api.fetchPlayerPhotos(playerIds)
-                        updateState { state ->
-                            val current = state.mode as? ScoreScreenMode.MatchDetailScreen
-                            if (current != null && current.fixtureId == match.id) {
-                                state.copy(mode = current.copy(playerPhotosById = playerPhotos))
-                            } else {
-                                state
-                            }
                         }
                     }
                 },
@@ -989,6 +974,30 @@ class SoccerViewModel(
                 val current = state.mode as? ScoreScreenMode.MatchDetailScreen
                 if (current != null && current.fixtureId == match.id) {
                     state.copy(mode = current.copy(homeTeamLogoBytes = homeBytes, awayTeamLogoBytes = awayBytes))
+                } else {
+                    state
+                }
+            }
+        }
+    }
+
+    /** Player headshots for [fixtureId]'s lineup pitch — started by [openMatchDetail] the moment
+     * the lineups response arrives (player ids only exist inside it; see
+     * MatchDetailScreen.playerPhotosById's doc comment), in parallel with stats/events still
+     * loading rather than after them. Silent on failure, same as the crests: a missing headshot
+     * just means that player's pitch dot falls back to the number-in-circle rendering. */
+    private fun loadPlayerPhotos(fixtureId: Int, lineups: MatchLineups) {
+        val playerIds = (
+            (lineups.home?.startXI.orEmpty() + lineups.home?.substitutes.orEmpty()) +
+                (lineups.away?.startXI.orEmpty() + lineups.away?.substitutes.orEmpty())
+            ).mapNotNull { it.id }
+        if (playerIds.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
+            val playerPhotos = api.fetchPlayerPhotos(playerIds)
+            updateState { state ->
+                val current = state.mode as? ScoreScreenMode.MatchDetailScreen
+                if (current != null && current.fixtureId == fixtureId) {
+                    state.copy(mode = current.copy(playerPhotosById = playerPhotos))
                 } else {
                     state
                 }

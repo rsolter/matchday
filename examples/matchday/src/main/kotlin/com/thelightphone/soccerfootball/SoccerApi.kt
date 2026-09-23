@@ -182,15 +182,22 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
      * independently tolerant of failure (via [runCatching] per-call rather than one combined
      * try/catch) — a match that hasn't kicked off yet legitimately has no stats/lineups yet, and
      * that shouldn't take down the whole screen the way it would if one failed call threw for all
-     * three. */
+     * three.
+     *
+     * [onLineups] is called as soon as the lineups section arrives, before the other two may have
+     * — so a caller can start on work that only needs lineups (the pitch headshots) without
+     * waiting for stats and events as well. Not called if the lineups request fails. */
     suspend fun fetchMatchDetail(
         fixtureId: Int,
         homeTeamId: Int,
         awayTeamId: Int,
+        onLineups: (MatchLineups) -> Unit = {},
     ): Result<MatchDetail> = coroutineScope {
         val eventsDeferred = async { runCatching { fetchEventsInternal(fixtureId) } }
         val statsDeferred = async { runCatching { fetchStatisticsInternal(fixtureId, homeTeamId, awayTeamId) } }
-        val lineupsDeferred = async { runCatching { fetchLineupsInternal(fixtureId, homeTeamId, awayTeamId) } }
+        val lineupsDeferred = async {
+            runCatching { fetchLineupsInternal(fixtureId, homeTeamId, awayTeamId) }.onSuccess(onLineups)
+        }
 
         val events = eventsDeferred.await().getOrDefault(emptyList())
         val stats = statsDeferred.await().getOrDefault(emptyList())
