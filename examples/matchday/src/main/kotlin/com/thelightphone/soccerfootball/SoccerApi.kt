@@ -507,6 +507,19 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
         getChecked<PlayerDetail>("$API_BASE/players/$playerId")
     }
 
+    /** [leagueId]'s top players this season by [stat] — one of the keys in [LeagueLeaders.stats]
+     * ("goals" is always one). From the proxy's nightly player database. */
+    suspend fun fetchLeagueLeaders(leagueId: Int, stat: String): Result<LeagueLeaders> = runCatching {
+        getChecked<LeagueLeaders>("$API_BASE/leagues/$leagueId/leaders") {
+            parameter("stat", stat)
+        }
+    }
+
+    /** [teamId]'s registered squad. */
+    suspend fun fetchTeamSquad(teamId: Int): Result<TeamSquad> = runCatching {
+        getChecked<TeamSquad>("$API_BASE/teams/$teamId/squad")
+    }
+
     // --- HTTP plumbing -------------------------------------------------------------
 
     private suspend inline fun <reified T> getChecked(

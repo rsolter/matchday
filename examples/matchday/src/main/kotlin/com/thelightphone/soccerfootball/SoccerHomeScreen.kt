@@ -6,6 +6,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -144,6 +145,16 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             rows = mode.rows,
                             isLoading = mode.isLoading,
                             onBack = viewModel::backFromStandingsTable,
+                            selectedTab = mode.selectedTab,
+                            onSelectTab = viewModel::selectStandingsTab,
+                            statsTab = {
+                                LeadersContent(
+                                    mode = mode,
+                                    onOpenStatPicker = viewModel::openStatPicker,
+                                    onSelectStat = viewModel::selectLeaderStat,
+                                    onPlayerClick = { playerId, name -> viewModel.openPlayer(playerId, name, null) },
+                                )
+                            },
                         )
                     }
 
@@ -174,6 +185,9 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             onBack = viewModel::backFromMyTeam,
                             onMatchClick = viewModel::openMatchDetail,
                             onOpenStandingsTable = viewModel::openStandingsTable,
+                            tabs = mode.tabs,
+                            onSelectTab = viewModel::selectTeamTab,
+                            onPlayerClick = viewModel::openPlayer,
                         )
                     }
 
@@ -183,7 +197,9 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             onBack = viewModel::backFromMatchDetail,
                             onTeamClick = viewModel::openTeamDetail,
                             onSelectTab = viewModel::selectMatchDetailTab,
-                            onPlayerClick = viewModel::openPlayer,
+                            onPlayerClick = { player, photoBytes ->
+                                player.id?.let { viewModel.openPlayer(it, player.name, photoBytes) }
+                            },
                         )
                     }
 
@@ -206,6 +222,9 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             onBack = viewModel::backFromTeamDetail,
                             onMatchClick = viewModel::openMatchDetail,
                             onOpenStandingsTable = viewModel::openStandingsTable,
+                            tabs = mode.tabs,
+                            onSelectTab = viewModel::selectTeamTab,
+                            onPlayerClick = viewModel::openPlayer,
                         )
                     }
                 }
@@ -1332,7 +1351,8 @@ private fun CompetitionPickerContent(
             leagues.forEach { league ->
                 LightText(
                     text = league.name,
-                    variant = LightTextVariant.Detail,
+                    // Same size as Settings' own rows (SettingRow), on request.
+                    variant = LightTextVariant.Fine,
                     modifier = Modifier
                         .fillMaxWidth()
                         .lightClickable(onClick = { onSelect(league.id, league.name) })
@@ -1376,12 +1396,22 @@ private fun StandingsTableContent(
     rows: List<StandingsRow>,
     isLoading: Boolean,
     onBack: () -> Unit,
+    selectedTab: Int,
+    onSelectTab: (Int) -> Unit,
+    statsTab: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         LightTopBar(
             leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = onBack),
             center = LightTopBarCenter.Text(leagueName),
-            modifier = Modifier.padding(bottom = 1f.gridUnitsAsDp()),
+            modifier = Modifier.padding(bottom = 0.5f.gridUnitsAsDp()),
+        )
+        // Table / Stats, on request — Stats is the competition's player leaderboard (LeadersContent).
+        LabeledTabRow(
+            labels = listOf("Table", "Stats"),
+            selectedIndex = selectedTab,
+            onSelect = onSelectTab,
+            modifier = Modifier.padding(start = 1f.gridUnitsAsDp(), end = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
         )
         // League badge image dropped on request ("remove league badges from all table views") —
         // this was the only one (Standings is this app's only table view). [leagueLogoBytes] is
@@ -1390,7 +1420,9 @@ private fun StandingsTableContent(
         // SoccerViewModel's standings-logo follow-up) — same UI-only-removal call as
         // [LineupSection]'s coach headshot removal, for the same reason.
 
-        if (isLoading) {
+        if (selectedTab == 1) {
+            statsTab()
+        } else if (isLoading) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 LightText(text = "fetching standings...", variant = LightTextVariant.Fine)
             }
@@ -1630,6 +1662,9 @@ private fun MyTeamContent(
     onBack: () -> Unit,
     onMatchClick: (Fixture) -> Unit,
     onOpenStandingsTable: (Int, String) -> Unit,
+    tabs: TeamTabsState,
+    onSelectTab: (Int) -> Unit,
+    onPlayerClick: (playerId: Int, name: String, photoBytes: ByteArray?) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         // Header text was removed on request in an earlier round — this used to show
@@ -1675,8 +1710,22 @@ private fun MyTeamContent(
                     onOpenStandingsTable = onOpenStandingsTable,
                     modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()),
                 )
-                // Order below is deliberate: recent results, then next results, then who's out —
-                // injuries/suspensions dropped to the bottom of the scroll instead of leading it.
+                // Matches / Squad, on request. The header row above stays put across both tabs.
+                LabeledTabRow(
+                    labels = listOf("Matches", "Squad"),
+                    selectedIndex = tabs.selectedTab,
+                    onSelect = onSelectTab,
+                    modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
+                )
+                if (tabs.selectedTab == 1) {
+                    // Who's out moved here from the Matches tab, on request: it's about players.
+                    if (summary.unavailable.isNotEmpty()) {
+                        UnavailableBlock(summary.unavailable, modifier = Modifier.padding(top = 1f.gridUnitsAsDp()))
+                    }
+                    SquadSection(tabs, onPlayerClick, modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()))
+                    return@LightScrollView
+                }
+                // Recent results, then next results.
                 if (summary.recentFixtures.isNotEmpty()) {
                     MatchGroupCard(
                         title = "RECENT RESULTS",
@@ -1702,13 +1751,7 @@ private fun MyTeamContent(
                         onMatchClick = onMatchClick,
                     )
                 }
-                if (summary.unavailable.isNotEmpty()) {
-                    UnavailableBlock(
-                        summary.unavailable,
-                        modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
-                    )
-                }
-                if (summary.featuredFixture == null && summary.unavailable.isEmpty() &&
+                if (summary.featuredFixture == null &&
                     summary.upcomingFixtures.isEmpty() && summary.recentFixtures.isEmpty()
                 ) {
                     LightText(
@@ -3151,6 +3194,200 @@ private fun PlayerCareerRow(team: PlayerCareerTeam) {
             variant = LightTextVariant.Detail,
             lighten = true,
             align = TextAlign.End,
+        )
+    }
+}
+
+// --- Competition: Stats leaderboard ------------------------------------------------------------
+
+/** The Competition screen's Stats tab: the competition's top 25 players by one stat, with a
+ * button at the top naming that stat — tap it for the list of stats to rank by instead (Back, or
+ * picking one, returns to the ranking). The available stats come from the proxy with each
+ * leaderboard, so this screen has no list of its own. Tapping a player opens their page. */
+@Composable
+private fun ColumnScope.LeadersContent(
+    mode: ScoreScreenMode.Standings,
+    onOpenStatPicker: () -> Unit,
+    onSelectStat: (String) -> Unit,
+    onPlayerClick: (playerId: Int, name: String) -> Unit,
+) {
+    val leaders = mode.leaders
+    val statLabel = leaders?.stats?.firstOrNull { it.key == mode.selectedStat }?.label ?: leaders?.label ?: "Goals"
+
+    DetailTabButton(
+        text = statLabel,
+        isSelected = true,
+        onClick = onOpenStatPicker,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
+    )
+    if (!mode.statPickerOpen) {
+        LightText(
+            text = "Tap to rank by another stat",
+            variant = LightTextVariant.Superfine,
+            lighten = true,
+            align = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 0.3f.gridUnitsAsDp(), bottom = 0.5f.gridUnitsAsDp()),
+        )
+    }
+
+    if (mode.statPickerOpen) {
+        LightScrollView(
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp(), top = 0.5f.gridUnitsAsDp()),
+        ) {
+            leaders?.stats.orEmpty().forEach { option ->
+                LightText(
+                    text = option.label,
+                    variant = LightTextVariant.Fine,
+                    lighten = option.key != mode.selectedStat,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .lightClickable { onSelectStat(option.key) }
+                        .padding(vertical = 0.6f.gridUnitsAsDp()),
+                )
+            }
+        }
+        return
+    }
+
+    when {
+        mode.leadersLoading -> NoDataForTab(text = "fetching stats...")
+        leaders == null -> NoDataForTab(text = "Stats aren't available for this competition right now.")
+        leaders.leaders.isEmpty() -> NoDataForTab(text = "No players to rank yet.")
+        else -> LightScrollView(
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
+        ) {
+            leaders.minMinutesShare?.let { share ->
+                LightText(
+                    text = "Players with ${(share * 100).toInt()}% or more of their team's minutes",
+                    variant = LightTextVariant.Superfine,
+                    lighten = true,
+                    modifier = Modifier.padding(bottom = 0.4f.gridUnitsAsDp(), end = 1f.gridUnitsAsDp()),
+                )
+            }
+            leaders.leaders.forEach { entry ->
+                LeaderRow(entry, kind = leaders.kind, onClick = { onPlayerClick(entry.playerId, entry.name) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun LeaderRow(entry: LeaderEntry, kind: String, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .lightClickable(onClick = onClick)
+            .padding(end = 1f.gridUnitsAsDp(), top = 0.3f.gridUnitsAsDp(), bottom = 0.3f.gridUnitsAsDp()),
+    ) {
+        LightText(
+            text = entry.rank.toString(),
+            variant = LightTextVariant.Fine,
+            lighten = true,
+            modifier = Modifier.width(1.8f.gridUnitsAsDp()),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            LightText(text = entry.name, variant = LightTextVariant.Fine, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            entry.teamName?.let {
+                LightText(text = teamShortName(it), variant = LightTextVariant.Superfine, lighten = true, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        LightText(
+            text = when (kind) {
+                "per_90" -> String.format(java.util.Locale.US, "%.2f", entry.value)
+                "rate" -> "${entry.value.toInt()}%"
+                else -> entry.value.toLong().toString()
+            },
+            variant = LightTextVariant.Fine,
+            align = TextAlign.End,
+            modifier = Modifier.padding(start = 0.5f.gridUnitsAsDp()),
+        )
+    }
+}
+
+// --- Team: Squad tab ---------------------------------------------------------------------------
+
+private val SQUAD_POSITION_LABELS = mapOf(
+    "Goalkeeper" to "GOALKEEPERS",
+    "Defender" to "DEFENDERS",
+    "Midfielder" to "MIDFIELDERS",
+    "Attacker" to "ATTACKERS",
+)
+private const val SQUAD_PHOTO_SIZE_UNITS = 2f
+
+/** My Team / Team Detail's Squad tab: the registered squad by position (the proxy already sorts
+ * it goalkeepers to attackers, then by shirt number), each row a headshot, number, and name.
+ * Tapping a player opens their page. */
+@Composable
+private fun SquadSection(
+    tabs: TeamTabsState,
+    onPlayerClick: (playerId: Int, name: String, photoBytes: ByteArray?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        val squad = tabs.squad
+        when {
+            tabs.squadFailed -> NoDataForTab(text = "Couldn't load the squad right now.")
+            squad == null -> NoDataForTab(text = "fetching squad...")
+            squad.players.isEmpty() -> NoDataForTab(text = "No squad listed for this team.")
+            else -> squad.players.groupBy { it.position }.forEach { (position, players) ->
+                PlayerSectionLabel(
+                    text = SQUAD_POSITION_LABELS[position] ?: "OTHER",
+                    modifier = Modifier.padding(top = 0.8f.gridUnitsAsDp()),
+                )
+                players.forEach { player ->
+                    SquadPlayerRow(player, tabs.squadPhotos[player.playerId], onPlayerClick)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SquadPlayerRow(
+    player: SquadPlayer,
+    photoBytes: ByteArray?,
+    onPlayerClick: (playerId: Int, name: String, photoBytes: ByteArray?) -> Unit,
+) {
+    val photo = photoBytes?.let { bytes ->
+        remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .lightClickable { onPlayerClick(player.playerId, player.name, photoBytes) }
+            .padding(end = 1f.gridUnitsAsDp(), top = 0.2f.gridUnitsAsDp(), bottom = 0.2f.gridUnitsAsDp()),
+    ) {
+        // Headshot, or an empty circle of the same size so names stay aligned while photos load.
+        Box(
+            modifier = Modifier
+                .size(SQUAD_PHOTO_SIZE_UNITS.gridUnitsAsDp())
+                .clip(CircleShape)
+                .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.15f)),
+        ) {
+            if (photo != null) {
+                Image(
+                    bitmap = photo,
+                    contentDescription = player.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        LightText(
+            text = player.number?.toString() ?: "-",
+            variant = LightTextVariant.Fine,
+            lighten = true,
+            align = TextAlign.End,
+            modifier = Modifier.width(2f.gridUnitsAsDp()).padding(end = 0.6f.gridUnitsAsDp()),
+        )
+        LightText(
+            text = player.name,
+            variant = LightTextVariant.Fine,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
     }
 }

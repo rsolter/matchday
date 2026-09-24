@@ -12,16 +12,18 @@ Cup, Leagues Cup).
 
 - **Scores** (default view): matches from two weeks back to four weeks ahead across every
   competition you follow, grouped by day and competition.
-- **Competitions** (trophy icon): pick a followed league, see its table — split into groups
-  (e.g. MLS's Eastern/Western conferences) where the competition has them, one flat table
-  otherwise. Knockout cups have no table and are left out of this list.
-- **My Team**: pick a league and a team once; after that, see its league position, a handful of
-  upcoming and recent fixtures, and who's unavailable (injured or suspended, split out) for the
-  next match.
+- **Competitions** (trophy icon): pick a followed league for two tabs — Table (split into groups,
+  e.g. MLS's Eastern/Western conferences, where the competition has them) and Stats (the top 25
+  players by goals, or by any of 17 stats: per-90 rates, assists, minutes, shots, pass accuracy,
+  duels won...). Knockout cups have no table and are left out of this list.
+- **My Team**: pick a league and a team once; after that, see its league position and two tabs —
+  Matches (recent results and upcoming fixtures) and Squad (who's unavailable for the next match,
+  then the registered squad by position; tap a player for their page). Any team tapped from a
+  match opens the same view.
 - **Match detail**: tap any match for four tabs — Stats, Timeline (a flat, chronological,
   text-only feed of goals, substitutions, cards, and VAR reviews), and Home/Away Lineup (starting
   XI by real pitch position, formation, coach, and substitutes).
-- **Player**: tap any player in a lineup for their season — Summary (appearances, goals,
+- **Player**: tap any player in a lineup, leaderboard, or squad for their season — Summary (appearances, goals,
   minutes, rating, per competition), Stats (totals and per 90), Matches (the season's match list),
   and Career (clubs and national teams). Season totals cover leagues and European competitions;
   the match list includes domestic cups too. Stats update nightly.

@@ -84,6 +84,16 @@ sealed class ScoreScreenMode {
          * headshots — see [StandingsFetchResult] for where the URL comes from. Null while unresolved,
          * on fetch failure, or if this league had no logo. */
         val leagueLogoBytes: ByteArray? = null,
+        /** 0 = the table, 1 = the Stats leaderboard (see [SoccerViewModel.selectStandingsTab]).
+         * Kept here, like [MatchDetailScreen.selectedTab], so Back from a player opened off the
+         * leaderboard lands on the leaderboard again. */
+        val selectedTab: Int = 0,
+        /** The leaderboard for [selectedStat], loaded the first time the Stats tab is opened. */
+        val leaders: LeagueLeaders? = null,
+        val leadersLoading: Boolean = false,
+        val selectedStat: String = DEFAULT_LEADER_STAT,
+        /** True while the Stats tab shows its list of stats to rank by instead of the ranking. */
+        val statPickerOpen: Boolean = false,
     ) : ScoreScreenMode()
 
     /** The bottom bar's Competition (trophy) button: the user's followed competitions that have a
@@ -107,6 +117,7 @@ sealed class ScoreScreenMode {
     data class MyTeam(
         val summary: MyTeamSummary?,
         val isLoading: Boolean,
+        val tabs: TeamTabsState = TeamTabsState(),
     ) : ScoreScreenMode()
 
     /** Reachable by tapping either team's badge on [MatchDetailScreen] — renders with the exact
@@ -119,6 +130,7 @@ sealed class ScoreScreenMode {
     data class TeamDetail(
         val summary: MyTeamSummary?,
         val isLoading: Boolean,
+        val tabs: TeamTabsState = TeamTabsState(),
     ) : ScoreScreenMode()
 
     /** Reachable by tapping a match row from Scores (which absorbed the former standalone Fixtures
@@ -169,7 +181,8 @@ sealed class ScoreScreenMode {
         val selectedTab: Int = 0,
     ) : ScoreScreenMode()
 
-    /** A player's season, opened by tapping them in a match lineup (see [openPlayer]). [detail] is
+    /** A player's season, opened by tapping them in a match lineup, a competition's Stats
+     * leaderboard, or a team's squad (see [openPlayer]). [detail] is
      * null while [isLoading], and stays null when the proxy has no stats for this player
      * ([notFound]) or the fetch failed. [playerName]/[photoBytes] come from the tapped lineup
      * entry, so the header has something to show before [detail] arrives. */
@@ -186,6 +199,19 @@ sealed class ScoreScreenMode {
 /** [region] carries [Competition.region] through to [LeagueSelectionContent] (SoccerHomeScreen.kt)
  * so that screen can render one section header per country (plus "International Club" for
  * UCL/UEL) instead of one flat list — on request. */
+/** The Matches/Squad tabs on My Team and Team Detail (see [SoccerViewModel.selectTeamTab]). The
+ * squad and its headshots load the first time the Squad tab opens. */
+data class TeamTabsState(
+    /** 0 = Matches, 1 = Squad. */
+    val selectedTab: Int = 0,
+    val squad: TeamSquad? = null,
+    val squadLoading: Boolean = false,
+    val squadFailed: Boolean = false,
+    val squadPhotos: Map<Int, ByteArray> = emptyMap(),
+)
+
+const val DEFAULT_LEADER_STAT = "goals"
+
 data class LeagueSelectionRow(val id: Int, val name: String, val selected: Boolean, val region: String)
 
 data class ScoreUiState(
@@ -645,8 +671,10 @@ class SoccerViewModel(
                     standingsCache[leagueId] = rows
                     updateState { state ->
                         if (state.mode is ScoreScreenMode.Standings && state.mode.leagueId == leagueId) {
+                            // copy, not a fresh Standings: the user may already have switched to the
+                            // Stats tab while the table was loading.
                             state.copy(
-                                mode = ScoreScreenMode.Standings(leagueId, leagueName, rows, false, Clock.System.now()),
+                                mode = state.mode.copy(rows = rows, isLoading = false, lastUpdated = Clock.System.now()),
                                 errorModal = null,
                             )
                         } else {
@@ -671,7 +699,7 @@ class SoccerViewModel(
                 onFailure = { error ->
                     updateState { state ->
                         val fallback = if (state.mode is ScoreScreenMode.Standings && state.mode.leagueId == leagueId) {
-                            ScoreScreenMode.Standings(leagueId, leagueName, emptyList(), false, null)
+                            state.mode.copy(rows = emptyList(), isLoading = false, lastUpdated = null)
                         } else {
                             state.mode
                         }
@@ -679,6 +707,95 @@ class SoccerViewModel(
                     }
                 },
             )
+        }
+    }
+
+    // --- Competition: Stats leaderboard -------------------------------------------------------
+
+    private fun updateStandings(leagueId: Int, transform: (ScoreScreenMode.Standings) -> ScoreScreenMode.Standings) {
+        updateState { state ->
+            val current = state.mode as? ScoreScreenMode.Standings
+            if (current == null || current.leagueId != leagueId) state else state.copy(mode = transform(current))
+        }
+    }
+
+    /** 0 = table, 1 = Stats. The leaderboard loads the first time Stats is opened. */
+    fun selectStandingsTab(index: Int) {
+        val current = _uiState.value.mode as? ScoreScreenMode.Standings ?: return
+        updateStandings(current.leagueId) { it.copy(selectedTab = index, statPickerOpen = false) }
+        if (index == 1 && current.leaders == null && !current.leadersLoading) {
+            loadLeaders(current.leagueId, current.selectedStat)
+        }
+    }
+
+    fun openStatPicker() {
+        val current = _uiState.value.mode as? ScoreScreenMode.Standings ?: return
+        updateStandings(current.leagueId) { it.copy(statPickerOpen = true) }
+    }
+
+    fun selectLeaderStat(stat: String) {
+        val current = _uiState.value.mode as? ScoreScreenMode.Standings ?: return
+        updateStandings(current.leagueId) { it.copy(statPickerOpen = false, selectedStat = stat) }
+        if (stat != current.leaders?.stat) loadLeaders(current.leagueId, stat)
+    }
+
+    private fun loadLeaders(leagueId: Int, stat: String) {
+        updateStandings(leagueId) { it.copy(leadersLoading = true) }
+        viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
+            val result = api.fetchLeagueLeaders(leagueId, stat)
+            updateState { state ->
+                val current = state.mode as? ScoreScreenMode.Standings
+                // Dropped if the user has since left, or picked another stat that'll land instead.
+                if (current == null || current.leagueId != leagueId || current.selectedStat != stat) {
+                    return@updateState state
+                }
+                result.fold(
+                    onSuccess = { leaders ->
+                        state.copy(mode = current.copy(leaders = leaders, leadersLoading = false))
+                    },
+                    onFailure = { error ->
+                        state.copy(mode = current.copy(leadersLoading = false), errorModal = apiErrorMessage(error))
+                    },
+                )
+            }
+        }
+    }
+
+    // --- Team tabs: Matches / Squad ------------------------------------------------------------
+
+    /** Applies [transform] to the Matches/Squad tab state of whichever team screen is showing (My
+     * Team or Team Detail) — only if it's still [teamId]'s, when given. */
+    private fun updateTeamTabs(teamId: Int? = null, transform: (TeamTabsState) -> TeamTabsState) {
+        updateState { state ->
+            when (val mode = state.mode) {
+                is ScoreScreenMode.MyTeam ->
+                    if (teamId == null || mode.summary?.teamId == teamId) state.copy(mode = mode.copy(tabs = transform(mode.tabs))) else state
+                is ScoreScreenMode.TeamDetail ->
+                    if (teamId == null || mode.summary?.teamId == teamId) state.copy(mode = mode.copy(tabs = transform(mode.tabs))) else state
+                else -> state
+            }
+        }
+    }
+
+    /** 0 = Matches, 1 = Squad. The squad (then its headshots) loads the first time Squad opens. */
+    fun selectTeamTab(index: Int) {
+        updateTeamTabs { it.copy(selectedTab = index) }
+        if (index != 1) return
+        val (summary, tabs) = when (val mode = _uiState.value.mode) {
+            is ScoreScreenMode.MyTeam -> mode.summary to mode.tabs
+            is ScoreScreenMode.TeamDetail -> mode.summary to mode.tabs
+            else -> return
+        }
+        val teamId = summary?.teamId ?: return
+        if (tabs.squad != null || tabs.squadLoading) return
+        updateTeamTabs(teamId) { it.copy(squadLoading = true, squadFailed = false) }
+        viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
+            val squad = api.fetchTeamSquad(teamId).getOrNull()
+            updateTeamTabs(teamId) { it.copy(squad = squad, squadLoading = false, squadFailed = squad == null) }
+            if (squad != null && squad.players.isNotEmpty()) {
+                val photos = api.fetchPlayerPhotos(squad.players.map { it.playerId })
+                updateTeamTabs(teamId) { it.copy(squadPhotos = photos) }
+            }
         }
     }
 
@@ -696,6 +813,11 @@ class SoccerViewModel(
     }
 
     fun backFromStandingsTable() {
+        val current = _uiState.value.mode as? ScoreScreenMode.Standings
+        if (current?.statPickerOpen == true) {
+            updateStandings(current.leagueId) { it.copy(statPickerOpen = false) }
+            return
+        }
         val previous = modeBeforeStandings ?: lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE)
         modeBeforeStandings = null
         updateState { it.copy(mode = previous, errorModal = null) }
@@ -1051,17 +1173,16 @@ class SoccerViewModel(
 
     // --- Player ------------------------------------------------------------------
 
-    /** Opens [player]'s season from a match lineup. Players without an API-Football id can't be
-     * looked up, so tapping one does nothing. [photoBytes] is the headshot the lineup already
-     * downloaded, reused for the header. */
-    fun openPlayer(player: LineupPlayer, photoBytes: ByteArray?) {
-        val playerId = player.id ?: return
+    /** Opens a player's season — from a match lineup, a competition's leaderboard, or a team's
+     * squad. [photoBytes] is a headshot the caller already downloaded, reused for the header; null
+     * just means the header shows no photo. */
+    fun openPlayer(playerId: Int, playerName: String, photoBytes: ByteArray?) {
         modeBeforePlayer = _uiState.value.mode
         updateState {
             it.copy(
                 mode = ScoreScreenMode.PlayerDetailScreen(
                     playerId = playerId,
-                    playerName = player.name,
+                    playerName = playerName,
                     photoBytes = photoBytes,
                     detail = null,
                     isLoading = true,

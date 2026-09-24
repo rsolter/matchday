@@ -1191,3 +1191,51 @@ data class PlayerCareerTeam(
     @SerialName("first_season") val firstSeason: Int,
     @SerialName("last_season") val lastSeason: Int,
 )
+
+// --- League leaders (proxy: GET /leagues/{id}/leaders) and team squads (GET /teams/{id}/squad) ----
+
+/** A competition's top players this season by one [stat]. [stats] lists every stat the proxy can
+ * rank by — the app offers exactly those, keeping no list of its own. [kind] is "count",
+ * "per_90", or "rate" (pass accuracy); per-90 and rate rankings only include players with
+ * [minMinutesShare] of their team's possible minutes. */
+@Serializable
+data class LeagueLeaders(
+    @SerialName("league_id") val leagueId: Int,
+    val stat: String,
+    val label: String,
+    val kind: String = "count",
+    @SerialName("min_minutes_share") val minMinutesShare: Double? = null,
+    val stats: List<LeaderStatOption> = emptyList(),
+    val leaders: List<LeaderEntry> = emptyList(),
+)
+
+@Serializable
+data class LeaderStatOption(val key: String, val label: String)
+
+/** One leaderboard line. Tied values share a [rank]. */
+@Serializable
+data class LeaderEntry(
+    val rank: Int,
+    @SerialName("player_id") val playerId: Int,
+    val name: String,
+    @SerialName("team_name") val teamName: String? = null,
+    val minutes: Int? = null,
+    val value: Double,
+)
+
+/** A team's registered squad — goalkeepers, defenders, midfielders, attackers, each by shirt
+ * number, as the proxy sorts it. */
+@Serializable
+data class TeamSquad(
+    @SerialName("team_id") val teamId: Int,
+    val players: List<SquadPlayer> = emptyList(),
+)
+
+@Serializable
+data class SquadPlayer(
+    @SerialName("player_id") val playerId: Int,
+    val name: String,
+    val number: Int? = null,
+    /** "Goalkeeper", "Defender", "Midfielder", or "Attacker". */
+    val position: String? = null,
+)
