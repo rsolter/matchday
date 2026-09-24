@@ -141,12 +141,15 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
      * league IDs flagged in SoccerModels.kt. */
     suspend fun fetchFixturesForTeam(
         teamId: Int,
+        leagueId: Int,
         dateFrom: String,
         dateTo: String,
     ): Result<List<Fixture>> = runCatching {
         val body: ApiFootballFixturesResponse = getChecked("$API_BASE/fixtures") {
             parameter("team", teamId)
-            parameter("season", currentSeason())
+            // The team's own competition decides which season numbering applies (an MLS team's
+            // season is the calendar year — see [currentSeason]).
+            parameter("season", currentSeason(leagueId))
             parameter("from", dateFrom)
             parameter("to", dateTo)
         }
@@ -156,7 +159,7 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
     private suspend fun fetchFixturesInternal(leagueId: Int, dateFrom: String, dateTo: String): List<Fixture> {
         val body: ApiFootballFixturesResponse = getChecked("$API_BASE/fixtures") {
             parameter("league", leagueId)
-            parameter("season", currentSeason())
+            parameter("season", currentSeason(leagueId))
             parameter("from", dateFrom)
             parameter("to", dateTo)
         }
@@ -171,7 +174,7 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
     suspend fun fetchStandings(leagueId: Int): Result<StandingsFetchResult> = runCatching {
         val body: ApiFootballStandingsResponse = getChecked("$API_BASE/standings") {
             parameter("league", leagueId)
-            parameter("season", currentSeason())
+            parameter("season", currentSeason(leagueId))
         }
         body.response.firstOrNull()?.league?.toStandingsFetchResult() ?: StandingsFetchResult(rows = emptyList())
     }
@@ -306,7 +309,7 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
         val today = todayLocalDate()
         val windowStart = today.minus(MY_TEAM_WINDOW_PAST_DAYS, DateTimeUnit.DAY)
         val windowEnd = today.plus(MY_TEAM_WINDOW_FUTURE_DAYS, DateTimeUnit.DAY)
-        val fixtures = fetchFixturesForTeam(teamId, windowStart.toString(), windowEnd.toString())
+        val fixtures = fetchFixturesForTeam(teamId, leagueId, windowStart.toString(), windowEnd.toString())
             .getOrElse { emptyList() }
             .sortedBy { it.utcDate }
 

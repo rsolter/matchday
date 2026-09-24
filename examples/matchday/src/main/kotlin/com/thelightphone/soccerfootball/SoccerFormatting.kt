@@ -94,8 +94,17 @@ fun todayLocalDateString(): String = todayLocalDate().toString()
  * independently verified against a real response near that boundary — worth a real check next
  * time this code runs in June/July.
  */
-fun currentSeason(referenceDate: LocalDate = todayLocalDate()): Int =
-    if (referenceDate.month.number >= 7) referenceDate.year else referenceDate.year - 1
+fun currentSeason(leagueId: Int? = null, referenceDate: LocalDate = todayLocalDate()): Int =
+    if (leagueId != null && competitionUsesCalendarYearSeason(leagueId)) {
+        // MLS and the CONCACAF Champions Cup: API-Football numbers these by the calendar year
+        // they're played in — see [Competition.calendarYearSeason]. Same rule as the proxy's own
+        // app/seasons.py.
+        referenceDate.year
+    } else if (referenceDate.month.number >= 7) {
+        referenceDate.year
+    } else {
+        referenceDate.year - 1
+    }
 
 /** Kickoff date + time for contexts that aren't already grouped by day, e.g. My Team's flat
  * "UPCOMING" list (unlike Scores/Fixtures, which group matches under a per-day header first, so a

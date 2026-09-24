@@ -94,9 +94,20 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             lineupsAvailableFixtureIds = mode.lineupsAvailableFixtureIds,
                             onOpenSettings = viewModel::openSettings,
                             onOpenMyTeam = viewModel::openMyTeam,
+                            onOpenCompetitions = viewModel::openCompetitions,
                             onOpenStandingsTable = viewModel::openStandingsTable,
                             onManualRefresh = viewModel::manualRefresh,
                             onMatchClick = viewModel::openMatchDetail,
+                        )
+                    }
+
+                    is ScoreScreenMode.CompetitionPicker -> {
+                        CompetitionPickerContent(
+                            title = "Competitions",
+                            leagues = mode.leagues,
+                            onSelect = viewModel::openStandingsTable,
+                            onBack = viewModel::backFromCompetitions,
+                            emptyText = "Follow a league in Settings to see its table here.",
                         )
                     }
 
@@ -364,8 +375,10 @@ private fun ResultBadge(result: MatchResult, modifier: Modifier = Modifier) {
 // express at all; see ORANGE_PRESERVE_LEAGUE_IDS/recolorWhiteExceptOrange below for that one.
 // Eredivisie (88, navy), Süper Lig (203, black wordmark), and UEFA Conference League (848, black
 // wordmark) joined in 1.4.0 for the same reason. Primeira Liga (94) and EFL Cup (48) ship on their
-// own white/green backgrounds and read fine untinted.
-private val WHITE_TINTED_LEAGUE_IDS = setOf(39, 61, 2, 88, 203, 848)
+// own white/green backgrounds and read fine untinted. Leagues Cup (772, solid black wordmark)
+// joined in 1.6.0; MLS, Liga MX, and the CONCACAF Champions Cup (whose dark badge carries white
+// lettering that a tint would erase) read fine as they are.
+private val WHITE_TINTED_LEAGUE_IDS = setOf(39, 61, 2, 88, 203, 848, 772)
 
 /** [BlendMode.SrcIn] paints solid white everywhere the source bitmap has any alpha (i.e. the
  * badge's actual crest shape) and leaves fully-transparent pixels untouched — a plain silhouette
@@ -442,6 +455,7 @@ private fun ScoresContent(
     lineupsAvailableFixtureIds: Set<Int>,
     onOpenSettings: () -> Unit,
     onOpenMyTeam: () -> Unit,
+    onOpenCompetitions: () -> Unit,
     onOpenStandingsTable: (Int, String) -> Unit,
     onManualRefresh: () -> Unit,
     onMatchClick: (Fixture) -> Unit,
@@ -545,6 +559,10 @@ private fun ScoresContent(
                     onClick = onOpenMyTeam,
                     contentDescription = "My Team",
                 ) { SoccerBarIcon(R.drawable.ic_jersey_white, "My Team") },
+                LightBarButton.Custom(
+                    onClick = onOpenCompetitions,
+                    contentDescription = "Competitions",
+                ) { SoccerBarIcon(R.drawable.ic_trophy_white, "Competitions") },
                 LightBarButton.LightIcon(
                     icon = LightIcons.REFRESH,
                     onClick = onManualRefresh,
@@ -1296,6 +1314,7 @@ private fun CompetitionPickerContent(
     leagues: List<Competition>,
     onSelect: (Int, String) -> Unit,
     onBack: () -> Unit,
+    emptyText: String? = null,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         LightTopBar(
@@ -1307,6 +1326,9 @@ private fun CompetitionPickerContent(
         LightScrollView(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
         ) {
+            if (leagues.isEmpty() && emptyText != null) {
+                NoDataForTab(text = emptyText)
+            }
             leagues.forEach { league ->
                 LightText(
                     text = league.name,

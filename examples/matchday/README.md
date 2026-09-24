@@ -1,20 +1,20 @@
 # Matchday
 
 A Light Phone III tool for live soccer scores, fixtures, and standings, sourced from
-[API-Football](https://www.api-football.com) — 18 competitions across England (Premier League,
+[API-Football](https://www.api-football.com) — 22 competitions across England (Premier League,
 Championship, FA Cup, EFL Cup), Italy (Serie A, Coppa Italia), Spain (La Liga, Copa del Rey),
 Germany (Bundesliga, DFB-Pokal), France (Ligue 1, Coupe de France), the Netherlands (Eredivisie),
-Portugal (Primeira Liga), Turkey (Süper Lig), and Europe (UEFA Champions League, Europa League,
-Conference League).
+Portugal (Primeira Liga), Turkey (Süper Lig), the United States (MLS), Mexico (Liga MX), Europe
+(UEFA Champions League, Europa League, Conference League), and North America (CONCACAF Champions
+Cup, Leagues Cup).
 
 ## What it does
 
-- **Scores** (default view): today's matches across every competition you follow, grouped by
-  competition.
-- **Fixtures**: pick a followed competition (league or cup), see its matches ±10/+21 days around
-  today.
-- **Standings**: pick a followed league, see its table — grouped by group (e.g. "Group A") for
-  UEFA competitions, one flat table otherwise. Knockout cups have no table and are excluded here.
+- **Scores** (default view): matches from two weeks back to four weeks ahead across every
+  competition you follow, grouped by day and competition.
+- **Competitions** (trophy icon): pick a followed league, see its table — split into groups
+  (e.g. MLS's Eastern/Western conferences) where the competition has them, one flat table
+  otherwise. Knockout cups have no table and are left out of this list.
 - **My Team**: pick a league and a team once; after that, see its league position, a handful of
   upcoming and recent fixtures, and who's unavailable (injured or suspended, split out) for the
   next match.
@@ -25,10 +25,10 @@ Conference League).
   minutes, rating, per competition), Stats (totals and per 90), Matches (the season's match list),
   and Career (clubs and national teams). Season totals cover leagues and European competitions;
   the match list includes domestic cups too. Stats update nightly.
-- **Settings**: which competitions you follow, your My Team pick, and a manual refresh — there's
-  no auto-refresh/poll loop, by design.
+- **Settings**: which competitions you follow and your My Team pick. Scores refreshes from the
+  bottom bar's Refresh icon — there's no auto-refresh/poll loop, by design.
 
-Bottom bar order, left to right: **Settings, My Team, Standings, Fixtures.**
+Bottom bar order, left to right: **Settings, My Team, Competitions, Refresh.**
 
 ## Data source
 

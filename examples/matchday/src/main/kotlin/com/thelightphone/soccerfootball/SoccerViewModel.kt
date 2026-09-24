@@ -86,6 +86,11 @@ sealed class ScoreScreenMode {
         val leagueLogoBytes: ByteArray? = null,
     ) : ScoreScreenMode()
 
+    /** The bottom bar's Competition (trophy) button: the user's followed competitions that have a
+     * table (see [SoccerViewModel.followedTableCompetitions] — knockout cups have none), each opening
+     * that competition's standings via [SoccerViewModel.openStandingsTable]. */
+    data class CompetitionPicker(val leagues: List<Competition>) : ScoreScreenMode()
+
     /** My Team setup, step 1: pick which followed league the team plays in — there's no team
      * search endpoint verified for this build, so a team is picked from an already-loaded
      * league's standings table instead (see [ScoreScreenMode.MyTeamTeamPicker]). */
@@ -675,6 +680,19 @@ class SoccerViewModel(
                 },
             )
         }
+    }
+
+    /** Bottom bar's Competition (trophy) button. Picking a competition opens its standings through
+     * [openStandingsTable], which remembers this picker as where Back returns to. */
+    fun openCompetitions() {
+        updateState {
+            it.copy(mode = ScoreScreenMode.CompetitionPicker(followedTableCompetitions()), errorModal = null)
+        }
+    }
+
+    fun backFromCompetitions() {
+        val existing = lastScores
+        updateState { it.copy(mode = existing ?: ScoreScreenMode.Loading(FETCHING_MESSAGE), errorModal = null) }
     }
 
     fun backFromStandingsTable() {

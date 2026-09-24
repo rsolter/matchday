@@ -57,6 +57,10 @@ data class Competition(
      * [SoccerViewModel.LeagueSelectionRow]) — every other screen in this app still shows a
      * competition's plain [name]/[shortName], unchanged. */
     val region: String = "",
+    /** True for competitions API-Football numbers by calendar year (MLS's Feb-Dec season, the
+     * Feb-May CONCACAF Champions Cup) rather than by the July-to-June season everything else here
+     * uses — see [currentSeason]. Must match the proxy's CALENDAR_YEAR_LEAGUE_IDS. */
+    val calendarYearSeason: Boolean = false,
 )
 
 // MLS (id 253) was tracked here through an earlier round, in the "recalled from general knowledge
@@ -93,11 +97,25 @@ val TRACKED_COMPETITIONS: List<Competition> = listOf(
     Competition(id = 88, name = "Eredivisie", region = "Netherlands"),
     Competition(id = 94, name = "Primeira Liga", region = "Portugal"),
     Competition(id = 203, name = "Süper Lig", region = "Turkey"),
+    // North America, added in 1.6.0. Liga MX's Apertura (Jul-Dec) and Clausura (Jan-May) make one
+    // July-start season, like Europe's; MLS runs Feb-Dec and is numbered by calendar year.
+    Competition(id = 253, name = "MLS", region = "United States", calendarYearSeason = true),
+    Competition(id = 262, name = "Liga MX", region = "Mexico"),
     // Europe — grouped as "International Club" rather than a country, on request (see
     // Competition.region's doc comment for the exact wording asked for).
     Competition(id = 2, name = "UEFA Champions League", shortName = "UCL", isDomestic = false, region = "International Club"),
     Competition(id = 3, name = "UEFA Europa League", shortName = "UEL", isDomestic = false, region = "International Club"),
     Competition(id = 848, name = "UEFA Conference League", shortName = "UECL", isDomestic = false, region = "International Club"),
+    Competition(
+        id = 16,
+        name = "CONCACAF Champions Cup",
+        shortName = "CCC",
+        hasStandings = false,
+        isDomestic = false,
+        region = "International Club",
+        calendarYearSeason = true,
+    ),
+    Competition(id = 772, name = "Leagues Cup", hasStandings = false, isDomestic = false, region = "International Club", calendarYearSeason = true),
 )
 
 /**
@@ -140,6 +158,9 @@ fun competitionHasStandings(id: Int): Boolean = TRACKED_COMPETITIONS.firstOrNull
  * [competitionName]/[competitionShortName] — every real [MyTeamSummary.leagueId] on screen came
  * from [TRACKED_COMPETITIONS], so this only matters if that ever stops being true. */
 fun competitionIsDomestic(id: Int): Boolean = TRACKED_COMPETITIONS.firstOrNull { it.id == id }?.isDomestic ?: true
+
+fun competitionUsesCalendarYearSeason(id: Int): Boolean =
+    TRACKED_COMPETITIONS.firstOrNull { it.id == id }?.calendarYearSeason ?: false
 
 /** [TRACKED_COMPETITIONS]' own declared order for league id — the same fixed preference order this
  * app has used since before the Scores/Fixtures merge (see [COMPETITION_DISPLAY_ORDER]'s doc
