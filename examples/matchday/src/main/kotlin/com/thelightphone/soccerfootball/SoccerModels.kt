@@ -1114,6 +1114,9 @@ data class PlayerDetail(
     val competitions: List<PlayerSeasonStats> = emptyList(),
     val totals: PlayerSeasonStats? = null,
     @SerialName("excludes_domestic_cups") val excludesDomesticCups: Boolean = false,
+    /** Which competitions [totals] cover — the player's domestic league (e.g. ["Serie A"]), or
+     * every competition for a player with no tracked domestic league. */
+    @SerialName("totals_league_names") val totalsLeagueNames: List<String> = emptyList(),
     val matches: List<PlayerMatch> = emptyList(),
     val career: List<PlayerCareerTeam>? = null,
 )
@@ -1210,6 +1213,10 @@ data class LeagueLeaders(
     @SerialName("min_minutes_share") val minMinutesShare: Double? = null,
     val stats: List<LeaderStatOption> = emptyList(),
     val leaders: List<LeaderEntry> = emptyList(),
+    /** Team boards only: the domestic league [LeaderEntry.leaguePercentile] is measured in, and
+     * whether per 90 ("per_90") or on the stat itself ("value", for minutes and averages). */
+    @SerialName("percentile_league_name") val percentileLeagueName: String? = null,
+    @SerialName("percentile_basis") val percentileBasis: String? = null,
 )
 
 @Serializable
@@ -1230,6 +1237,9 @@ data class LeaderEntry(
     val minutes: Int? = null,
     val total: Double? = null,
     @SerialName("per_90") val per90: Double? = null,
+    /** Team boards only: 0-100, the share of same-position players in the team's domestic league
+     * this player is ahead of on this stat. Null below the minutes threshold. */
+    @SerialName("league_percentile") val leaguePercentile: Int? = null,
 )
 
 /** A team's registered squad — goalkeepers, defenders, midfielders, attackers, each by shirt

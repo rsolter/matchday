@@ -3070,9 +3070,11 @@ private fun PlayerSummarySection(detail: PlayerDetail, modifier: Modifier = Modi
             PlayerStatRow("Rating", totals.rating.twoDecimals())
             PlayerStatRow("Yellow cards", totals.yellowCards.statLabel())
             PlayerStatRow("Red cards", totals.redCards.statLabel())
-            if (detail.excludesDomesticCups) {
+            if (detail.totalsLeagueNames.isNotEmpty()) {
                 LightText(
-                    text = "League and European matches only — domestic cups aren't included.",
+                    // Season totals are domestic-league only (per the proxy); European and cup
+                    // numbers stay visible per competition below.
+                    text = "${detail.totalsLeagueNames.joinToString(" + ")} only — see each competition below.",
                     variant = LightTextVariant.Superfine,
                     lighten = true,
                     modifier = Modifier.padding(top = 0.4f.gridUnitsAsDp(), end = 1f.gridUnitsAsDp()),
@@ -3124,7 +3126,15 @@ private fun PlayerStatsSection(detail: PlayerDetail, modifier: Modifier = Modifi
             )
             val rows = if (isGoalkeeper) keeper + outfield else outfield
             Row(modifier = Modifier.fillMaxWidth().padding(end = 1f.gridUnitsAsDp(), bottom = 0.2f.gridUnitsAsDp())) {
-                LightText(text = "${totals.minutes ?: 0} MIN PLAYED", variant = LightTextVariant.Superfine, lighten = true, modifier = Modifier.weight(1f))
+                LightText(
+                    text = listOfNotNull("${totals.minutes ?: 0} MIN", detail.totalsLeagueNames.takeIf { it.isNotEmpty() }?.joinToString(" + ")?.uppercase())
+                        .joinToString(" · "),
+                    variant = LightTextVariant.Superfine,
+                    lighten = true,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
                 LightText(text = "TOTAL", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.width(PLAYER_VALUE_COLUMN_UNITS.gridUnitsAsDp()))
                 LightText(text = "PER 90", variant = LightTextVariant.Superfine, lighten = true, align = TextAlign.End, modifier = Modifier.width(PLAYER_VALUE_COLUMN_UNITS.gridUnitsAsDp()))
             }
@@ -3276,8 +3286,11 @@ private fun PlayerCareerRow(team: PlayerCareerTeam) {
 // --- Stats leaderboards (a competition's Stats tab, and a team's) ------------------------------
 
 // Width of the Total and Per 90 columns — "1,234" or "72.52" at Fine size, with room to spare
-// (a two-digit Fine number needs more than 1.4 units: see SquadPlayerRow's number column).
+// (a two-digit Fine number needs more than 1.4 units: see SquadPlayerRow's number column). A team
+// board's extra LG % column ("100") takes a little from both on that board.
 private const val LEADER_VALUE_COLUMN_UNITS = 3.6f
+private const val TEAM_LEADER_VALUE_COLUMN_UNITS = 3.1f
+private const val LEADER_PERCENTILE_COLUMN_UNITS = 2.6f
 
 /** The Competition screen's Stats tab: the stat button (see [StatChooserButton]), then either the
  * list of stats to rank by or the top-25 board ([LeaderboardTable]), scrolling beneath it. */
@@ -3383,9 +3396,11 @@ private fun StatPickerList(board: LeagueLeaders?, selectedStat: String, onSelect
     }
 }
 
-/** Rank, player (with team, or minutes on a team's own board), Total, Per 90. The column the board
- * is ranked by is the brighter one; tap the other column's header to re-rank by it. Stats with no
- * per-90 figure (minutes, pass accuracy) show "–" there, and that header does nothing. */
+/** Rank, player (with team, or minutes on a team's own board), Total, Per 90 — and on a team's own
+ * board, LG %: the player's percentile among the same position in the team's domestic league (see
+ * [LeaderEntry.leaguePercentile]), explained in a footnote under the table. The column the board is
+ * ranked by is the brighter one; tap the other column's header to re-rank by it. Stats with no
+ * per-90 figure (minutes, averages) show "–" there, and that header does nothing. */
 @Composable
 private fun LeaderboardTable(
     board: LeagueLeaders,
@@ -3406,18 +3421,33 @@ private fun LeaderboardTable(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().padding(end = 1f.gridUnitsAsDp(), bottom = 0.2f.gridUnitsAsDp()),
         ) {
+            val valueWidth = if (showTeam) LEADER_VALUE_COLUMN_UNITS else TEAM_LEADER_VALUE_COLUMN_UNITS
             Box(modifier = Modifier.weight(1f))
-            LeaderSortHeader("TOTAL", selected = board.sort == "total", enabled = true) { onSelectSort("total") }
-            LeaderSortHeader("PER 90", selected = board.sort == "per_90", enabled = board.hasPer90) { onSelectSort("per_90") }
+            LeaderSortHeader("TOTAL", valueWidth, selected = board.sort == "total", enabled = true) { onSelectSort("total") }
+            LeaderSortHeader("PER 90", valueWidth, selected = board.sort == "per_90", enabled = board.hasPer90) { onSelectSort("per_90") }
+            if (!showTeam) {
+                LeaderSortHeader("LG %", LEADER_PERCENTILE_COLUMN_UNITS, selected = false, enabled = false) {}
+            }
         }
         board.leaders.forEach { entry ->
             LeaderRow(entry, board, showTeam, onClick = { onPlayerClick(entry.playerId, entry.name) })
+        }
+        if (!showTeam && board.percentileLeagueName != null) {
+            val basis = if (board.percentileBasis == "per_90") "per 90" else "on this stat"
+            LightText(
+                text = "LG %: percentile among ${board.percentileLeagueName} players in the same position, $basis. " +
+                    "Positions are broad (goalkeeper, defender, midfielder, attacker), and only players with " +
+                    "30%+ of their team's minutes count.",
+                variant = LightTextVariant.Superfine,
+                lighten = true,
+                modifier = Modifier.padding(top = 0.6f.gridUnitsAsDp(), end = 1f.gridUnitsAsDp()),
+            )
         }
     }
 }
 
 @Composable
-private fun LeaderSortHeader(text: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+private fun LeaderSortHeader(text: String, widthUnits: Float, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     LightText(
         text = text,
         variant = LightTextVariant.Superfine,
@@ -3425,14 +3455,21 @@ private fun LeaderSortHeader(text: String, selected: Boolean, enabled: Boolean, 
         underline = selected,
         align = TextAlign.End,
         modifier = Modifier
-            .width(LEADER_VALUE_COLUMN_UNITS.gridUnitsAsDp())
+            .width(widthUnits.gridUnitsAsDp())
             .lightClickable(enabled = enabled && !selected, onClick = onClick),
     )
 }
 
 @Composable
 private fun LeaderRow(entry: LeaderEntry, board: LeagueLeaders, showTeam: Boolean, onClick: () -> Unit) {
-    val total = entry.total?.let { if (board.stat == "pass_accuracy") "${it.toInt()}%" else it.toLong().toString() } ?: "–"
+    val total = entry.total?.let {
+        when (board.stat) {
+            "pass_accuracy" -> "${it.toInt()}%"
+            "rating" -> String.format(java.util.Locale.US, "%.2f", it)
+            else -> it.toLong().toString()
+        }
+    } ?: "–"
+    val valueWidth = if (showTeam) LEADER_VALUE_COLUMN_UNITS else TEAM_LEADER_VALUE_COLUMN_UNITS
     val per90 = entry.per90?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "–"
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -3459,15 +3496,23 @@ private fun LeaderRow(entry: LeaderEntry, board: LeagueLeaders, showTeam: Boolea
             variant = LightTextVariant.Fine,
             lighten = board.sort != "total",
             align = TextAlign.End,
-            modifier = Modifier.width(LEADER_VALUE_COLUMN_UNITS.gridUnitsAsDp()),
+            modifier = Modifier.width(valueWidth.gridUnitsAsDp()),
         )
         LightText(
             text = per90,
             variant = LightTextVariant.Fine,
             lighten = board.sort != "per_90",
             align = TextAlign.End,
-            modifier = Modifier.width(LEADER_VALUE_COLUMN_UNITS.gridUnitsAsDp()),
+            modifier = Modifier.width(valueWidth.gridUnitsAsDp()),
         )
+        if (!showTeam) {
+            LightText(
+                text = entry.leaguePercentile?.toString() ?: "–",
+                variant = LightTextVariant.Fine,
+                align = TextAlign.End,
+                modifier = Modifier.width(LEADER_PERCENTILE_COLUMN_UNITS.gridUnitsAsDp()),
+            )
+        }
     }
 }
 

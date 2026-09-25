@@ -1,0 +1,103 @@
+League,API Team Name,Current Short Name (if mapped),Suggested Short Name,Notes
+Eredivisie,ADO Den Haag,,Den Haag,
+Eredivisie,AZ Alkmaar,AZ,AZ,"Already mapped, unchanged"
+Eredivisie,Ajax,,,Already short
+Eredivisie,Cambuur,,,Already short
+Eredivisie,Excelsior,,,Already short
+Eredivisie,Feyenoord,,,Already short
+Eredivisie,Fortuna Sittard,,Sittard,
+Eredivisie,GO Ahead Eagles,,Go Ahead,
+Eredivisie,Groningen,,,Already short
+Eredivisie,Heerenveen,,,Already short
+Eredivisie,NEC Nijmegen,NEC,NEC,"Already mapped, unchanged"
+Eredivisie,PEC Zwolle,,Zwolle,
+Eredivisie,PSV Eindhoven,PSV,PSV,"Already mapped, unchanged"
+Eredivisie,Sparta Rotterdam,,Sparta,
+Eredivisie,Telstar,,,Already short
+Eredivisie,Twente,,,Already short
+Eredivisie,Utrecht,,,Already short
+Eredivisie,Willem II,,,Already short
+Primeira Liga,Academico Viseu,,Viseu,
+Primeira Liga,Alverca,,,Already short
+Primeira Liga,Arouca,,,Already short
+Primeira Liga,Benfica,,,Already short
+Primeira Liga,Casa Pia,,,Already short
+Primeira Liga,Estoril,,,Already short
+Primeira Liga,Estrela,,,Already short
+Primeira Liga,FC Porto,Porto,Porto,"Already mapped, unchanged"
+Primeira Liga,Famalicao,,,Already short
+Primeira Liga,GIL Vicente,,Gil Vicente,Fixes API-Football's odd capitalisation
+Primeira Liga,Maritimo,,,Already short
+Primeira Liga,Moreirense,,,Already short
+Primeira Liga,Nacional,,,Already short
+Primeira Liga,Rio Ave,,,Already short
+Primeira Liga,SC Braga,,Braga,
+Primeira Liga,Santa Clara,,,Already short
+Primeira Liga,Sporting CP,Sporting,Sporting,"Already mapped, unchanged"
+Primeira Liga,Vitória SC,,Vitória,
+Süper Lig,Alanyaspor,,,Already short
+Süper Lig,Amed,,,Already short
+Süper Lig,Başakşehir,,,Already short
+Süper Lig,Beşiktaş,Besiktas,Besiktas,"Already mapped, unchanged"
+Süper Lig,Erzurumspor FK,,Erzurumspor,
+Süper Lig,Eyüpspor,,,Already short
+Süper Lig,Fenerbahçe,Fenerbahce,Fenerbahce,"Already mapped, unchanged"
+Süper Lig,Galatasaray,,,Already short
+Süper Lig,Gaziantep FK,,Gaziantep,
+Süper Lig,Gençlerbirliği S.K.,,Gençlerbirliği,
+Süper Lig,Göztepe,,,Already short
+Süper Lig,Kasımpaşa,,,Already short
+Süper Lig,Kocaelispor,,,Already short
+Süper Lig,Konyaspor,,,Already short
+Süper Lig,Rizespor,,,Already short
+Süper Lig,Samsunspor,,,Already short
+Süper Lig,Trabzonspor,,,Already short
+Süper Lig,Çorum FK,,Çorum,
+MLS,Atlanta United FC,,Atlanta,
+MLS,Austin,,,Already short
+MLS,CF Montreal,,Montreal,
+MLS,Charlotte,,,Already short
+MLS,Chicago Fire,,Chicago,
+MLS,Colorado Rapids,,Colorado,
+MLS,Columbus Crew,,Columbus,
+MLS,DC United,,,Already short
+MLS,FC Cincinnati,,Cincinnati,
+MLS,FC Dallas,,Dallas,
+MLS,Houston Dynamo,,Houston,
+MLS,Inter Miami,,Miami,
+MLS,Los Angeles FC,,LAFC,
+MLS,Los Angeles Galaxy,,LA Galaxy,
+MLS,Minnesota United FC,,Minnesota,
+MLS,Nashville SC,,Nashville,
+MLS,New England Revolution,,New England,
+MLS,New York City FC,,NYCFC,
+MLS,New York Red Bulls,,NY Red Bulls,
+MLS,Orlando City SC,,Orlando,
+MLS,Philadelphia Union,,Philadelphia,
+MLS,Portland Timbers,,Portland,
+MLS,Real Salt Lake,,Salt Lake,'RSL' is the other common option
+MLS,San Diego,,,Already short
+MLS,San Jose Earthquakes,,San Jose,
+MLS,Seattle Sounders,,Seattle,
+MLS,Sporting Kansas City,,Kansas City,Not 'Sporting' — that's already Sporting CP's short name
+MLS,St. Louis City,,St. Louis,
+MLS,Toronto FC,,Toronto,
+MLS,Vancouver Whitecaps,,Vancouver,
+Liga MX,Atlante FC,,Atlante,
+Liga MX,Atlas,,,Already short
+Liga MX,Atletico San Luis,,San Luis,
+Liga MX,CF Pachuca,,Pachuca,
+Liga MX,Club America,,América,
+Liga MX,Club Queretaro,,Querétaro,
+Liga MX,Club Tijuana,,Tijuana,
+Liga MX,Cruz Azul,,,Already short
+Liga MX,FC Juarez,,Juárez,
+Liga MX,Guadalajara Chivas,,Chivas,
+Liga MX,Leon,,León,
+Liga MX,Monterrey,,,Already short
+Liga MX,Necaxa,,,Already short
+Liga MX,Puebla,,,Already short
+Liga MX,Santos Laguna,,Santos,
+Liga MX,Tigres UANL,,Tigres,
+Liga MX,Toluca,,,Already short
+Liga MX,U.N.A.M. - Pumas,,Pumas,
