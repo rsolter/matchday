@@ -14,15 +14,18 @@ Cup, Leagues Cup).
   competition you follow, grouped by day and competition.
 - **Competitions** (trophy icon): pick a followed league for two tabs — Table (split into groups,
   e.g. MLS's Eastern/Western conferences, where the competition has them) and Stats (the top 25
-  players by goals, or by any of 17 stats: per-90 rates, assists, minutes, shots, pass accuracy,
-  duels won...). Knockout cups have no table and are left out of this list.
+  players by goals, or by any of 14 stats — assists, shots, key passes, pass accuracy, duels
+  won... — each with its season total and per-90 figure; tap a column header to rank by the
+  other). Knockout cups have no table and are left out of this list.
 - **My Team**: pick a league and a team once; after that, see its league position and two tabs —
-  Matches (recent results and upcoming fixtures) and Squad (who's unavailable for the next match,
-  then the registered squad by position; tap a player for their page). Any team tapped from a
+  Matches (recent results and upcoming fixtures), Squad (who's unavailable for the next match,
+  then the registered squad by position; tap a player for their page), and Stats (the same
+  total/per-90 board as a competition's, for the team's own players). Any team tapped from a
   match opens the same view.
 - **Match detail**: tap any match for four tabs — Stats, Timeline (a flat, chronological,
   text-only feed of goals, substitutions, cards, and VAR reviews), and Home/Away Lineup (starting
-  XI by real pitch position, formation, coach, and substitutes).
+  XI by real pitch position, formation, coach, and substitutes, with each player's match rating
+  once the match is under way).
 - **Player**: tap any player in a lineup, leaderboard, or squad for their season — Summary (appearances, goals,
   minutes, rating, per competition), Stats (totals and per 90), Matches (the season's match list),
   and Career (clubs and national teams). Season totals cover leagues and European competitions;

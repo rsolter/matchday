@@ -1194,15 +1194,18 @@ data class PlayerCareerTeam(
 
 // --- League leaders (proxy: GET /leagues/{id}/leaders) and team squads (GET /teams/{id}/squad) ----
 
-/** A competition's top players this season by one [stat]. [stats] lists every stat the proxy can
- * rank by — the app offers exactly those, keeping no list of its own. [kind] is "count",
- * "per_90", or "rate" (pass accuracy); per-90 and rate rankings only include players with
- * [minMinutesShare] of their team's possible minutes. */
+/** A leaderboard — a competition's top players (GET /leagues/{id}/leaders) or everyone who's played
+ * for one team (GET /teams/{id}/stats) — by one [stat], each row with its total and per-90 figure,
+ * ranked by [sort] ("total" or "per_90"). [stats] lists every stat the proxy can rank by; the app
+ * offers exactly those, keeping no list of its own. Rankings by per 90, and pass accuracy, only
+ * include players with [minMinutesShare] of their team's possible minutes. */
 @Serializable
 data class LeagueLeaders(
-    @SerialName("league_id") val leagueId: Int,
     val stat: String,
     val label: String,
+    val sort: String = "total",
+    @SerialName("has_per_90") val hasPer90: Boolean = true,
+    /** "count", "per_90", or "rate" (pass accuracy — a percentage, not a count). */
     val kind: String = "count",
     @SerialName("min_minutes_share") val minMinutesShare: Double? = null,
     val stats: List<LeaderStatOption> = emptyList(),
@@ -1210,17 +1213,23 @@ data class LeagueLeaders(
 )
 
 @Serializable
-data class LeaderStatOption(val key: String, val label: String)
+data class LeaderStatOption(
+    val key: String,
+    val label: String,
+    @SerialName("has_per_90") val hasPer90: Boolean = true,
+)
 
-/** One leaderboard line. Tied values share a [rank]. */
+/** One leaderboard line. Tied values share a [rank]; null [rank] is a player below the minutes
+ * threshold, listed after the ranked ones (team boards only). */
 @Serializable
 data class LeaderEntry(
-    val rank: Int,
+    val rank: Int? = null,
     @SerialName("player_id") val playerId: Int,
     val name: String,
     @SerialName("team_name") val teamName: String? = null,
     val minutes: Int? = null,
-    val value: Double,
+    val total: Double? = null,
+    @SerialName("per_90") val per90: Double? = null,
 )
 
 /** A team's registered squad — goalkeepers, defenders, midfielders, attackers, each by shirt
@@ -1239,3 +1248,28 @@ data class SquadPlayer(
     /** "Goalkeeper", "Defender", "Midfielder", or "Attacker". */
     val position: String? = null,
 )
+
+// --- Match player stats (API-Football's /fixtures/players, via the proxy) — only what the lineup's
+// rating pills need: each player's id and rating. A rating arrives as a string ("7.2"), or null for
+// someone who didn't play.
+
+@Serializable
+internal data class ApiFootballFixturePlayersResponse(val response: List<ApiFootballFixturePlayersTeamDto> = emptyList())
+
+@Serializable
+internal data class ApiFootballFixturePlayersTeamDto(val players: List<ApiFootballFixturePlayerEntryDto> = emptyList())
+
+@Serializable
+internal data class ApiFootballFixturePlayerEntryDto(
+    val player: ApiFootballFixturePlayerRefDto,
+    val statistics: List<ApiFootballFixturePlayerStatsDto> = emptyList(),
+)
+
+@Serializable
+internal data class ApiFootballFixturePlayerRefDto(val id: Int? = null)
+
+@Serializable
+internal data class ApiFootballFixturePlayerStatsDto(val games: ApiFootballFixturePlayerGamesDto? = null)
+
+@Serializable
+internal data class ApiFootballFixturePlayerGamesDto(val rating: String? = null)

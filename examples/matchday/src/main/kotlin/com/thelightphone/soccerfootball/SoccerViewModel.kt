@@ -92,6 +92,8 @@ sealed class ScoreScreenMode {
         val leaders: LeagueLeaders? = null,
         val leadersLoading: Boolean = false,
         val selectedStat: String = DEFAULT_LEADER_STAT,
+        /** "total" or "per_90" — which column the leaderboard is ranked by. */
+        val selectedSort: String = DEFAULT_LEADER_SORT,
         /** True while the Stats tab shows its list of stats to rank by instead of the ranking. */
         val statPickerOpen: Boolean = false,
     ) : ScoreScreenMode()
@@ -179,6 +181,10 @@ sealed class ScoreScreenMode {
          * same lineup tab, not back on Stats — the screen leaves composition while the player is
          * shown, which would reset a remembered local value. */
         val selectedTab: Int = 0,
+        /** Each player's rating in this match, keyed by [LineupPlayer.id] — for the lineup's rating
+         * pills. Fetched alongside the match detail for a live or finished match; empty until then,
+         * and for a match that hasn't kicked off. */
+        val playerRatings: Map<Int, Double> = emptyMap(),
     ) : ScoreScreenMode()
 
     /** A player's season, opened by tapping them in a match lineup, a competition's Stats
@@ -202,15 +208,24 @@ sealed class ScoreScreenMode {
 /** The Matches/Squad tabs on My Team and Team Detail (see [SoccerViewModel.selectTeamTab]). The
  * squad and its headshots load the first time the Squad tab opens. */
 data class TeamTabsState(
-    /** 0 = Matches, 1 = Squad. */
+    /** 0 = Matches, 1 = Squad, 2 = Stats. */
     val selectedTab: Int = 0,
     val squad: TeamSquad? = null,
     val squadLoading: Boolean = false,
     val squadFailed: Boolean = false,
     val squadPhotos: Map<Int, ByteArray> = emptyMap(),
+    /** The Stats tab: the team's players by [statsStat], ranked by [statsSort] — same board as a
+     * competition's Stats tab (see [ScoreScreenMode.Standings]), limited to this team. Loads the
+     * first time the tab opens. */
+    val stats: LeagueLeaders? = null,
+    val statsLoading: Boolean = false,
+    val statsStat: String = DEFAULT_LEADER_STAT,
+    val statsSort: String = DEFAULT_LEADER_SORT,
+    val statPickerOpen: Boolean = false,
 )
 
 const val DEFAULT_LEADER_STAT = "goals"
+const val DEFAULT_LEADER_SORT = "total"
 
 data class LeagueSelectionRow(val id: Int, val name: String, val selected: Boolean, val region: String)
 
@@ -724,8 +739,16 @@ class SoccerViewModel(
         val current = _uiState.value.mode as? ScoreScreenMode.Standings ?: return
         updateStandings(current.leagueId) { it.copy(selectedTab = index, statPickerOpen = false) }
         if (index == 1 && current.leaders == null && !current.leadersLoading) {
-            loadLeaders(current.leagueId, current.selectedStat)
+            loadLeaders(current.leagueId, current.selectedStat, current.selectedSort)
         }
+    }
+
+    /** Re-ranks the leaderboard by its Total or Per 90 column (header tap). */
+    fun selectLeaderSort(sort: String) {
+        val current = _uiState.value.mode as? ScoreScreenMode.Standings ?: return
+        if (sort == current.selectedSort) return
+        updateStandings(current.leagueId) { it.copy(selectedSort = sort) }
+        loadLeaders(current.leagueId, current.selectedStat, sort)
     }
 
     fun openStatPicker() {
@@ -735,18 +758,26 @@ class SoccerViewModel(
 
     fun selectLeaderStat(stat: String) {
         val current = _uiState.value.mode as? ScoreScreenMode.Standings ?: return
-        updateStandings(current.leagueId) { it.copy(statPickerOpen = false, selectedStat = stat) }
-        if (stat != current.leaders?.stat) loadLeaders(current.leagueId, stat)
+        // A stat with no per-90 figure (minutes, pass accuracy) can only be ranked by its total.
+        val sort = if (current.leaders?.stats?.firstOrNull { it.key == stat }?.hasPer90 == false) {
+            DEFAULT_LEADER_SORT
+        } else {
+            current.selectedSort
+        }
+        updateStandings(current.leagueId) { it.copy(statPickerOpen = false, selectedStat = stat, selectedSort = sort) }
+        if (stat != current.leaders?.stat || sort != current.leaders?.sort) loadLeaders(current.leagueId, stat, sort)
     }
 
-    private fun loadLeaders(leagueId: Int, stat: String) {
+    private fun loadLeaders(leagueId: Int, stat: String, sort: String) {
         updateStandings(leagueId) { it.copy(leadersLoading = true) }
         viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
-            val result = api.fetchLeagueLeaders(leagueId, stat)
+            val result = api.fetchLeagueLeaders(leagueId, stat, sort)
             updateState { state ->
                 val current = state.mode as? ScoreScreenMode.Standings
-                // Dropped if the user has since left, or picked another stat that'll land instead.
-                if (current == null || current.leagueId != leagueId || current.selectedStat != stat) {
+                // Dropped if the user has since left, or picked another stat or sort that'll land instead.
+                if (current == null || current.leagueId != leagueId || current.selectedStat != stat ||
+                    current.selectedSort != sort
+                ) {
                     return@updateState state
                 }
                 result.fold(
@@ -777,16 +808,22 @@ class SoccerViewModel(
         }
     }
 
-    /** 0 = Matches, 1 = Squad. The squad (then its headshots) loads the first time Squad opens. */
+    private fun currentTeamTabs(): Pair<Int, TeamTabsState>? = when (val mode = _uiState.value.mode) {
+        is ScoreScreenMode.MyTeam -> mode.summary?.teamId?.let { it to mode.tabs }
+        is ScoreScreenMode.TeamDetail -> mode.summary?.teamId?.let { it to mode.tabs }
+        else -> null
+    }
+
+    /** 0 = Matches, 1 = Squad, 2 = Stats. The squad (then its headshots), and the Stats board, each
+     * load the first time their tab opens. */
     fun selectTeamTab(index: Int) {
-        updateTeamTabs { it.copy(selectedTab = index) }
-        if (index != 1) return
-        val (summary, tabs) = when (val mode = _uiState.value.mode) {
-            is ScoreScreenMode.MyTeam -> mode.summary to mode.tabs
-            is ScoreScreenMode.TeamDetail -> mode.summary to mode.tabs
-            else -> return
+        updateTeamTabs { it.copy(selectedTab = index, statPickerOpen = false) }
+        val (teamId, tabs) = currentTeamTabs() ?: return
+        if (index == 2) {
+            if (tabs.stats == null && !tabs.statsLoading) loadTeamStats(teamId, tabs.statsStat, tabs.statsSort)
+            return
         }
-        val teamId = summary?.teamId ?: return
+        if (index != 1) return
         if (tabs.squad != null || tabs.squadLoading) return
         updateTeamTabs(teamId) { it.copy(squadLoading = true, squadFailed = false) }
         viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
@@ -795,6 +832,43 @@ class SoccerViewModel(
             if (squad != null && squad.players.isNotEmpty()) {
                 val photos = api.fetchPlayerPhotos(squad.players.map { it.playerId })
                 updateTeamTabs(teamId) { it.copy(squadPhotos = photos) }
+            }
+        }
+    }
+
+    /** Closes the team Stats tab's stat list if it's open (Back's first job there). */
+    private fun closeTeamStatPicker(): Boolean {
+        val (_, tabs) = currentTeamTabs() ?: return false
+        if (!tabs.statPickerOpen) return false
+        updateTeamTabs { it.copy(statPickerOpen = false) }
+        return true
+    }
+
+    fun openTeamStatPicker() {
+        updateTeamTabs { it.copy(statPickerOpen = true) }
+    }
+
+    fun selectTeamStat(stat: String) {
+        val (teamId, tabs) = currentTeamTabs() ?: return
+        val sort = if (tabs.stats?.stats?.firstOrNull { it.key == stat }?.hasPer90 == false) DEFAULT_LEADER_SORT else tabs.statsSort
+        updateTeamTabs(teamId) { it.copy(statPickerOpen = false, statsStat = stat, statsSort = sort) }
+        if (stat != tabs.stats?.stat || sort != tabs.stats?.sort) loadTeamStats(teamId, stat, sort)
+    }
+
+    fun selectTeamStatSort(sort: String) {
+        val (teamId, tabs) = currentTeamTabs() ?: return
+        if (sort == tabs.statsSort) return
+        updateTeamTabs(teamId) { it.copy(statsSort = sort) }
+        loadTeamStats(teamId, tabs.statsStat, sort)
+    }
+
+    private fun loadTeamStats(teamId: Int, stat: String, sort: String) {
+        updateTeamTabs(teamId) { it.copy(statsLoading = true) }
+        viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
+            val stats = api.fetchTeamStats(teamId, stat, sort).getOrNull()
+            // Dropped if the user has since picked another stat or sort that'll land instead.
+            updateTeamTabs(teamId) {
+                if (it.statsStat != stat || it.statsSort != sort) it else it.copy(stats = stats, statsLoading = false)
             }
         }
     }
@@ -1009,6 +1083,7 @@ class SoccerViewModel(
     }
 
     fun backFromMyTeam() {
+        if (closeTeamStatPicker()) return
         updateState { it.copy(mode = lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE), errorModal = null) }
     }
 
@@ -1049,6 +1124,7 @@ class SoccerViewModel(
     }
 
     fun backFromTeamDetail() {
+        if (closeTeamStatPicker()) return
         val previous = modeBeforeTeamDetail ?: lastScores ?: ScoreScreenMode.Loading(FETCHING_MESSAGE)
         modeBeforeTeamDetail = null
         updateState { it.copy(mode = previous, errorModal = null) }
@@ -1091,6 +1167,20 @@ class SoccerViewModel(
             isLoading = true,
         )
         updateState { it.copy(mode = mode, errorModal = null) }
+        if (match.status.isLive || match.status == MatchStatus.FINISHED) {
+            // Silent on failure, like the crests: no ratings just means no rating pills.
+            viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
+                val ratings = api.fetchMatchRatings(match.id).getOrNull() ?: return@launch
+                updateState { state ->
+                    val current = state.mode as? ScoreScreenMode.MatchDetailScreen
+                    if (current != null && current.fixtureId == match.id) {
+                        state.copy(mode = current.copy(playerRatings = ratings))
+                    } else {
+                        state
+                    }
+                }
+            }
+        }
         viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
             val result = api.fetchMatchDetail(
                 match.id,

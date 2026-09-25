@@ -152,6 +152,7 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                                     mode = mode,
                                     onOpenStatPicker = viewModel::openStatPicker,
                                     onSelectStat = viewModel::selectLeaderStat,
+                                    onSelectSort = viewModel::selectLeaderSort,
                                     onPlayerClick = { playerId, name -> viewModel.openPlayer(playerId, name, null) },
                                 )
                             },
@@ -188,6 +189,9 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             tabs = mode.tabs,
                             onSelectTab = viewModel::selectTeamTab,
                             onPlayerClick = viewModel::openPlayer,
+                            onOpenStatPicker = viewModel::openTeamStatPicker,
+                            onSelectStat = viewModel::selectTeamStat,
+                            onSelectStatSort = viewModel::selectTeamStatSort,
                         )
                     }
 
@@ -225,6 +229,9 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                             tabs = mode.tabs,
                             onSelectTab = viewModel::selectTeamTab,
                             onPlayerClick = viewModel::openPlayer,
+                            onOpenStatPicker = viewModel::openTeamStatPicker,
+                            onSelectStat = viewModel::selectTeamStat,
+                            onSelectStatSort = viewModel::selectTeamStatSort,
                         )
                     }
                 }
@@ -1665,6 +1672,9 @@ private fun MyTeamContent(
     tabs: TeamTabsState,
     onSelectTab: (Int) -> Unit,
     onPlayerClick: (playerId: Int, name: String, photoBytes: ByteArray?) -> Unit,
+    onOpenStatPicker: () -> Unit,
+    onSelectStat: (String) -> Unit,
+    onSelectStatSort: (String) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         // Header text was removed on request in an earlier round — this used to show
@@ -1712,7 +1722,7 @@ private fun MyTeamContent(
                 )
                 // Matches / Squad, on request. The header row above stays put across both tabs.
                 LabeledTabRow(
-                    labels = listOf("Matches", "Squad"),
+                    labels = listOf("Matches", "Squad", "Stats"),
                     selectedIndex = tabs.selectedTab,
                     onSelect = onSelectTab,
                     modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
@@ -1723,6 +1733,17 @@ private fun MyTeamContent(
                         UnavailableBlock(summary.unavailable, modifier = Modifier.padding(top = 1f.gridUnitsAsDp()))
                     }
                     SquadSection(tabs, onPlayerClick, modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()))
+                    return@LightScrollView
+                }
+                if (tabs.selectedTab == 2) {
+                    TeamStatsSection(
+                        tabs = tabs,
+                        onOpenStatPicker = onOpenStatPicker,
+                        onSelectStat = onSelectStat,
+                        onSelectSort = onSelectStatSort,
+                        onPlayerClick = { playerId, name -> onPlayerClick(playerId, name, tabs.squadPhotos[playerId]) },
+                        modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
+                    )
                     return@LightScrollView
                 }
                 // Recent results, then next results.
@@ -2118,6 +2139,7 @@ private fun MatchDetailContent(
                             lineup = detail.lineups.home,
                             teamColor = homeTeamColor,
                             playerPhotosById = mode.playerPhotosById,
+                            playerRatings = mode.playerRatings,
                             onPlayerClick = onLineupPlayerClick,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
@@ -2126,6 +2148,7 @@ private fun MatchDetailContent(
                             lineup = detail.lineups.away,
                             teamColor = awayTeamColor,
                             playerPhotosById = mode.playerPhotosById,
+                            playerRatings = mode.playerRatings,
                             onPlayerClick = onLineupPlayerClick,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
@@ -2643,6 +2666,7 @@ private fun LineupSection(
     lineup: TeamLineup?,
     teamColor: Color?,
     playerPhotosById: Map<Int, ByteArray>,
+    playerRatings: Map<Int, Double>,
     onPlayerClick: (LineupPlayer) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2715,6 +2739,7 @@ private fun LineupSection(
                             player,
                             dotColor = teamColor,
                             photoBytes = player.id?.let { playerPhotosById[it] },
+                            rating = player.id?.let { playerRatings[it] },
                             modifier = Modifier
                                 .weight(1f)
                                 .lightClickable(enabled = player.id != null) { onPlayerClick(player) },
@@ -2731,6 +2756,7 @@ private fun LineupSection(
         if (lineup.substitutes.isNotEmpty()) {
             SubstitutesBlock(
                 lineup.substitutes,
+                playerRatings = playerRatings,
                 onPlayerClick = onPlayerClick,
                 modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
             )
@@ -2753,7 +2779,13 @@ private fun LineupSection(
  * for leaving a sparse 2-3-player row (attack, midfield) bunched dead-center instead of spread
  * across the pitch. */
 @Composable
-private fun PitchPlayerColumn(player: LineupPlayer, dotColor: Color?, photoBytes: ByteArray?, modifier: Modifier = Modifier) {
+private fun PitchPlayerColumn(
+    player: LineupPlayer,
+    dotColor: Color?,
+    photoBytes: ByteArray?,
+    rating: Double?,
+    modifier: Modifier = Modifier,
+) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier,
@@ -2770,6 +2802,8 @@ private fun PitchPlayerColumn(player: LineupPlayer, dotColor: Color?, photoBytes
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()),
         )
+        // Match rating, on request, as a second line under the name — a live or finished match's.
+        rating?.let { RatingPill(it, modifier = Modifier.padding(top = 0.15f.gridUnitsAsDp())) }
     }
 }
 
@@ -2843,6 +2877,7 @@ private fun PitchNumberDot(player: LineupPlayer, dotColor: Color?, photoBytes: B
 @Composable
 private fun SubstitutesBlock(
     substitutes: List<LineupPlayer>,
+    playerRatings: Map<Int, Double>,
     onPlayerClick: (LineupPlayer) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2876,6 +2911,10 @@ private fun SubstitutesBlock(
                 )
                 player.position?.let {
                     LightText(text = it, variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End)
+                }
+                // Only substitutes who came on have a rating.
+                player.id?.let { playerRatings[it] }?.let {
+                    RatingPill(it, modifier = Modifier.padding(start = 0.5f.gridUnitsAsDp()))
                 }
             }
         }
@@ -3101,60 +3140,96 @@ private fun PlayerStatsSection(detail: PlayerDetail, modifier: Modifier = Modifi
     }
 }
 
-/** The season's matches, newest first — domestic cups included, unlike the season totals. */
+// Player → Matches columns, right of the opponent: minutes ("90'") and rating ("7.6") need about
+// three Fine-size characters; goals and assists one.
+private const val PLAYER_MATCH_WIDE_COLUMN_UNITS = 2.8f
+private const val PLAYER_MATCH_NARROW_COLUMN_UNITS = 1.8f
+
+/** The season's matches, newest first — domestic cups included, unlike the season totals. Columns,
+ * on request: opponent (date, competition, and result underneath), then minutes, rating, goals,
+ * and assists at full size, under a small MIN / RTG / G / A header. */
 @Composable
 private fun PlayerMatchesSection(matches: List<PlayerMatch>, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth()) {
         if (matches.isEmpty()) {
             NoDataForTab(text = "No matches this season yet.")
         } else {
+            Row(modifier = Modifier.fillMaxWidth().padding(end = 1f.gridUnitsAsDp(), bottom = 0.2f.gridUnitsAsDp())) {
+                Box(modifier = Modifier.weight(1f))
+                PlayerMatchHeader("MIN", PLAYER_MATCH_WIDE_COLUMN_UNITS)
+                PlayerMatchHeader("RTG", PLAYER_MATCH_WIDE_COLUMN_UNITS)
+                PlayerMatchHeader("G", PLAYER_MATCH_NARROW_COLUMN_UNITS)
+                PlayerMatchHeader("A", PLAYER_MATCH_NARROW_COLUMN_UNITS)
+            }
             matches.forEach { match -> PlayerMatchRow(match) }
         }
     }
 }
 
 @Composable
+private fun PlayerMatchHeader(text: String, widthUnits: Float) {
+    LightText(
+        text = text,
+        variant = LightTextVariant.Superfine,
+        lighten = true,
+        align = TextAlign.End,
+        modifier = Modifier.width(widthUnits.gridUnitsAsDp()),
+    )
+}
+
+@Composable
 private fun PlayerMatchRow(match: PlayerMatch) {
-    val result = when (match.result) {
-        "W" -> MatchResult.WIN
-        "D" -> MatchResult.DRAW
-        "L" -> MatchResult.LOSS
-        else -> null
-    }
-    Column(modifier = Modifier.fillMaxWidth().padding(end = 1f.gridUnitsAsDp(), top = 0.3f.gridUnitsAsDp(), bottom = 0.3f.gridUnitsAsDp())) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+    val played = (match.minutes ?: 0) > 0
+    // Zero goals/assists, and an unused substitute's minutes/rating, show as "–" so the matches
+    // where something happened stand out.
+    fun countLabel(value: Int?): String = value?.takeIf { it > 0 }?.toString() ?: "–"
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(end = 1f.gridUnitsAsDp(), top = 0.3f.gridUnitsAsDp(), bottom = 0.3f.gridUnitsAsDp()),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
             LightText(
                 text = "${if (match.home) "vs" else "@"} ${match.opponentName ?: "-"}",
-                variant = LightTextVariant.Detail,
+                variant = LightTextVariant.Fine,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
             )
-            if (result != null) {
-                ResultBadge(result, modifier = Modifier.padding(horizontal = 0.4f.gridUnitsAsDp()))
+            // The result badge that used to sit at the row's right edge gave its room to the stat
+            // columns, on request; the result and score move here instead.
+            val result = match.result?.let { r ->
+                "$r ${match.goalsFor ?: "-"}-${match.goalsAgainst ?: "-"}"
             }
-            LightText(text = "${match.goalsFor ?: "-"}-${match.goalsAgainst ?: "-"}", variant = LightTextVariant.Detail)
+            LightText(
+                text = listOfNotNull(
+                    match.kickoff?.let { formatShortDate(it) },
+                    match.leagueId?.let { competitionShortName(it) },
+                    result,
+                ).joinToString(" · "),
+                variant = LightTextVariant.Superfine,
+                lighten = true,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        val played = if ((match.minutes ?: 0) > 0) "${match.minutes}'" else "Unused sub"
-        val contributions = listOfNotNull(
-            match.goals?.takeIf { it > 0 }?.let { if (it == 1) "1 goal" else "$it goals" },
-            match.assists?.takeIf { it > 0 }?.let { if (it == 1) "1 assist" else "$it assists" },
-            match.redCards?.takeIf { it > 0 }?.let { "red card" },
+        PlayerMatchValue(if (played) "${match.minutes}'" else "–", PLAYER_MATCH_WIDE_COLUMN_UNITS)
+        PlayerMatchValue(
+            match.rating?.takeIf { played }?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "–",
+            PLAYER_MATCH_WIDE_COLUMN_UNITS,
         )
-        LightText(
-            text = listOfNotNull(
-                match.kickoff?.let { formatShortDate(it) },
-                match.leagueId?.let { competitionShortName(it) },
-                played,
-                match.rating?.let { String.format(java.util.Locale.US, "%.1f", it) },
-                *contributions.toTypedArray(),
-            ).joinToString(" · "),
-            variant = LightTextVariant.Superfine,
-            lighten = true,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        PlayerMatchValue(countLabel(match.goals), PLAYER_MATCH_NARROW_COLUMN_UNITS)
+        PlayerMatchValue(countLabel(match.assists), PLAYER_MATCH_NARROW_COLUMN_UNITS)
     }
+}
+
+@Composable
+private fun PlayerMatchValue(text: String, widthUnits: Float) {
+    LightText(
+        text = text,
+        variant = LightTextVariant.Fine,
+        lighten = text == "–",
+        align = TextAlign.End,
+        modifier = Modifier.width(widthUnits.gridUnitsAsDp()),
+    )
 }
 
 /** Clubs (youth sides dimmed), then national teams, each with the seasons the player was there. */
@@ -3198,81 +3273,167 @@ private fun PlayerCareerRow(team: PlayerCareerTeam) {
     }
 }
 
-// --- Competition: Stats leaderboard ------------------------------------------------------------
+// --- Stats leaderboards (a competition's Stats tab, and a team's) ------------------------------
 
-/** The Competition screen's Stats tab: the competition's top 25 players by one stat, with a
- * button at the top naming that stat — tap it for the list of stats to rank by instead (Back, or
- * picking one, returns to the ranking). The available stats come from the proxy with each
- * leaderboard, so this screen has no list of its own. Tapping a player opens their page. */
+// Width of the Total and Per 90 columns — "1,234" or "72.52" at Fine size, with room to spare
+// (a two-digit Fine number needs more than 1.4 units: see SquadPlayerRow's number column).
+private const val LEADER_VALUE_COLUMN_UNITS = 3.6f
+
+/** The Competition screen's Stats tab: the stat button (see [StatChooserButton]), then either the
+ * list of stats to rank by or the top-25 board ([LeaderboardTable]), scrolling beneath it. */
 @Composable
 private fun ColumnScope.LeadersContent(
     mode: ScoreScreenMode.Standings,
     onOpenStatPicker: () -> Unit,
     onSelectStat: (String) -> Unit,
+    onSelectSort: (String) -> Unit,
     onPlayerClick: (playerId: Int, name: String) -> Unit,
 ) {
-    val leaders = mode.leaders
-    val statLabel = leaders?.stats?.firstOrNull { it.key == mode.selectedStat }?.label ?: leaders?.label ?: "Goals"
-
-    DetailTabButton(
-        text = statLabel,
-        isSelected = true,
+    val board = mode.leaders
+    StatChooserButton(
+        board = board,
+        selectedStat = mode.selectedStat,
+        pickerOpen = mode.statPickerOpen,
         onClick = onOpenStatPicker,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 1f.gridUnitsAsDp()),
+        modifier = Modifier.padding(horizontal = 1f.gridUnitsAsDp()),
     )
-    if (!mode.statPickerOpen) {
-        LightText(
-            text = "Tap to rank by another stat",
-            variant = LightTextVariant.Superfine,
-            lighten = true,
-            align = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 0.3f.gridUnitsAsDp(), bottom = 0.5f.gridUnitsAsDp()),
-        )
-    }
-
-    if (mode.statPickerOpen) {
-        LightScrollView(
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp(), top = 0.5f.gridUnitsAsDp()),
-        ) {
-            leaders?.stats.orEmpty().forEach { option ->
-                LightText(
-                    text = option.label,
-                    variant = LightTextVariant.Fine,
-                    lighten = option.key != mode.selectedStat,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .lightClickable { onSelectStat(option.key) }
-                        .padding(vertical = 0.6f.gridUnitsAsDp()),
-                )
-            }
+    LightScrollView(
+        modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
+    ) {
+        when {
+            mode.statPickerOpen -> StatPickerList(board, mode.selectedStat, onSelectStat)
+            mode.leadersLoading -> NoDataForTab(text = "fetching stats...")
+            board == null -> NoDataForTab(text = "Stats aren't available for this competition right now.")
+            board.leaders.isEmpty() -> NoDataForTab(text = "No players to rank yet.")
+            else -> LeaderboardTable(board, onSelectSort, showTeam = true, onPlayerClick = onPlayerClick)
         }
-        return
     }
+}
 
-    when {
-        mode.leadersLoading -> NoDataForTab(text = "fetching stats...")
-        leaders == null -> NoDataForTab(text = "Stats aren't available for this competition right now.")
-        leaders.leaders.isEmpty() -> NoDataForTab(text = "No players to rank yet.")
-        else -> LightScrollView(
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
+/** My Team / Team Detail's Stats tab — the same board as a competition's, for the team's own
+ * players. Lives inside that screen's own scroll view, so it doesn't scroll by itself. */
+@Composable
+private fun TeamStatsSection(
+    tabs: TeamTabsState,
+    onOpenStatPicker: () -> Unit,
+    onSelectStat: (String) -> Unit,
+    onSelectSort: (String) -> Unit,
+    onPlayerClick: (playerId: Int, name: String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        StatChooserButton(
+            board = tabs.stats,
+            selectedStat = tabs.statsStat,
+            pickerOpen = tabs.statPickerOpen,
+            onClick = onOpenStatPicker,
+            modifier = Modifier.padding(end = 1f.gridUnitsAsDp()),
+        )
+        val board = tabs.stats
+        when {
+            tabs.statPickerOpen -> StatPickerList(board, tabs.statsStat, onSelectStat)
+            tabs.statsLoading -> NoDataForTab(text = "fetching stats...")
+            board == null || board.leaders.isEmpty() -> NoDataForTab(text = "No player stats for this team this season yet.")
+            else -> LeaderboardTable(board, onSelectSort, showTeam = false, onPlayerClick = onPlayerClick)
+        }
+    }
+}
+
+/** The button naming the stat a board is ranked by; tapping it swaps the board for the list of
+ * stats ([StatPickerList]). A hint underneath says so, except while that list is open. */
+@Composable
+private fun StatChooserButton(
+    board: LeagueLeaders?,
+    selectedStat: String,
+    pickerOpen: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val label = board?.stats?.firstOrNull { it.key == selectedStat }?.label ?: board?.label ?: "Goals"
+    Column(modifier = modifier.fillMaxWidth()) {
+        DetailTabButton(text = label, isSelected = true, onClick = onClick, modifier = Modifier.fillMaxWidth())
+        if (!pickerOpen) {
+            LightText(
+                text = "Tap to rank by another stat",
+                variant = LightTextVariant.Superfine,
+                lighten = true,
+                align = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 0.3f.gridUnitsAsDp(), bottom = 0.5f.gridUnitsAsDp()),
+            )
+        }
+    }
+}
+
+/** Every stat the proxy can rank by (it sends the list with each board); the current one is the
+ * only row not dimmed. Picking one closes the list and re-ranks. */
+@Composable
+private fun StatPickerList(board: LeagueLeaders?, selectedStat: String, onSelectStat: (String) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 0.5f.gridUnitsAsDp())) {
+        board?.stats.orEmpty().forEach { option ->
+            LightText(
+                text = option.label,
+                variant = LightTextVariant.Fine,
+                lighten = option.key != selectedStat,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .lightClickable { onSelectStat(option.key) }
+                    .padding(vertical = 0.6f.gridUnitsAsDp()),
+            )
+        }
+    }
+}
+
+/** Rank, player (with team, or minutes on a team's own board), Total, Per 90. The column the board
+ * is ranked by is the brighter one; tap the other column's header to re-rank by it. Stats with no
+ * per-90 figure (minutes, pass accuracy) show "–" there, and that header does nothing. */
+@Composable
+private fun LeaderboardTable(
+    board: LeagueLeaders,
+    onSelectSort: (String) -> Unit,
+    showTeam: Boolean,
+    onPlayerClick: (playerId: Int, name: String) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        board.minMinutesShare?.let { share ->
+            LightText(
+                text = "Ranked: players with ${(share * 100).toInt()}% or more of their team's minutes",
+                variant = LightTextVariant.Superfine,
+                lighten = true,
+                modifier = Modifier.padding(bottom = 0.4f.gridUnitsAsDp(), end = 1f.gridUnitsAsDp()),
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(end = 1f.gridUnitsAsDp(), bottom = 0.2f.gridUnitsAsDp()),
         ) {
-            leaders.minMinutesShare?.let { share ->
-                LightText(
-                    text = "Players with ${(share * 100).toInt()}% or more of their team's minutes",
-                    variant = LightTextVariant.Superfine,
-                    lighten = true,
-                    modifier = Modifier.padding(bottom = 0.4f.gridUnitsAsDp(), end = 1f.gridUnitsAsDp()),
-                )
-            }
-            leaders.leaders.forEach { entry ->
-                LeaderRow(entry, kind = leaders.kind, onClick = { onPlayerClick(entry.playerId, entry.name) })
-            }
+            Box(modifier = Modifier.weight(1f))
+            LeaderSortHeader("TOTAL", selected = board.sort == "total", enabled = true) { onSelectSort("total") }
+            LeaderSortHeader("PER 90", selected = board.sort == "per_90", enabled = board.hasPer90) { onSelectSort("per_90") }
+        }
+        board.leaders.forEach { entry ->
+            LeaderRow(entry, board, showTeam, onClick = { onPlayerClick(entry.playerId, entry.name) })
         }
     }
 }
 
 @Composable
-private fun LeaderRow(entry: LeaderEntry, kind: String, onClick: () -> Unit) {
+private fun LeaderSortHeader(text: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    LightText(
+        text = text,
+        variant = LightTextVariant.Superfine,
+        lighten = !selected,
+        underline = selected,
+        align = TextAlign.End,
+        modifier = Modifier
+            .width(LEADER_VALUE_COLUMN_UNITS.gridUnitsAsDp())
+            .lightClickable(enabled = enabled && !selected, onClick = onClick),
+    )
+}
+
+@Composable
+private fun LeaderRow(entry: LeaderEntry, board: LeagueLeaders, showTeam: Boolean, onClick: () -> Unit) {
+    val total = entry.total?.let { if (board.stat == "pass_accuracy") "${it.toInt()}%" else it.toLong().toString() } ?: "–"
+    val per90 = entry.per90?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "–"
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -3281,26 +3442,31 @@ private fun LeaderRow(entry: LeaderEntry, kind: String, onClick: () -> Unit) {
             .padding(end = 1f.gridUnitsAsDp(), top = 0.3f.gridUnitsAsDp(), bottom = 0.3f.gridUnitsAsDp()),
     ) {
         LightText(
-            text = entry.rank.toString(),
+            text = entry.rank?.toString() ?: "–",
             variant = LightTextVariant.Fine,
             lighten = true,
             modifier = Modifier.width(1.8f.gridUnitsAsDp()),
         )
         Column(modifier = Modifier.weight(1f)) {
             LightText(text = entry.name, variant = LightTextVariant.Fine, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            entry.teamName?.let {
-                LightText(text = teamShortName(it), variant = LightTextVariant.Superfine, lighten = true, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val subtitle = if (showTeam) entry.teamName?.let { teamShortName(it) } else entry.minutes?.let { "$it min" }
+            subtitle?.let {
+                LightText(text = it, variant = LightTextVariant.Superfine, lighten = true, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         LightText(
-            text = when (kind) {
-                "per_90" -> String.format(java.util.Locale.US, "%.2f", entry.value)
-                "rate" -> "${entry.value.toInt()}%"
-                else -> entry.value.toLong().toString()
-            },
+            text = total,
             variant = LightTextVariant.Fine,
+            lighten = board.sort != "total",
             align = TextAlign.End,
-            modifier = Modifier.padding(start = 0.5f.gridUnitsAsDp()),
+            modifier = Modifier.width(LEADER_VALUE_COLUMN_UNITS.gridUnitsAsDp()),
+        )
+        LightText(
+            text = per90,
+            variant = LightTextVariant.Fine,
+            lighten = board.sort != "per_90",
+            align = TextAlign.End,
+            modifier = Modifier.width(LEADER_VALUE_COLUMN_UNITS.gridUnitsAsDp()),
         )
     }
 }
@@ -3380,7 +3546,8 @@ private fun SquadPlayerRow(
             variant = LightTextVariant.Fine,
             lighten = true,
             align = TextAlign.End,
-            modifier = Modifier.width(2f.gridUnitsAsDp()).padding(end = 0.6f.gridUnitsAsDp()),
+            // 3 units less 0.6 padding: a two-digit number at Fine size wrapped at the old 2 units.
+            modifier = Modifier.width(3f.gridUnitsAsDp()).padding(end = 0.6f.gridUnitsAsDp()),
         )
         LightText(
             text = player.name,
@@ -3388,6 +3555,35 @@ private fun SquadPlayerRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+// --- Match ratings -------------------------------------------------------------------------------
+
+// FotMob's rating colors, on request: 7.0 and up green, 6.0-6.9 orange, below 6 red. Green and red
+// are the W/L badges' own.
+private val RATING_MID_COLOR = Color(0xFFEF8A17)
+
+/** A player's match rating ("7.2") in a small colored pill — see [RATING_MID_COLOR]. */
+@Composable
+private fun RatingPill(rating: Double, modifier: Modifier = Modifier) {
+    val background = when {
+        rating >= 7.0 -> RESULT_WIN_COLOR
+        rating >= 6.0 -> RATING_MID_COLOR
+        else -> RESULT_LOSS_COLOR
+    }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(0.4f.gridUnitsAsDp()))
+            .background(background)
+            .padding(horizontal = 0.3f.gridUnitsAsDp()),
+        contentAlignment = Alignment.Center,
+    ) {
+        LightText(
+            text = String.format(java.util.Locale.US, "%.1f", rating),
+            variant = LightTextVariant.Superfine,
+            color = Color.White,
         )
     }
 }

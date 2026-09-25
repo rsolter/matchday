@@ -508,11 +508,38 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
     }
 
     /** [leagueId]'s top players this season by [stat] — one of the keys in [LeagueLeaders.stats]
-     * ("goals" is always one). From the proxy's nightly player database. */
-    suspend fun fetchLeagueLeaders(leagueId: Int, stat: String): Result<LeagueLeaders> = runCatching {
+     * ("goals" is always one) — ranked by [sort] ("total" or "per_90"). From the proxy's nightly
+     * player database. */
+    suspend fun fetchLeagueLeaders(leagueId: Int, stat: String, sort: String): Result<LeagueLeaders> = runCatching {
         getChecked<LeagueLeaders>("$API_BASE/leagues/$leagueId/leaders") {
             parameter("stat", stat)
+            parameter("sort", sort)
         }
+    }
+
+    /** Everyone who's played for [teamId] this season, by [stat] and [sort] — same shape as
+     * [fetchLeagueLeaders]. */
+    suspend fun fetchTeamStats(teamId: Int, stat: String, sort: String): Result<LeagueLeaders> = runCatching {
+        getChecked<LeagueLeaders>("$API_BASE/teams/$teamId/stats") {
+            parameter("stat", stat)
+            parameter("sort", sort)
+        }
+    }
+
+    /** Each player's rating in one match, keyed by player id — for the lineup's rating pills.
+     * Players without a rating (didn't play, or API-Football hasn't rated them) are left out. */
+    suspend fun fetchMatchRatings(fixtureId: Int): Result<Map<Int, Double>> = runCatching {
+        val body: ApiFootballFixturePlayersResponse = getChecked("$API_BASE/fixtures/players") {
+            parameter("fixture", fixtureId)
+        }
+        body.response
+            .flatMap { it.players }
+            .mapNotNull { entry ->
+                val id = entry.player.id ?: return@mapNotNull null
+                val rating = entry.statistics.firstOrNull()?.games?.rating?.toDoubleOrNull()
+                rating?.takeIf { it > 0 }?.let { id to it }
+            }
+            .toMap()
     }
 
     /** [teamId]'s registered squad. */
