@@ -17,8 +17,9 @@ Cup, Leagues Cup).
   players by goals, or by any of 14 stats — assists, shots, key passes, pass accuracy, duels
   won... — each with its season total and per-90 figure; tap a column header to rank by the
   other). Knockout cups have no table and are left out of this list.
-- **My Team**: pick a league and a team once; after that, see its league position and two tabs —
-  Matches (recent results and upcoming fixtures), Squad (who's unavailable for the next match,
+- **My Team**: pick a league and a team once; after that, see its league position (and its
+  Champions/Europa/Conference League position, if it's in one) and three tabs — Matches (today's or
+  the next match, recent results, and upcoming fixtures), Squad (who's unavailable for the next match,
   then the registered squad by position; tap a player for their page), and Stats (the same
   total/per-90 board as a competition's, for the team's own players). Any team tapped from a
   match opens the same view.

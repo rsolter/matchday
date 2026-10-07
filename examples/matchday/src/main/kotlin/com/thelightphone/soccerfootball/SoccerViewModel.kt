@@ -1002,7 +1002,37 @@ class SoccerViewModel(
      * [ScoreScreenMode.TeamDetail]), so the state-update half stays separate in each. */
     private suspend fun fetchTeamSummary(teamId: Int, teamName: String, leagueId: Int): Result<MyTeamSummary> {
         val (resolvedLeagueId, resolvedLeagueName, standingsRow) = resolveDomesticStanding(teamId, leagueId)
+        val continental = resolveContinentalStanding(teamId)
         return api.fetchMyTeamSummary(teamId, teamName, resolvedLeagueId, resolvedLeagueName, standingsRow)
+            .map { summary ->
+                continental?.let { (id, row) -> summary.copy(continentalLeagueId = id, continentalStandingsRow = row) }
+                    ?: summary
+            }
+    }
+
+    /** The team header's second rank, on request: [teamId]'s row in whichever UEFA club competition
+     * table it's in (Champions League, Europa League, Conference League — the tracked continental
+     * competitions that have a table). Same cache-first approach as [resolveDomesticStanding]: only
+     * tables not already in [standingsCache] are fetched, concurrently, once per session. Null if
+     * the team's in none of them. */
+    private suspend fun resolveContinentalStanding(teamId: Int): Pair<Int, StandingsRow>? {
+        val continentalIds = TRACKED_COMPETITIONS.filter { !it.isDomestic && it.hasStandings }.map { it.id }
+
+        fun findCached(): Pair<Int, StandingsRow>? = continentalIds.firstNotNullOfOrNull { id ->
+            standingsCache[id]?.firstOrNull { it.teamId == teamId }?.let { id to it }
+        }
+
+        findCached()?.let { return it }
+        val uncachedIds = continentalIds.filter { it !in standingsCache }
+        if (uncachedIds.isEmpty()) return null
+        coroutineScope {
+            uncachedIds.map { id -> async { id to api.fetchStandings(id).getOrNull()?.rows } }
+                .forEach { deferred ->
+                    val (id, rows) = deferred.await()
+                    if (!rows.isNullOrEmpty()) standingsCache[id] = rows
+                }
+        }
+        return findCached()
     }
 
     /** My Team's rank line is meant to always be a *domestic*-table position (see
@@ -1267,6 +1297,7 @@ class SoccerViewModel(
      * squad. [photoBytes] is a headshot the caller already downloaded, reused for the header; null
      * just means the header shows no photo. */
     fun openPlayer(playerId: Int, playerName: String, photoBytes: ByteArray?) {
+        if (photoBytes == null) loadPlayerHeaderPhoto(playerId)
         modeBeforePlayer = _uiState.value.mode
         updateState {
             it.copy(
@@ -1300,6 +1331,22 @@ class SoccerViewModel(
                         )
                     },
                 )
+            }
+        }
+    }
+
+    /** The player page's headshot when whatever opened it had none to hand over — a leaderboard,
+     * or a team's Stats tab before its squad photos loaded. Silent on failure: no photo. */
+    private fun loadPlayerHeaderPhoto(playerId: Int) {
+        viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
+            val photo = api.fetchPlayerPhotos(listOf(playerId))[playerId] ?: return@launch
+            updateState { state ->
+                val current = state.mode as? ScoreScreenMode.PlayerDetailScreen
+                if (current != null && current.playerId == playerId) {
+                    state.copy(mode = current.copy(photoBytes = photo))
+                } else {
+                    state
+                }
             }
         }
     }

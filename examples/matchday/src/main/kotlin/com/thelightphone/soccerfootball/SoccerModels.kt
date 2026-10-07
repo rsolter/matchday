@@ -1153,6 +1153,11 @@ data class MyTeamSummary(
      * badge shown next to the today/next match placeholder. Null if there's no [featuredFixture],
      * its logo URL was blank, or the fetch failed. */
     val featuredOpponentLogoBytes: ByteArray?,
+    /** The team's position in the UEFA club competition it's in this season (Champions League,
+     * Europa League, or Conference League — whichever table it appears in), shown beside the
+     * domestic rank in the team header. Null when it's in none of them. */
+    val continentalLeagueId: Int? = null,
+    val continentalStandingsRow: StandingsRow? = null,
 )
 
 // --- Player (this app's own proxy: GET /players/{id}) -------------------------------------------

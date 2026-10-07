@@ -1716,7 +1716,6 @@ private fun MyTeamContent(
                 // corner (see [MyTeamHeaderRow]'s doc comment).
                 MyTeamHeaderRow(
                     summary = summary,
-                    onMatchClick = onMatchClick,
                     onOpenStandingsTable = onOpenStandingsTable,
                     modifier = Modifier.padding(top = 0.5f.gridUnitsAsDp()),
                 )
@@ -1746,7 +1745,23 @@ private fun MyTeamContent(
                     )
                     return@LightScrollView
                 }
-                // Recent results, then next results.
+                // Today's match (or the next one), moved here from the header on request — then recent
+                // results, then the rest of what's upcoming. recentFixtures/upcomingFixtures both
+                // leave the featured match out, so it shows exactly once.
+                summary.featuredFixture?.let { featured ->
+                    val isToday = featured.localDate() == todayLocalDate()
+                    MatchGroupCard(
+                        title = if (isToday) "TODAY" else "NEXT MATCH",
+                        matches = listOf(featured),
+                        modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
+                        showDate = !isToday,
+                        focusTeamId = summary.teamId,
+                        allowKickoffLabelWrap = !isToday,
+                        // Today's match may be live or finished already, so keep its score slot.
+                        showScoreSlot = isToday,
+                        onMatchClick = onMatchClick,
+                    )
+                }
                 if (summary.recentFixtures.isNotEmpty()) {
                     MatchGroupCard(
                         title = "RECENT RESULTS",
@@ -1805,7 +1820,6 @@ private fun MyTeamContent(
 @Composable
 private fun MyTeamHeaderRow(
     summary: MyTeamSummary,
-    onMatchClick: (Fixture) -> Unit,
     onOpenStandingsTable: (Int, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1818,133 +1832,64 @@ private fun MyTeamHeaderRow(
     val teamLogoBitmap = summary.teamLogoBytes?.let { bytes ->
         remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
     }
+    // Crest, then the domestic league rank, then — if the team's in one — its UEFA competition
+    // rank, on request. The today/next match that used to sit beside the crest moved to the top of
+    // the Matches tab (see MyTeamContent).
     Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.fillMaxWidth()) {
         if (teamLogoBitmap != null) {
             Image(
                 bitmap = teamLogoBitmap,
                 contentDescription = "${summary.teamName} crest",
                 contentScale = ContentScale.Fit,
-                // Shrunk from the old centered crest's 6f down to 4f to leave room for the featured
-                // match placeholder beside it — the user only asked to move this to the left, not
-                // resize it, so flagging this size change explicitly rather than burying it.
-                modifier = Modifier.size(4f.gridUnitsAsDp()).padding(end = 0.75f.gridUnitsAsDp()),
+                modifier = Modifier.size(4f.gridUnitsAsDp()).padding(end = 1f.gridUnitsAsDp()),
             )
         }
-        FeaturedMatchPlaceholder(
-            summary = summary,
-            onMatchClick = onMatchClick,
-            modifier = Modifier.weight(1f),
-        )
-        // Domestic leagues only, on request — a UCL/UEL group-stage position doesn't belong next to
-        // a team's actual table standing, so this whole block is skipped for a team followed from a
-        // continental context (competitionIsDomestic(summary.leagueId) == false) even when
-        // standingsRow did resolve for it.
+        // Domestic leagues only for this first rank — summary.leagueId is resolved to the team's
+        // domestic league where one's found (see SoccerViewModel.resolveDomesticStanding); a team
+        // only found in a UEFA table shows just the second rank below.
         if (summary.standingsRow != null && competitionIsDomestic(summary.leagueId)) {
-            val standingsRow = summary.standingsRow
-            // Two lines on request ("needs to be given more space") — one line at Fine size was
-            // still cramped for a full league name (e.g. "16th · Championship" was ellipsizing to
-            // "16th · Cha…" even after the 6.5f width bump). Rank on its own top line, the same
-            // shorthand league name used on Scores (competitionShortName — e.g. "EPL", not the full
-            // "Premier League") on its own line below, smaller since the rank is the number someone
-            // actually glances here for. Both lines share the lightClickable so tapping either opens
-            // Standings, same as before.
-            //
-            // No .align(Alignment.Top) — the outer Row is already verticalAlignment =
-            // CenterVertically, and the explicit Top override was making this block sit noticeably
-            // higher than the crest/featured-match content beside it ("strangely aligned" per user
-            // report). End padding added because the enclosing LightScrollView only pads its start
-            // edge (see the padding(start = 1f...) a few lines up at the call site), so this was the
-            // only element in the row with nothing keeping it off the screen's right edge.
-            Column(
-                horizontalAlignment = Alignment.Start,
-                modifier = Modifier
-                    .widthIn(max = 6.5f.gridUnitsAsDp())
-                    .padding(end = 1f.gridUnitsAsDp())
-                    .lightClickable(onClick = { onOpenStandingsTable(summary.leagueId, summary.leagueName) }),
-            ) {
-                LightText(
-                    text = standingsRow.position.asOrdinal(),
-                    variant = LightTextVariant.Fine,
-                    lighten = true,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                LightText(
-                    text = competitionShortName(summary.leagueId),
-                    variant = LightTextVariant.Detail,
-                    lighten = true,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 0.1f.gridUnitsAsDp()),
-                )
-            }
+            TeamRankBlock(
+                position = summary.standingsRow.position,
+                leagueId = summary.leagueId,
+                onClick = { onOpenStandingsTable(summary.leagueId, summary.leagueName) },
+            )
+        }
+        val continentalId = summary.continentalLeagueId
+        if (summary.continentalStandingsRow != null && continentalId != null) {
+            TeamRankBlock(
+                position = summary.continentalStandingsRow.position,
+                leagueId = continentalId,
+                onClick = { onOpenStandingsTable(continentalId, competitionName(continentalId)) },
+            )
         }
     }
 }
 
-/** The today/next match placeholder beside the crest: opponent badge + name, and either a kickoff
- * time (match hasn't started) or the live/final box score (match has). [MyTeamSummary.featuredFixture]
- * is today's match if the team has one, otherwise its next upcoming fixture — see that field's doc
- * comment and [ApiFootballApi.fetchMyTeamSummary] for exactly how it's picked. */
+/** One team-header rank: the position on top ("1st"), the competition's short name below ("EPL",
+ * "UEL") — two lines so a longer competition name never squeezes the number. Tapping either opens
+ * that competition's table. */
 @Composable
-private fun FeaturedMatchPlaceholder(summary: MyTeamSummary, onMatchClick: (Fixture) -> Unit, modifier: Modifier = Modifier) {
-    val fixture = summary.featuredFixture
-    if (fixture == null) {
-        // Bumped along with the rest of this placeholder on request, Superfine (16) -> Detail (20)
-        // — this fills the same slot as the date/opponent/kickoff text below when there's no match.
+private fun TeamRankBlock(position: Int, leagueId: Int, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.Start,
+        modifier = Modifier
+            .widthIn(max = 6.5f.gridUnitsAsDp())
+            .padding(end = 1.5f.gridUnitsAsDp())
+            .lightClickable(onClick = onClick),
+    ) {
         LightText(
-            text = "No upcoming match scheduled.",
-            variant = LightTextVariant.Detail,
-            lighten = true,
-            modifier = modifier,
-        )
-        return
-    }
-
-    val isHome = fixture.homeTeamId == summary.teamId
-    val opponentName = if (isHome) fixture.awayTeamName else fixture.homeTeamName
-    // formatFixtureDateHeader already returns "TODAY" for the real device-local date and a short
-    // "SAT, SEP 12"-style header otherwise, so this reuses it directly rather than re-deriving the
-    // same "is this today?" check a second time.
-    val dateLabel = fixture.localDate()?.let { formatFixtureDateHeader(it) } ?: "NEXT MATCH"
-    val opponentLogoBitmap = summary.featuredOpponentLogoBytes?.let { bytes ->
-        remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
-    }
-
-    // Whole block bumped one size on request ("increase the font size for all font next to the
-    // badge — date of next match, vs who, kickoff time"): date Superfine (16) -> Detail (20),
-    // opponent name and kickoff/score line Detail (20) -> Fine (25).
-    Column(modifier = modifier.lightClickable(onClick = { onMatchClick(fixture) })) {
-        LightText(text = dateLabel, variant = LightTextVariant.Detail, lighten = true)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()),
-        ) {
-            if (opponentLogoBitmap != null) {
-                Image(
-                    bitmap = opponentLogoBitmap,
-                    contentDescription = "$opponentName crest",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(1.4f.gridUnitsAsDp()).padding(end = 0.35f.gridUnitsAsDp()),
-                )
-            }
-            LightText(
-                text = "vs $opponentName",
-                variant = LightTextVariant.Fine,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-        }
-        // hasScore is true from kickoff onward (live, halftime, finished — see Fixture.hasScore),
-        // not just once a match is over, so a live match's running score shows here too, not just
-        // the final one. statusLabel() already resolves to a bare kickoff time for a still-scheduled
-        // match (see its doc comment in SoccerFormatting.kt) — exactly the "what time the game is"
-        // case the user asked for, with no separate branch needed here.
-        LightText(
-            text = if (fixture.hasScore) "${fixture.scoreLabel()} · ${fixture.statusLabel()}" else fixture.statusLabel(),
+            text = position.asOrdinal(),
             variant = LightTextVariant.Fine,
             lighten = true,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        LightText(
+            text = competitionShortName(leagueId),
+            variant = LightTextVariant.Detail,
+            lighten = true,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 0.1f.gridUnitsAsDp()),
         )
     }
@@ -3317,7 +3262,7 @@ private fun ColumnScope.LeadersContent(
             mode.statPickerOpen -> StatPickerList(board, mode.selectedStat, onSelectStat)
             mode.leadersLoading -> NoDataForTab(text = "fetching stats...")
             board == null -> NoDataForTab(text = "Stats aren't available for this competition right now.")
-            board.leaders.isEmpty() -> NoDataForTab(text = "No players to rank yet.")
+            board.leaders.isEmpty() -> NoDataForTab(text = "No players with any ${board.label.lowercase()} yet.")
             else -> LeaderboardTable(board, onSelectSort, showTeam = true, onPlayerClick = onPlayerClick)
         }
     }
@@ -3346,7 +3291,8 @@ private fun TeamStatsSection(
         when {
             tabs.statPickerOpen -> StatPickerList(board, tabs.statsStat, onSelectStat)
             tabs.statsLoading -> NoDataForTab(text = "fetching stats...")
-            board == null || board.leaders.isEmpty() -> NoDataForTab(text = "No player stats for this team this season yet.")
+            board == null -> NoDataForTab(text = "No player stats for this team this season yet.")
+            board.leaders.isEmpty() -> NoDataForTab(text = "No players with any ${board.label.lowercase()} yet.")
             else -> LeaderboardTable(board, onSelectSort, showTeam = false, onPlayerClick = onPlayerClick)
         }
     }
