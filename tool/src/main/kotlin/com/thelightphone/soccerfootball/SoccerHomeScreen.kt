@@ -581,14 +581,16 @@ private fun ScoresContent(
                     onClick = onOpenSettings,
                     contentDescription = "Settings",
                 ),
-                LightBarButton.Custom(
+                LightBarButton.Icon(
+                    painter = rememberSoccerBarIconPainter(R.drawable.ic_jersey_white),
                     onClick = onOpenMyTeam,
                     contentDescription = "My Team",
-                ) { SoccerBarIcon(R.drawable.ic_jersey_white, "My Team") },
-                LightBarButton.Custom(
+                ),
+                LightBarButton.Icon(
+                    painter = rememberSoccerBarIconPainter(R.drawable.ic_trophy_white),
                     onClick = onOpenCompetitions,
                     contentDescription = "Competitions",
-                ) { SoccerBarIcon(R.drawable.ic_trophy_white, "Competitions") },
+                ),
                 LightBarButton.LightIcon(
                     icon = LightIcons.REFRESH,
                     onClick = onManualRefresh,
