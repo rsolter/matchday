@@ -9,7 +9,7 @@ plugins {
     alias(libs.plugins.light.sdk)
 }
 
-// Release signing: reads examples/matchday/keystore.properties, a gitignored file holding a
+// Release signing: reads tool/keystore.properties, a gitignored file holding a
 // private release key (see keystore.properties.example for the format + the README's "Building it"
 // section for how to generate one with keytool). That file intentionally never exists in a fresh
 // clone — including this sandbox — so `hasReleaseKeystore` is false here and `release` falls back to
@@ -38,7 +38,7 @@ android {
         // a build meant to be handed out as an authentic release. Used for `debug` always, and as the
         // `release` fallback only when no private keystore.properties is present.
         create("lightsdkDev") {
-            storeFile = file("../../sdk/keys/lightsdk-dev.jks")
+            storeFile = file("../sdk/keys/lightsdk-dev.jks")
             storePassword = "android"
             keyAlias = "lightsdk-dev"
             keyPassword = "android"
@@ -78,14 +78,15 @@ android {
             // consumer-rules.pro (bundled in their AARs, applied automatically) already keep every
             // Light SDK entry point the generated manifest references (LightActivity,
             // LightSdkApplication, LightSdkReceiver, LightIcons, anything implementing
-            // LightEntryPoint or annotated @InitialScreen) — see proguard-rules.pro for why this app
-            // needs no project-specific rules of its own on top of that.
+            // LightEntryPoint or annotated @InitialScreen) — nothing else here needs
+            // project-specific rules of its own on top of that.
             isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
+            // Default rules only, like the SDK's tool template: Light's build server copies just
+            // build.gradle.kts, lighttool.toml, and src/main/** from tool/, so a project rules
+            // file wouldn't be there — and none is needed (the SDK and kotlinx.serialization ship
+            // their own consumer rules; nothing here uses reflection).
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
     }
 

@@ -53,13 +53,13 @@ Standard Light SDK tool module layout — `build.gradle.kts`/`lighttool.toml` pl
 screen/viewmodel/DataStore architecture. It's already wired into the root `settings.gradle.kts`.
 
 ```bash
-./gradlew :examples:matchday:installDebug
+./gradlew :tool:installDebug
 adb shell am start -n com.thelightphone.soccerfootball/com.thelightphone.sdk.LightActivity
 ```
 
-`lighttool.toml` defaults `serverPackage` to the LightOS emulator (`com.thelightphone.sdk.emulator`)
-— see [`docs/system_app`](../../docs/system_app) for setting that up in Android Studio. Switch it
-to `com.lightos` before sideloading to a real Light Phone III.
+`lighttool.toml` sets `serverPackage` to `com.lightos`, for a real Light Phone III and the Light tool
+library. To run against the LightOS emulator instead, switch it to `com.thelightphone.sdk.emulator` —
+see [`docs/system_app`](../docs/system_app) for setting that up in Android Studio.
 
 ### Building a production (release) APK to share
 
@@ -69,7 +69,7 @@ this repo, so anyone can resign an APK with that same key. For a build meant to 
 authentic release, generate your own private key first:
 
 ```bash
-cd examples/matchday
+cd tool
 keytool -genkeypair -v -keystore matchday-release.jks -alias matchday-release \
     -keyalg RSA -keysize 2048 -validity 10000
 ```
@@ -82,10 +82,10 @@ needs typing into a chat or a script. Then copy `keystore.properties.example` to
 Once that's in place, flip `serverPackage` in `lighttool.toml` to `com.lightos` (see above), then:
 
 ```bash
-./gradlew :examples:matchday:assembleRelease
+./gradlew :tool:assembleRelease
 ```
 
-→ `examples/matchday/build/outputs/apk/release/matchday-release.apk`, signed with your
+→ `tool/build/outputs/apk/release/tool-release.apk`, signed with your
 private key. Note this makes it installable (via `adb install` or LightOS's "Any tools" sideload
 option, which warns the user it isn't Light-verified) — it does not make it a "Light-approved" or
 "SDK-built" tool in LightOS's own sense, which per this SDK's own docs requires Light to build and

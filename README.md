@@ -11,8 +11,8 @@ Standings, a "My Team" view for whichever club you follow, and a per-match Stats
 Lineups detail screen.
 
 All of the actual app — the API integration, data models, and UI — lives under
-[`examples/matchday`](examples/matchday). See
-[that module's README](examples/matchday/README.md) for the full write-up.
+[`tool`](tool) — the SDK's standard tool module, where Light's build server looks for it. See
+[that module's README](tool/README.md) for the full write-up.
 
 ## Screenshots
 

@@ -1,0 +1,10 @@
+[tool]
+id          = "com.thelightphone.soccerfootball"
+label       = "Matchday"
+versionCode = 16
+versionName = "1.6.5"
+permissions  = ["android.permission.INTERNET"]
+capabilities = []
+# "com.lightos" for a real Light Phone III (and the Light tool library);
+# "com.thelightphone.sdk.emulator" to run against the LightOS emulator.
+serverPackage = "com.lightos"
