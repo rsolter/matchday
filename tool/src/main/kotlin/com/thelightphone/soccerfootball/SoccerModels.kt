@@ -501,16 +501,21 @@ internal fun ApiFootballEventDto.toMatchEvent(): MatchEvent {
                 subtext = assistName?.let { "Assist: $it" },
                 scorer = scorer,
                 scorerQualifier = qualifier,
+                playerId = player?.id,
+                assistPlayerId = assist?.id,
             )
         }
         // player = player going OFF, assist = player coming ON — a real inversion of the "Goal"
-        // case's field meanings, confirmed against real events (not documentation).
+        // case's field meanings, confirmed against real events (not documentation). playerId/
+        // assistPlayerId below follow the same inversion — see MatchEvent's own doc comment.
         "subst" -> MatchEvent(
             minuteLabel = minuteLabel,
             type = MatchEventType.SUBSTITUTION,
             teamName = team.name,
             headline = assistName?.let { "$it on" } ?: "Substitution",
             subtext = playerName?.let { "$it off" },
+            playerId = player?.id,
+            assistPlayerId = assist?.id,
         )
         "Card" -> MatchEvent(
             minuteLabel = minuteLabel,
@@ -1008,7 +1013,21 @@ enum class MatchEventType { GOAL, SUBSTITUTION, CARD, VAR, OTHER }
  * for how each raw event `type` maps to [headline]/[subtext]. [scorer]/[scorerQualifier] are set
  * only for [MatchEventType.GOAL] events, for the compact goalscorer strip shown under the score
  * (see [MatchDetailHeader]) — kept separate from [headline] since that strip wants just the
- * player's name, not the fuller "Goal — Name" text the Timeline tab shows. */
+ * player's name, not the fuller "Goal — Name" text the Timeline tab shows.
+ *
+ * [playerId]/[assistPlayerId] carry the raw API-Football ids behind [ApiFootballEventDto.player]/
+ * [ApiFootballEventDto.assist] (that DTO's own doc comment explains why one generic "player"/
+ * "assist" pair of wire fields means different things per event type) — added so the Squad tab's
+ * lineup pitch view (SoccerHomeScreen.kt's `LineupSection`/`pitchMarkersFor`, on request: "add
+ * icons to show goal scorers, assists, and substitutes timing") can match a goal/assist/sub
+ * against a specific [LineupPlayer] by id rather than by name, since name formatting isn't
+ * guaranteed to agree between the `/fixtures/events` and `/fixtures/lineups` responses (initials,
+ * diacritics) while the numeric id is. For [MatchEventType.GOAL]: [playerId] is the scorer (same
+ * player [scorer] already names), [assistPlayerId] is whoever provided the assist, if any. For
+ * [MatchEventType.SUBSTITUTION]: [playerId] is the player going off, [assistPlayerId] the player
+ * coming on — the same off/on inversion [ApiFootballEventDto.toMatchEvent]'s "subst" branch
+ * already documents for [headline]/[subtext]. Null for every other event type, and null here too
+ * on the real but rare row where API-Football omits a person's id altogether. */
 data class MatchEvent(
     val minuteLabel: String,
     val type: MatchEventType,
@@ -1017,6 +1036,8 @@ data class MatchEvent(
     val subtext: String?,
     val scorer: String? = null,
     val scorerQualifier: String? = null,
+    val playerId: Int? = null,
+    val assistPlayerId: Int? = null,
 )
 
 data class MatchStatRow(val label: String, val homeValue: String, val awayValue: String)

@@ -242,18 +242,14 @@ private const val NETWORK_ERROR_MESSAGE =
     "Matchday requires a network connection. Connect to wi-fi or insert a data SIM to see scores."
 private const val MIN_LEAGUES_MESSAGE = "Keep at least one league selected."
 
-/** How far back/forward the Fixtures mode's window reaches from [todayLocalDate]. Wide enough to
- * cover a handful of matchdays either side without pulling a whole season's worth of matches —
- * matches the ESPN variant's window (see its README). */
-/** How far back/forward [refresh]'s fetch window reaches from [todayLocalDate] — on request, the
- * merged Scores/schedule list now looks back 2 weeks and ahead 4 weeks (was a symmetric 2 weeks
- * either side; before that, today-only for Scores, plus a separate 10-past/21-future window for the
- * now-retired standalone Fixtures screen — see that mode's own doc comment history). Asymmetric on
- * purpose this round, matching what was actually asked for; SettingsContent's About section
- * mentions this window in plain language too, on request, so keep the two in sync if this changes
- * again. */
-private const val SCHEDULE_PAST_DAYS = 14
-private const val SCHEDULE_FUTURE_DAYS = 28
+/** How far back/forward [refresh]'s fetch window reaches from [todayLocalDate] — narrowed on
+ * request to 3 days back/7 days ahead, after several earlier rounds of widening it (today-only,
+ * then a symmetric 2 weeks either side, then 2-weeks-back/4-weeks-ahead — see git history for that
+ * progression). Asymmetric on purpose, matching what was actually asked for; SettingsContent's
+ * About section mentions this window in plain language too, on request, so keep the two in sync if
+ * this changes again. */
+private const val SCHEDULE_PAST_DAYS = 3
+private const val SCHEDULE_FUTURE_DAYS = 7
 
 /** How far ahead of kickoff [refresh] starts spending an extra API call per still-scheduled match
  * to check whether its lineup has been posted yet (see [ApiFootballApi.fetchLineupAvailability]).

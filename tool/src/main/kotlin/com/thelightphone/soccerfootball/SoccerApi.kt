@@ -544,7 +544,24 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
 
     /** [teamId]'s registered squad. */
     suspend fun fetchTeamSquad(teamId: Int): Result<TeamSquad> = runCatching {
-        getChecked<TeamSquad>("$API_BASE/teams/$teamId/squad")
+        val squad = getChecked<TeamSquad>("$API_BASE/teams/$teamId/squad")
+        // distinctBy: a user report showed the same squad row (same number and name) appearing
+        // two or three times in a row in the Squad tab. Same defensive dedupe as
+        // fetchMyTeamSummary's `unavailable` list above and for the same reason — API-Football
+        // has been observed repeating a player row on at least one other endpoint (/injuries)
+        // with no documented explanation, so this doesn't assume a specific cause here either.
+        // Flagging honestly: unlike that /injuries fix, this one hasn't been confirmed against a
+        // real duplicated /teams/{id}/squad response — this proxy's own git history has no
+        // /teams/{id}/squad route at all, so there was no server-side source or log to check it
+        // against, only this symptom. Keying on playerId (rather than name, like the /injuries
+        // fix) since two different real players sharing a display name is more plausible than two
+        // rows sharing a numeric id. Costs nothing if the real cause turns out to be something
+        // else — it only ever removes an exact-id repeat — but revisit if duplicates persist after
+        // this ships; that would mean the cause is elsewhere (e.g. this fetch somehow running
+        // twice and appending rather than replacing — see TeamTabsState/updateTeamTabs, which
+        // looked correctly guarded by teamId when checked, but is worth a second look with real
+        // repro data).
+        squad.copy(players = squad.players.distinctBy { it.playerId })
     }
 
     // --- HTTP plumbing -------------------------------------------------------------

@@ -1230,18 +1230,19 @@ private fun AttributionContent(onBack: () -> Unit) {
                 //
                 // The scores-window sentence below is new, on request (see SoccerViewModel.kt's
                 // SCHEDULE_PAST_DAYS/SCHEDULE_FUTURE_DAYS doc comment, which asks for this to stay in
-                // sync with those constants if the window changes again) — written as "past two
-                // weeks... upcoming four weeks" rather than restating the exact day counts, so it
-                // doesn't need editing for a small day-count tweak, only if the window's actual
-                // rough shape changes.
+                // sync with those constants if the window changes again) — narrowed from "past two
+                // weeks... upcoming four weeks" to "past few days... upcoming week" when the window
+                // itself was narrowed, on request. Kept as a rough-shape phrase rather than the exact
+                // day counts, so it doesn't need editing for a small day-count tweak, only if the
+                // window's actual rough shape changes.
                 text = "Scores are provided by API-Football (api-football.com), a paid football " +
                     "data API.\n\n" +
                     "Requests go through a caching proxy this app's developer runs, which holds " +
                     "the API-Football key and absorbs the request load — there's nothing to set " +
                     "up or configure here. Scores, fixtures, and standings are live, " +
                     "current-season data.\n\n" +
-                    "The Matchday Scores feed shows matches from the past two weeks through the " +
-                    "upcoming four weeks, so you can look back at recent results and ahead at " +
+                    "The Matchday Scores feed shows matches from the past few days through the " +
+                    "upcoming week, so you can look back at recent results and ahead at " +
                     "what's coming up.",
                 variant = LightTextVariant.Paragraph,
             )
@@ -2087,6 +2088,7 @@ private fun MatchDetailContent(
                             teamColor = homeTeamColor,
                             playerPhotosById = mode.playerPhotosById,
                             playerRatings = mode.playerRatings,
+                            events = detail.events,
                             onPlayerClick = onLineupPlayerClick,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
@@ -2096,6 +2098,7 @@ private fun MatchDetailContent(
                             teamColor = awayTeamColor,
                             playerPhotosById = mode.playerPhotosById,
                             playerRatings = mode.playerRatings,
+                            events = detail.events,
                             onPlayerClick = onLineupPlayerClick,
                             modifier = Modifier.padding(top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
                         )
@@ -2337,7 +2340,9 @@ private fun legibleTextColorOn(background: Color): Color {
 /** A compact, persistent goalscorer line shown under the score/status in [MatchDetailHeader],
  * regardless of which detail tab (Stats/Timeline/Lineups) is selected below — mirrors the
  * goalscorer summary most match-center UIs show under the box score. Home scorers align under
- * the home team name, away scorers under the away team name, matching the score row's layout. */
+ * the home team name, away scorers under the away team name, matching the score row's layout.
+ * Multiple goals by the same scorer collapse onto one line (e.g. "McTominay 41', 75'") instead of
+ * repeating their name on its own line per goal — see [groupedByScorerLabel], on request. */
 @Composable
 private fun GoalScorersRow(
     homeScorers: List<MatchEvent>,
@@ -2346,11 +2351,11 @@ private fun GoalScorersRow(
 ) {
     Row(modifier = modifier.fillMaxWidth()) {
         Column(modifier = Modifier.weight(1f)) {
-            homeScorers.forEach { event ->
+            homeScorers.groupedByScorerLabel().forEach { label ->
                 // Bumped one size on request, same header-wide pass as statusLabel above —
                 // Superfine (16) -> Detail (20).
                 LightText(
-                    text = event.goalScorerLabel(),
+                    text = label,
                     variant = LightTextVariant.Detail,
                     lighten = true,
                     align = TextAlign.End,
@@ -2362,9 +2367,9 @@ private fun GoalScorersRow(
         }
         Box(modifier = Modifier.width(1.5f.gridUnitsAsDp()))
         Column(modifier = Modifier.weight(1f)) {
-            awayScorers.forEach { event ->
+            awayScorers.groupedByScorerLabel().forEach { label ->
                 LightText(
-                    text = event.goalScorerLabel(),
+                    text = label,
                     variant = LightTextVariant.Detail,
                     lighten = true,
                     align = TextAlign.Start,
@@ -2377,16 +2382,47 @@ private fun GoalScorersRow(
     }
 }
 
-/** "Haaland 24'", or "Haaland (Penalty) 24'" when [MatchEvent.scorerQualifier] is set to something
- * other than a plain goal (see the doc comment on the "Goal" branch of
+/** Collapses a list of goal events (already filtered to one team) into one display line per
+ * distinct scorer, on request — was one [MatchEvent] per line before, so a brace/hat-trick
+ * repeated the same name once per goal (e.g. two separate "McTominay 41'"/"McTominay 75'" lines).
+ * Groups by [MatchEvent.scorer] (falling back to the literal "Goal" placeholder
+ * [ApiFootballEventDto.toMatchEvent] itself falls back to when a real name is missing, so goals
+ * with no attributable scorer still group together rather than one-lining each other), preserving
+ * first-occurrence order for both the groups and the minutes within a group — i.e. still reads
+ * top-to-bottom in the order goals actually happened, just with repeats folded in after the first.
+ * Each goal's own minute carries its own qualifier suffix (see [minuteWithQualifierLabel]) rather
+ * than one qualifier for the whole line, since a single player can have one plain goal and one
+ * penalty in the same match — "Haaland 10', 45' (Pen)" stays unambiguous about which goal was
+ * which in a way a single name-level "(Pen)" wouldn't. */
+private fun List<MatchEvent>.groupedByScorerLabel(): List<String> {
+    val order = LinkedHashMap<String, MutableList<MatchEvent>>()
+    forEach { event ->
+        val scorer = event.scorer?.takeIf { it.isNotBlank() } ?: "Goal"
+        order.getOrPut(scorer) { mutableListOf() }.add(event)
+    }
+    return order.map { (scorer, events) ->
+        val name = scorer.substringAfterLast(' ')
+        val minutes = events.joinToString(", ") { it.minuteWithQualifierLabel() }
+        "$name $minutes"
+    }
+}
+
+/** "24'", or "24' (Pen)"/"24' (OG)" when [MatchEvent.scorerQualifier] is set to something other
+ * than a plain goal (see the doc comment on the "Goal" branch of
  * [ApiFootballEventDto.toMatchEvent] in SoccerModels.kt for what qualifier values are and aren't
- * verified against a real response). Last name only — [scorer] is API-Football's full player name
- * (e.g. "Erling Haaland"), which this compact header strip doesn't have room for two of side by
- * side; the full name still appears in the Events tab's own timeline row, which isn't
- * space-constrained the same way. */
-private fun MatchEvent.goalScorerLabel(): String {
-    val name = scorer?.substringAfterLast(' ') ?: "Goal"
-    return if (scorerQualifier != null) "$name ($scorerQualifier) $minuteLabel" else "$name $minuteLabel"
+ * verified against a real response) — "Own Goal"/"Penalty" shortened to "OG"/"Pen" on request, an
+ * unrecognized future qualifier value falls back to showing API-Football's own raw text rather
+ * than silently dropping it. The qualifier trails the minute (not the scorer's name, unlike this
+ * label's single-goal predecessor) so [groupedByScorerLabel] can attach it to the specific goal it
+ * applies to when a scorer has more than one. */
+private fun MatchEvent.minuteWithQualifierLabel(): String {
+    val shortQualifier = when (scorerQualifier) {
+        null -> null
+        "Own Goal" -> "OG"
+        "Penalty" -> "Pen"
+        else -> scorerQualifier
+    }
+    return if (shortQualifier != null) "$minuteLabel ($shortQualifier)" else minuteLabel
 }
 
 @Composable
@@ -2614,6 +2650,14 @@ private fun LineupSection(
     teamColor: Color?,
     playerPhotosById: Map<Int, ByteArray>,
     playerRatings: Map<Int, Double>,
+    // The *whole* match's events, home and away sides both — on request ("add icons to show goal
+    // scorers, assists, and substitutes timing"), via PitchEventMarkersRow/pitchMarkersFor below.
+    // Not pre-filtered to this call's own team: a player id only ever appears in one side's lineup
+    // (API-Football ids aren't shared between squads), so matching by id already scopes each event
+    // to the right dot without this fun needing to know which side of `events` is "its own" —
+    // MatchEvent carries a teamName, not a teamId, so a string-based filter here would be both
+    // unnecessary and one more thing that could silently mismatch (accented/short club names).
+    events: List<MatchEvent>,
     onPlayerClick: (LineupPlayer) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2687,6 +2731,7 @@ private fun LineupSection(
                             dotColor = teamColor,
                             photoBytes = player.id?.let { playerPhotosById[it] },
                             rating = player.id?.let { playerRatings[it] },
+                            markers = player.id?.let { events.pitchMarkersFor(it) } ?: PitchPlayerMarkers(),
                             modifier = Modifier
                                 .weight(1f)
                                 .lightClickable(enabled = player.id != null) { onPlayerClick(player) },
@@ -2704,6 +2749,7 @@ private fun LineupSection(
             SubstitutesBlock(
                 lineup.substitutes,
                 playerRatings = playerRatings,
+                events = events,
                 onPlayerClick = onPlayerClick,
                 modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
             )
@@ -2731,6 +2777,7 @@ private fun PitchPlayerColumn(
     dotColor: Color?,
     photoBytes: ByteArray?,
     rating: Double?,
+    markers: PitchPlayerMarkers,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -2751,6 +2798,10 @@ private fun PitchPlayerColumn(
         )
         // Match rating, on request, as a second line under the name — a live or finished match's.
         rating?.let { RatingPill(it, modifier = Modifier.padding(top = 0.15f.gridUnitsAsDp())) }
+        // Goal/assist/substitution-off markers, on request — see PitchEventMarkersRow's own doc
+        // comment. A starting-XI player's markers never carry a subOnMinute (structurally: a
+        // starter wasn't subbed on), that field just always reads null here.
+        PitchEventMarkersRow(markers, modifier = Modifier.padding(top = 0.15f.gridUnitsAsDp()))
     }
 }
 
@@ -2821,10 +2872,100 @@ private fun PitchNumberDot(player: LineupPlayer, dotColor: Color?, photoBytes: B
     }
 }
 
+/** Per-player goal/assist/substitution summary for [PitchEventMarkersRow] — a [LineupPlayer] (and
+ * the lineups response generally) carries none of this itself, so [LineupSection] derives it fresh
+ * per player from the match's own event list each time it renders, the same [MatchEvent] list the
+ * Event Timeline tab (`EventTimelineSection`) already renders from, just filtered down to one
+ * player's id. Cheap enough to recompute on every render rather than caching: a real match's event
+ * list is at most a few dozen rows, and this runs once per starting XI / substitute player, not
+ * per frame. */
+private data class PitchPlayerMarkers(
+    val goals: Int = 0,
+    val assists: Int = 0,
+    val subOffMinute: String? = null,
+    val subOnMinute: String? = null,
+) {
+    val hasAny: Boolean get() = goals > 0 || assists > 0 || subOffMinute != null || subOnMinute != null
+}
+
+/** Scans [this] match's events for everything [PitchEventMarkersRow] needs about the player with
+ * [playerId], matched against [MatchEvent.playerId]/[MatchEvent.assistPlayerId] — see those two
+ * fields' own doc comment on [MatchEvent] for why a goal and a substitution event reuse the same
+ * two slots for different things (scorer/assist-provider for a goal; player-off/player-on for a
+ * substitution — this fun's four lines below mirror that split one-for-one). Matching by id rather
+ * than name is deliberate, not incidental: [ApiFootballEventPersonDto] (events) and [LineupPlayer]
+ * (lineups) come from two different proxy endpoints that have no obligation to format a name the
+ * same way (initials, diacritics), while the numeric id both already share does not have that
+ * problem. [goals]/[assists] use `count`, not a boolean, since the same player scoring (or
+ * assisting) more than once in a match is the ordinary case this was explicitly asked to handle
+ * well (see [groupedByScorerLabel] in this same file, added for the same multi-goal reason). */
+private fun List<MatchEvent>.pitchMarkersFor(playerId: Int): PitchPlayerMarkers = PitchPlayerMarkers(
+    goals = count { it.type == MatchEventType.GOAL && it.playerId == playerId },
+    assists = count { it.type == MatchEventType.GOAL && it.assistPlayerId == playerId },
+    subOffMinute = firstOrNull { it.type == MatchEventType.SUBSTITUTION && it.playerId == playerId }?.minuteLabel,
+    subOnMinute = firstOrNull { it.type == MatchEventType.SUBSTITUTION && it.assistPlayerId == playerId }?.minuteLabel,
+)
+
+/** Goal/assist/substitution markers under a lineup player's pitch dot ([PitchPlayerColumn]) or
+ * beside their row in the substitutes list ([SubstitutesBlock]) — on request ("add icons to show
+ * goal scorers, assists, and substitutes timing", with a FotMob lineup page linked as the visual
+ * reference). Deliberately not a copy of FotMob's own treatment (colored rating-style pill badges
+ * over a player photo): this project has no third-party icon library or image loader for anything
+ * beyond the headshots it already fetches (see [MyTeamContent]'s doc comment on why), so, exactly
+ * like [MatchEventIcon] already does for the Event Timeline tab, every marker here is either a
+ * plain Unicode glyph or a small Compose-drawn shape. Specifically: "⚽" for a goal, suffixed
+ * "×N" rather than repeating the glyph when a player has more than one (this dot-sized column has
+ * no room for a repeated icon the way a wider match-header line does); a small circled "A" for an
+ * assist, hand-drawn the same way [MatchEventIcon]'s CARD case draws its own shape, since no single
+ * codepoint for "assist" renders as reliably as "⚽" does; and "↓ <minute>"/"↑ <minute>" for a
+ * substitution off/on, using the event's own [MatchEvent.minuteLabel] rather than a bare glyph —
+ * arrows rather than reusing [MatchEventIcon]'s "⇄" swap glyph, since on this dot-sized surface the
+ * useful fact is *which direction this specific player went*, not just "a substitution happened
+ * near here". Renders nothing — zero extra height, same as [PitchPlayerColumn]'s own `rating?.let`
+ * above it — when [markers] has nothing to show, so a player with no events keeps exactly today's
+ * layout. Not render-checked on a device or emulator (none in this pipeline — see
+ * [PITCH_DOT_SIZE_UNITS]'s doc comment for the standing caveat this project states on every size);
+ * if this reads cramped in practice, this row is the first thing to shrink or drop, not the dot or
+ * name label above it. */
+@Composable
+private fun PitchEventMarkersRow(markers: PitchPlayerMarkers, modifier: Modifier = Modifier) {
+    if (!markers.hasAny) return
+    Row(
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(0.25f.gridUnitsAsDp()),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier,
+    ) {
+        if (markers.goals > 0) {
+            LightText(
+                text = if (markers.goals > 1) "⚽×${markers.goals}" else "⚽",
+                variant = LightTextVariant.Superfine,
+            )
+        }
+        if (markers.assists > 0) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(0.9f.gridUnitsAsDp())
+                    .clip(CircleShape)
+                    .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.25f)),
+            ) {
+                LightText(text = "A", variant = LightTextVariant.Superfine)
+            }
+        }
+        markers.subOffMinute?.let {
+            LightText(text = "↓ $it", variant = LightTextVariant.Superfine, lighten = true)
+        }
+        markers.subOnMinute?.let {
+            LightText(text = "↑ $it", variant = LightTextVariant.Superfine, lighten = true)
+        }
+    }
+}
+
 @Composable
 private fun SubstitutesBlock(
     substitutes: List<LineupPlayer>,
     playerRatings: Map<Int, Double>,
+    events: List<MatchEvent>,
     onPlayerClick: (LineupPlayer) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2858,6 +2999,14 @@ private fun SubstitutesBlock(
                 )
                 player.position?.let {
                     LightText(text = it, variant = LightTextVariant.Detail, lighten = true, align = TextAlign.End)
+                }
+                // Goal/assist/substitution-on markers, on request — see PitchEventMarkersRow's own
+                // doc comment. A substitute's markers can carry a subOffMinute too, not just
+                // subOnMinute: a sub who came on can themselves be substituted again later in the
+                // same match (a second, later "subst" event with this player as the one going off),
+                // so this isn't narrowed to on-only the way it might look from the common case.
+                player.id?.let {
+                    PitchEventMarkersRow(events.pitchMarkersFor(it), modifier = Modifier.padding(start = 0.5f.gridUnitsAsDp()))
                 }
                 // Only substitutes who came on have a rating.
                 player.id?.let { playerRatings[it] }?.let {
