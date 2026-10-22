@@ -1649,13 +1649,21 @@ private fun MyTeamTeamPickerContent(
             LightScrollView(
                 modifier = Modifier.weight(1f).fillMaxWidth().padding(start = 1f.gridUnitsAsDp()),
             ) {
-                teams.sortedBy { it.teamName }.forEach { team ->
+                // Filtered to a real id here specifically — unlike StandingsTableContent, which
+                // shows every row including one with no id (see StandingsRow.teamId's own doc
+                // comment), picking a team to follow as My Team genuinely needs a concrete id:
+                // every subsequent My Team fetch (fetchMyTeamSummary and everything downstream of
+                // it) is keyed on it, so a team this screen can't actually resolve shouldn't be
+                // offered as a choice here, even though it's still worth showing in the plain
+                // table.
+                teams.filter { it.teamId != null }.sortedBy { it.teamName }.forEach { team ->
+                    val teamId = team.teamId ?: return@forEach
                     LightText(
                         text = team.teamName,
                         variant = LightTextVariant.Detail,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .lightClickable(onClick = { onSelect(team.teamId, team.teamName) })
+                            .lightClickable(onClick = { onSelect(teamId, team.teamName) })
                             .padding(vertical = 0.85f.gridUnitsAsDp()),
                     )
                 }

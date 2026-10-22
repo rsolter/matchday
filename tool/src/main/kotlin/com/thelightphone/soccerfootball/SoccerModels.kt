@@ -708,6 +708,20 @@ private fun ApiFootballLineupPlayerDto.toLineupPlayer(): LineupPlayer = LineupPl
 // 4-row arrays, one per group). [toStandingsRows] flattens either shape into one row list, tagging
 // each row's [StandingsRow.group] only when the source had more than one inner array — a flat
 // domestic league's rows all come out with `group = null`.
+//
+// A later real UCL standings fetch (league=2, current season) surfaced a row whose `team` object
+// was `{"id":null,"name":"Sabah FC","logo":null}`. First guess here was that this was a stray row
+// for some unrelated club — wrong: Sabah FK (Azerbaijan) is a real participant in this season's
+// expanded 36-team UCL league phase (confirmed from a real screenshot of their actual Champions
+// League fixtures), so this is their real row, just missing its id (and spelled "FC" rather than
+// "FK" — API-Football's own data, not something this proxy or client constructs; neither oddity is
+// independently explained — could be something specific to the newer league-phase format this
+// model was never curl-tested against before now (only the old 8-groups-of-4 shape, per the real
+// responses named above, and only for season=2023), could be something else). Since the row is
+// real, it's kept — see [StandingsRow.teamId]'s own doc comment for why a null id doesn't need the
+// row dropped. [ApiFootballStandingsRowDto.team] has its own [ApiFootballStandingsTeamDto] (not the
+// shared [ApiFootballEventTeamDto] statistics/lineups/injuries all reuse) specifically so this one
+// team's null id doesn't force a nullable id onto those three other, unaffected endpoints too.
 
 @Serializable
 internal data class ApiFootballStandingsResponse(
@@ -729,10 +743,22 @@ internal data class ApiFootballStandingsLeagueDto(
     val logo: String = "",
 )
 
+/** Standings' own team stub — deliberately not [ApiFootballEventTeamDto], which statistics,
+ * lineups, and injuries all share: a real standings row (Sabah FK's, this season's UCL table — see
+ * this file's "Wire format (API-Football /standings response)" section doc comment above) has
+ * turned up with a null `id`, and making [id] nullable only here keeps that one observed quirk from
+ * forcing every one of those three other, unaffected call sites to suddenly handle a null team id
+ * too. */
+@Serializable
+internal data class ApiFootballStandingsTeamDto(
+    val id: Int? = null,
+    val name: String = "",
+)
+
 @Serializable
 internal data class ApiFootballStandingsRowDto(
     val rank: Int,
-    val team: ApiFootballEventTeamDto,
+    val team: ApiFootballStandingsTeamDto,
     val points: Int = 0,
     val goalsDiff: Int = 0,
     val group: String? = null,
@@ -984,7 +1010,13 @@ fun List<Fixture>.groupedByDate(): List<FixtureDay> = this
  */
 data class StandingsRow(
     val position: Int,
-    val teamId: Int,
+    /** Null on the one real row seen with no usable id at all (see
+     * [ApiFootballStandingsTeamDto]'s doc comment) — kept in the table rather than dropped, since
+     * [StandingsTableRow] (SoccerHomeScreen.kt) never needs a team id to render a row, only to
+     * cross-reference one against a followed team ([SoccerViewModel.resolveDomesticStanding]/
+     * [SoccerViewModel.resolveContinentalStanding], both already null-safe `==` comparisons — a
+     * null here just never matches, which is correct: there's nothing to match it against). */
+    val teamId: Int?,
     val teamName: String,
     val played: Int,
     val win: Int,

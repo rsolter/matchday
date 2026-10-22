@@ -580,7 +580,31 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
         apiFootballErrorMessage(element)?.let { message ->
             throw ApiFootballApiException(message, ApiFootballApiException.Kind.PLAN_RESTRICTED)
         }
-        return json.decodeFromJsonElement(element)
+        // Decoding into T can fail even on syntactically valid, real-success JSON — a shape this
+        // app's wire-format model doesn't actually match (a competition whose response nests
+        // fields differently than the one(s) this model was curl-verified against, a plan
+        // variant, a genuinely new API-Football field layout). This call used to sit outside
+        // every try/catch in this function, so a decode failure propagated as a bare
+        // SerializationException — which isn't an ApiFootballApiException, so apiErrorMessage()
+        // (SoccerViewModel.kt) couldn't classify it and fell through to its generic "else"
+        // branch, showing the "requires a network connection" text for a failure that was never
+        // a connectivity problem. That's the exact same misattribution this file's own
+        // apiErrorMessage doc comment already names for "the MLS standings bug" — this was the
+        // one remaining gap in that fix, one level lower (inside getChecked's own body, not in
+        // how its callers' exceptions get classified). This doesn't fix *why* a given response
+        // fails to decode — can't, with no way to see a real live payload from this pipeline —
+        // just makes sure that failure reports what it actually is instead of a connectivity
+        // problem that was never real, so the real cause (e.g. a UCL-specific field/shape
+        // mismatch — reported as a "connectivity error" that didn't match any other screen
+        // failing) is visible in the error text next time instead of hidden behind this one.
+        return try {
+            json.decodeFromJsonElement(element)
+        } catch (e: Exception) {
+            throw ApiFootballApiException(
+                "Matchday couldn't read that response (${e.message?.take(160) ?: e::class.simpleName}).",
+                ApiFootballApiException.Kind.UNKNOWN,
+            )
+        }
     }
 
     private suspend fun get(
