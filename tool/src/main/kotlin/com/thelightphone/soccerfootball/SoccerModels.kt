@@ -1137,28 +1137,32 @@ data class LineupPlayer(
 // drop-first-word split below.
 private val LEADING_INITIAL_PATTERN = Regex("^[A-Za-zÀ-ÖØ-öø-ÿ]\\.\\s+")
 
-/** [name] cut down to a bare surname for the pitch dot visualization's per-dot label
- * ([PitchPlayerColumn] in SoccerHomeScreen.kt) — there's only room under a dot for one short
- * word. Two strategies, in this order:
+/** [name] cut down to a bare surname — originally just for the pitch dot visualization's per-dot
+ * label ([PitchPlayerColumn] in SoccerHomeScreen.kt, where there's only room under a dot for one
+ * short word), now reused by the Event Timeline tab's event rows too (on request: "remove the
+ * first names of players and just show last names" — see [EventTimelineRow]'s doc comment), since
+ * both need the same transformation on the same shape of API-Football name string. Two
+ * strategies, in this order:
  * 1. Strip a leading "F. " initial if [name] has one ([LEADING_INITIAL_PATTERN]) — e.g.
  *    "R. Kolo Muani" -> "Kolo Muani".
  * 2. Otherwise, for the far more common un-abbreviated "First Last" (or "First Middle Last")
  *    shape, drop just the first word and keep the rest — e.g. "Giovanni Simeone" -> "Simeone",
- *    "Kevin De Bruyne" -> "De Bruyne". A first-round version of this property assumed every name
- *    used strategy 1 and left full names like these completely unshortened, so they clipped
- *    mid-word instead ("Niccolò…") — the bug a real screenshot surfaced this round. Dropping only
- *    the first word (rather than keeping only the *last* word) is deliberate: it keeps a
- *    multi-word surname like "Kolo Muani" or "De Bruyne" intact instead of wrongly cutting it
- *    down to just "Muani"/"Bruyne".
+ *    "Kevin De Bruyne" -> "De Bruyne", "Mousa Al-Tamari" -> "Al-Tamari". A first-round version of
+ *    this assumed every name used strategy 1 and left full names like these completely
+ *    unshortened, so they clipped mid-word instead ("Niccolò…") — the bug a real screenshot
+ *    surfaced this round. Dropping only the first word (rather than keeping only the *last* word)
+ *    is deliberate: it keeps a multi-word surname like "Kolo Muani" or "De Bruyne" intact instead
+ *    of wrongly cutting it down to just "Muani"/"Bruyne".
  * Falls back to the bare [name] unchanged when it's already just one word (a handful of
  * API-Football entries are, e.g. "Neymar") — nothing left to drop. */
-val LineupPlayer.lastName: String
-    get() {
-        val strippedInitial = name.replace(LEADING_INITIAL_PATTERN, "")
-        if (strippedInitial != name) return strippedInitial
-        val words = name.trim().split(Regex("\\s+"))
-        return if (words.size > 1) words.drop(1).joinToString(" ") else name
-    }
+fun lastNameOf(name: String): String {
+    val strippedInitial = name.replace(LEADING_INITIAL_PATTERN, "")
+    if (strippedInitial != name) return strippedInitial
+    val words = name.trim().split(Regex("\\s+"))
+    return if (words.size > 1) words.drop(1).joinToString(" ") else name
+}
+
+val LineupPlayer.lastName: String get() = lastNameOf(name)
 
 data class TeamLineup(
     val teamName: String,

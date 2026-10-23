@@ -1,8 +1,8 @@
 [tool]
 id          = "com.thelightphone.soccerfootball"
 label       = "Matchday"
-versionCode = 20
-versionName = "1.6.9"
+versionCode = 21
+versionName = "1.6.10"
 permissions  = ["android.permission.INTERNET"]
 capabilities = []
 # "com.lightos" for a real Light Phone III (and the Light tool library);

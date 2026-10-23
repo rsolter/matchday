@@ -1211,7 +1211,7 @@ private fun LeaguesRow(leagueNames: List<String>, onClick: () -> Unit) {
 // kept in sync by hand with tool/lighttool.toml's versionName on every release, same manual-sync
 // discipline this codebase already uses elsewhere (e.g. SCHEDULE_PAST_DAYS/SCHEDULE_FUTURE_DAYS's
 // own doc comment in SoccerViewModel.kt).
-private const val MATCHDAY_VERSION_NAME = "1.6.9"
+private const val MATCHDAY_VERSION_NAME = "1.6.10"
 
 @Composable
 private fun AttributionContent(onBack: () -> Unit) {
@@ -2632,10 +2632,16 @@ private val CARD_RED = Color(0xFFD32F2F)
 /** One event row: the home half (text, then icon toward center) on the left, the minute centered,
  * the away half (icon toward center, then text) on the right — only whichever half matches
  * [MatchEvent.isHome] actually renders content, the other stays blank space so every row's minute
- * lines up in the same center column regardless of side. */
+ * lines up in the same center column regardless of side.
+ *
+ * Real-device feedback on a first version of this (full names, 2 lines) found it too cramped on
+ * the Light Phone's narrow screen — long names wrapped mid-word or got ellipsized. Fixed on
+ * request: every name here is cut to [lastNameOf] (shared with the Squad pitch view's player
+ * labels), and a goal's score/scorer/assist each get their own line instead of being packed
+ * together — see [eventDisplayText]. */
 @Composable
 private fun EventTimelineRow(event: MatchEvent, homeScore: Int, awayScore: Int) {
-    val (headline, subtext) = eventDisplayText(event, homeScore, awayScore)
+    val lines = eventDisplayText(event, homeScore, awayScore)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(vertical = 0.5f.gridUnitsAsDp()),
@@ -2646,7 +2652,7 @@ private fun EventTimelineRow(event: MatchEvent, homeScore: Int, awayScore: Int) 
             modifier = Modifier.weight(1f),
         ) {
             if (event.isHome) {
-                EventText(headline = headline, subtext = subtext, align = TextAlign.End, modifier = Modifier.weight(1f))
+                EventText(lines = lines, align = TextAlign.End, modifier = Modifier.weight(1f))
                 MatchEventIcon(event = event, modifier = Modifier.padding(start = 0.5f.gridUnitsAsDp()))
             }
         }
@@ -2668,58 +2674,65 @@ private fun EventTimelineRow(event: MatchEvent, homeScore: Int, awayScore: Int) 
         ) {
             if (!event.isHome) {
                 MatchEventIcon(event = event, modifier = Modifier.padding(end = 0.5f.gridUnitsAsDp()))
-                EventText(headline = headline, subtext = subtext, align = TextAlign.Start, modifier = Modifier.weight(1f))
+                EventText(lines = lines, align = TextAlign.Start, modifier = Modifier.weight(1f))
             }
         }
     }
 }
 
-/** The headline/subtext text block for one side of [EventTimelineRow], aligned toward whichever
- * outer edge [align] names. */
+/** [eventDisplayText]'s lines for one side of [EventTimelineRow], aligned toward whichever outer
+ * edge [align] names. First line is this row's primary fact (the score for a goal, the player's
+ * name for anything else); any further lines are secondary, smaller, and one step lighter. Sized
+ * one step down from this tab's earlier Fine, to Detail/Superfine — on request, to fit the
+ * shorter-but-now-multi-line layout more comfortably on a narrow screen. */
 @Composable
-private fun EventText(headline: String, subtext: String?, align: TextAlign, modifier: Modifier = Modifier) {
+private fun EventText(lines: List<String>, align: TextAlign, modifier: Modifier = Modifier) {
     Column(horizontalAlignment = if (align == TextAlign.End) Alignment.End else Alignment.Start, modifier = modifier) {
-        // Was Copy, shrunk to Detail, then Superfine, then back to Detail across earlier rounds;
-        // bumped one more size on request, Detail -> Fine — this is the event's own description
-        // text. No longer the fuller "Goal — Haaland"/"Yellow Card — Smith" MatchEvent.headline
-        // text verbatim (see eventDisplayText) — simplified to just the ball/card icon (rendered
-        // separately, see MatchEventIcon) plus the player's name, on request.
-        LightText(text = headline, variant = LightTextVariant.Fine, align = align, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        if (subtext != null) {
+        lines.forEachIndexed { index, line ->
             LightText(
-                text = subtext,
-                variant = LightTextVariant.Detail,
-                lighten = true,
+                text = line,
+                variant = if (index == 0) LightTextVariant.Detail else LightTextVariant.Superfine,
+                lighten = index != 0,
                 align = align,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 0.1f.gridUnitsAsDp()),
+                modifier = if (index > 0) Modifier.padding(top = 0.1f.gridUnitsAsDp()) else Modifier,
             )
         }
     }
 }
 
-/** [EventTimelineRow]'s simplified display text, built from [event]'s already-structured fields
- * rather than its fuller [MatchEvent.headline]/[subtext] (which stay in their original format for
- * the other two things that still read them — see [EventTimelineSection]'s doc comment):
- * - Goal: scorer name plus the running score right after this goal (on request: "just show the
- *   ball icon and the name of the scorer, new score, and who assisted"), subtext is the qualifier
- *   ("Penalty"/"Own Goal") when there is one, else the existing "Assist: Name" text when there's
- *   an assist, else nothing — real data essentially never has both at once.
- * - Card: just the player's name (on request: "keep the icon and name of player impacted") — cut
- *   from [MatchEvent.headline]'s existing "<Yellow Card/Red Card/etc> — <player>" shape rather
- *   than adding a new structured field, since that shape is already a reliable source for it (and
- *   falls back to the whole headline unchanged if, rarely, there's no " — " to split on).
- * - Substitution/VAR/Other: unchanged — [MatchEvent.headline]/[subtext] as-is, not part of what
- *   was asked to simplify. */
-private fun eventDisplayText(event: MatchEvent, homeScore: Int, awayScore: Int): Pair<String, String?> =
+/** [EventTimelineRow]'s simplified, multi-line display text — built from [event]'s already-
+ * structured fields rather than its fuller [MatchEvent.headline]/[subtext] (which stay in their
+ * original, full-name format for the other two things that still read them — see
+ * [EventTimelineSection]'s doc comment). Every name is cut to [lastNameOf] throughout, on request.
+ * - Goal: "(1 - 0)" (the running score right after this goal) on its own line, the scorer's last
+ *   name on the next, then — only if there's one — a third line: "— Penalty"/"— Own Goal" when
+ *   [MatchEvent.scorerQualifier] is set, else "— <assist's last name>" pulled back out of
+ *   [MatchEvent.subtext]'s existing "Assist: Name" text. Real data essentially never has both a
+ *   qualifier and an assist at once.
+ * - Card: just the player's last name (cut from [MatchEvent.headline]'s existing "<Yellow
+ *   Card/Red Card/etc> — <player>" shape, same extraction as before, now also last-named).
+ * - Substitution: two lines, "<on player> on" / "<off player> off", both last-named — same
+ *   on/off text [MatchEvent.headline]/[subtext] already carried, just cut down and split.
+ * - VAR/Other: unchanged, [MatchEvent.headline]/[subtext] as a 1-2 line list — not part of what
+ *   was asked to simplify, and already short. */
+private fun eventDisplayText(event: MatchEvent, homeScore: Int, awayScore: Int): List<String> =
     when (event.type) {
         MatchEventType.GOAL -> {
-            val name = event.scorer ?: "Goal"
-            (name + " (" + homeScore + " - " + awayScore + ")") to (event.scorerQualifier ?: event.subtext)
+            val scoreLine = "($homeScore - $awayScore)"
+            val scorerLine = lastNameOf(event.scorer ?: "Goal")
+            val thirdLine = event.scorerQualifier?.let { "— $it" }
+                ?: event.subtext?.removePrefix("Assist: ")?.let { "— ${lastNameOf(it)}" }
+            listOfNotNull(scoreLine, scorerLine, thirdLine)
         }
-        MatchEventType.CARD -> event.headline.substringAfter(" — ") to null
-        MatchEventType.SUBSTITUTION, MatchEventType.VAR, MatchEventType.OTHER -> event.headline to event.subtext
+        MatchEventType.CARD -> listOf(lastNameOf(event.headline.substringAfter(" — ")))
+        MatchEventType.SUBSTITUTION -> {
+            val onLine = event.headline.removeSuffix(" on").let { if (it != event.headline) "${lastNameOf(it)} on" else event.headline }
+            val offLine = event.subtext?.removeSuffix(" off")?.let { "${lastNameOf(it)} off" }
+            listOfNotNull(onLine, offLine)
+        }
+        MatchEventType.VAR, MatchEventType.OTHER -> listOfNotNull(event.headline, event.subtext)
     }
 
 /** The row of equal-width tab buttons under a detail screen's header — Match Detail's
