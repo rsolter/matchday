@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# push-to-github.sh — commit and push local soccer-pro changes to GitHub.
+# push-to-github.sh — commit and push local Matchday changes to GitHub.
 #
 # Run this from your own Terminal (not through Claude/Cowork) — it needs your
 # real SSH key for git@github.com, which the Cowork device bridge doesn't have
@@ -12,7 +12,7 @@
 #
 set -euo pipefail
 
-REPO_DIR="$HOME/Documents/Projects/soccer-pro"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
 
 # Bail out early if a previous `git am` or rebase was left half-applied —
@@ -71,4 +71,4 @@ echo "Pushing $AHEAD commit(s) to origin/${BRANCH}..."
 git push origin "$BRANCH"
 
 echo
-echo "Done. Pushed to https://github.com/rsolter/soccer-pro/tree/${BRANCH}"
+echo "Done. Pushed to https://github.com/rsolter/matchday/tree/${BRANCH}"

@@ -3,6 +3,8 @@
 *A free, open-source Light Phone III tool for live soccer scores, fixtures, and
 standings, sourced from [API-Football](https://www.api-football.com).*
 
+Not affiliated with, endorsed by, or sponsored by any league, club, competition, or federation.
+
 ## What it is
 
 Live Scores and Fixtures across 22 tracked competitions (the Premier League, Serie A, La Liga,

@@ -56,3 +56,4 @@ __pycache__/
 # test key); a private release keystore must never be. See keystore.properties.example.
 tool/keystore.properties
 tool/*.jks
+examples/
