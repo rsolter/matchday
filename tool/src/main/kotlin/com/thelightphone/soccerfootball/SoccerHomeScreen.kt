@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -131,7 +132,6 @@ class SoccerHomeScreen(sealedActivity: SealedLightActivity) :
                     is ScoreScreenMode.LeagueSelection -> {
                         LeagueSelectionContent(
                             rows = mode.rows,
-                            leagueLogos = mode.leagueLogos,
                             onToggle = viewModel::toggleLeague,
                             onBack = viewModel::closeLeagueSelection,
                         )
@@ -1193,8 +1193,10 @@ private fun LeaguesRow(leagueNames: List<String>, onClick: () -> Unit) {
         // to Fine (25) along with the rest of this page's text, matching Scores' home/away
         // team-name font as this page's new ceiling size.
         leagueNames.forEach { name ->
+            // settingsCompetitionName strips a "UEFA "/"CONCACAF " prefix to save space here, on
+            // request — see that fun's own doc comment for why this is scoped to just Settings.
             LightText(
-                text = name,
+                text = settingsCompetitionName(name),
                 variant = LightTextVariant.Fine,
                 lighten = true,
                 modifier = Modifier.padding(top = 0.2f.gridUnitsAsDp()),
@@ -1202,6 +1204,14 @@ private fun LeaguesRow(leagueNames: List<String>, onClick: () -> Unit) {
         }
     }
 }
+
+// Shown at the bottom of the About page (on request: "add the current release number in notes at
+// the bottom"). No BuildConfig.VERSION_NAME is wired up anywhere in this project (confirmed — this
+// tool's build.gradle.kts has no buildConfigField/versionName hookup), so this is a plain literal,
+// kept in sync by hand with tool/lighttool.toml's versionName on every release, same manual-sync
+// discipline this codebase already uses elsewhere (e.g. SCHEDULE_PAST_DAYS/SCHEDULE_FUTURE_DAYS's
+// own doc comment in SoccerViewModel.kt).
+private const val MATCHDAY_VERSION_NAME = "1.6.9"
 
 @Composable
 private fun AttributionContent(onBack: () -> Unit) {
@@ -1228,6 +1238,11 @@ private fun AttributionContent(onBack: () -> Unit) {
                 // row, so this static copy was a second, easily-stale place saying the same thing
                 // (it still named only 4 of the now 14 tracked competitions).
                 //
+                // The middle paragraph (the caching-proxy/API-key explanation) was dropped on
+                // request — implementation detail not of interest to a reader here, and the top
+                // paragraph's attribution plus the scores-window paragraph below cover what this
+                // screen actually needs to say.
+                //
                 // The scores-window sentence below is new, on request (see SoccerViewModel.kt's
                 // SCHEDULE_PAST_DAYS/SCHEDULE_FUTURE_DAYS doc comment, which asks for this to stay in
                 // sync with those constants if the window changes again) — narrowed from "past two
@@ -1237,14 +1252,18 @@ private fun AttributionContent(onBack: () -> Unit) {
                 // window's actual rough shape changes.
                 text = "Scores are provided by API-Football (api-football.com), a paid football " +
                     "data API.\n\n" +
-                    "Requests go through a caching proxy this app's developer runs, which holds " +
-                    "the API-Football key and absorbs the request load — there's nothing to set " +
-                    "up or configure here. Scores, fixtures, and standings are live, " +
-                    "current-season data.\n\n" +
                     "The Matchday Scores feed shows matches from the past few days through the " +
                     "upcoming week, so you can look back at recent results and ahead at " +
                     "what's coming up.",
                 variant = LightTextVariant.Paragraph,
+            )
+            // Version line, on request ("add the current release number in notes at the bottom") —
+            // see MATCHDAY_VERSION_NAME's own doc comment for why this is a hand-kept literal.
+            LightText(
+                text = "Matchday $MATCHDAY_VERSION_NAME",
+                variant = LightTextVariant.Detail,
+                lighten = true,
+                modifier = Modifier.padding(top = 1.5f.gridUnitsAsDp()),
             )
         }
     }
@@ -1262,7 +1281,6 @@ private fun AttributionContent(onBack: () -> Unit) {
 @Composable
 private fun LeagueSelectionContent(
     rows: List<LeagueSelectionRow>,
-    leagueLogos: Map<Int, ByteArray>,
     onToggle: (Int) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -1295,30 +1313,16 @@ private fun LeagueSelectionContent(
                             .lightClickable(onClick = { onToggle(row.id) })
                             .padding(vertical = 0.85f.gridUnitsAsDp()),
                     ) {
-                        // Same decodeLeagueLogo (recolor-on-decode) treatment Scores/Fixtures/
-                        // Standings already give a league crest, so e.g. Premier League/UCL still
-                        // read as white here instead of the dark-on-black original. Bytes come from
-                        // leagueLogos, keyed by id (see ScoreScreenMode.LeagueSelection's doc
-                        // comment) rather than the URL-keyed maps every other screen uses. Row
-                        // simply renders without an icon until the fetch resolves, or permanently
-                        // if it fails — never a broken image.
-                        val bytes = leagueLogos[row.id]
-                        val logoBitmap = bytes?.let { b -> remember(b, row.id) { decodeLeagueLogo(b, row.id) } }
-                        if (logoBitmap != null) {
-                            Image(
-                                bitmap = logoBitmap,
-                                contentDescription = null,
-                                contentScale = ContentScale.Fit,
-                                colorFilter = leagueLogoColorFilter(row.id),
-                                modifier = Modifier
-                                    .size(1.4f.gridUnitsAsDp())
-                                    .padding(end = 0.6f.gridUnitsAsDp()),
-                            )
-                        }
-                        // Was Copy (30) before the global one-step-down pass shifted it to Detail
-                        // (20); reverted back to Copy — this is a Settings child page, same
-                        // treatment.
-                        LightText(text = row.name, variant = LightTextVariant.Copy, modifier = Modifier.weight(1f))
+                        // Crest dropped here on request ("drop the logos on the left, just keep
+                        // text") — this row is text + toggle only now. Was Copy (30) before the
+                        // global one-step-down pass shifted it to Detail (20); reverted back to
+                        // Copy — this is a Settings child page, same treatment. settingsCompetitionName
+                        // strips the "UEFA "/"CONCACAF " prefix to save space, per the same request.
+                        LightText(
+                            text = settingsCompetitionName(row.name),
+                            variant = LightTextVariant.Copy,
+                            modifier = Modifier.weight(1f),
+                        )
                         LightIcon(
                             icon = if (row.selected) LightIcons.TOGGLE_STATE_ON else LightIcons.TOGGLE_STATE_OFF,
                             size = 2f,
@@ -1845,7 +1849,9 @@ private fun MyTeamHeaderRow(
     }
     // Crest, then the domestic league rank, then — if the team's in one — its UEFA competition
     // rank, on request. The today/next match that used to sit beside the crest moved to the top of
-    // the Matches tab (see MyTeamContent).
+    // the Matches tab (see MyTeamContent). The coach photo/name block (on request) is pinned to
+    // the far right via the weight(1f) Spacer below, regardless of how many rank blocks render
+    // before it.
     Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.fillMaxWidth()) {
         if (teamLogoBitmap != null) {
             Image(
@@ -1873,6 +1879,43 @@ private fun MyTeamHeaderRow(
                 onClick = { onOpenStandingsTable(continentalId, competitionName(continentalId)) },
             )
         }
+        Spacer(modifier = Modifier.weight(1f))
+        if (summary.coachName != null) {
+            CoachBlock(name = summary.coachName, photoBytes = summary.coachPhotoBytes)
+        }
+    }
+}
+
+/** Coach photo + name, right-aligned in [MyTeamHeaderRow] (on request). Same hand-decoded-bytes
+ * pattern as every other image on this screen (see [MyTeamHeaderRow]'s own doc comment on why —
+ * no AsyncImage/Coil available). [photoBytes] is null when [MyTeamSummary.coachPhotoBytes] is
+ * null (API-Football sent no photo for this coach, or the fetch failed) — the name still shows on
+ * its own in that case, no placeholder image. */
+@Composable
+private fun CoachBlock(name: String, photoBytes: ByteArray?) {
+    val photoBitmap = photoBytes?.let { bytes ->
+        remember(bytes) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    }
+    Column(horizontalAlignment = Alignment.End, modifier = Modifier.widthIn(max = 7f.gridUnitsAsDp())) {
+        if (photoBitmap != null) {
+            Image(
+                bitmap = photoBitmap,
+                contentDescription = "$name, coach",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(3f.gridUnitsAsDp())
+                    .clip(CircleShape)
+                    .padding(bottom = 0.3f.gridUnitsAsDp()),
+            )
+        }
+        LightText(
+            text = name,
+            variant = LightTextVariant.Detail,
+            lighten = true,
+            align = TextAlign.End,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -2466,14 +2509,35 @@ private fun prettifyStatLabel(raw: String): String =
     raw.replace('_', ' ').split(' ').filter { it.isNotBlank() }
         .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
 
-/** The match detail screen's Event Timeline tab — a flat, chronological, text-only feed (goals,
- * substitutions, cards, VAR reviews). [MatchEvent.headline]/[subtext] are already formatted
- * per-event-type by [ApiFootballEventDto.toMatchEvent] in SoccerModels.kt, so this just lays them
- * out; it doesn't need to know the event type itself beyond ordering. */
+/** The match detail screen's Event Timeline tab — reworked to a FotMob-style two-column layout on
+ * request: home events left-aligned, away events right-aligned, the minute centered between them,
+ * with a halftime separator showing the score at that point. [MatchEvent.headline]/[subtext]
+ * themselves are left exactly as [ApiFootballEventDto.toMatchEvent] formats them — still read
+ * elsewhere ([MatchDetailHeader]'s goalscorer strip via [MatchEvent.scorer]/[scorerQualifier],
+ * [MatchEventIcon]'s red/yellow detection via [MatchEvent.headline]) — this section instead builds
+ * its own simplified per-row text from the event's structured fields (see [eventDisplayText]).
+ *
+ * The running score shown next to each goal isn't a field API-Football sends (confirmed:
+ * [ApiFootballEventDto] carries no score/goals property of its own) — tallied here by walking
+ * [events] in chronological order and bumping the home or away count on each
+ * [MatchEventType.GOAL] per [MatchEvent.isHome], same running tally a live match-center broadcast
+ * computes rather than receives. */
 @Composable
 private fun EventTimelineSection(events: List<MatchEvent>, modifier: Modifier = Modifier) {
+    var home = 0
+    var away = 0
+    val withScore = events.map { event ->
+        if (event.type == MatchEventType.GOAL) {
+            if (event.isHome) home++ else away++
+        }
+        EventWithScore(event, home, away)
+    }
+    // First event of the second half — stoppage-time first-half events (e.g. "45+2'") still carry
+    // elapsedMinutes == 45, so they correctly stay before this rather than after. -1 (no match)
+    // simply means no separator renders, e.g. a match still inside its first half.
+    val halftimeIndex = withScore.indexOfFirst { it.event.elapsedMinutes > 45 }
     Column(modifier = modifier.fillMaxWidth()) {
-        events.forEachIndexed { index, event ->
+        withScore.forEachIndexed { index, row ->
             if (index > 0) {
                 Box(
                     modifier = Modifier
@@ -2482,8 +2546,48 @@ private fun EventTimelineSection(events: List<MatchEvent>, modifier: Modifier = 
                         .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.1f)),
                 )
             }
-            EventTimelineRow(event)
+            if (index == halftimeIndex) {
+                // Score as of right before this (first second-half) row — i.e. the previous row's
+                // running tally, or 0-0 if the very first event is already second-half (an
+                // unplayed/scoreless first half).
+                val htHome = withScore.getOrNull(index - 1)?.homeScore ?: 0
+                val htAway = withScore.getOrNull(index - 1)?.awayScore ?: 0
+                HalftimeSeparator(homeScore = htHome, awayScore = htAway)
+            }
+            EventTimelineRow(row.event, row.homeScore, row.awayScore)
         }
+    }
+}
+
+private data class EventWithScore(val event: MatchEvent, val homeScore: Int, val awayScore: Int)
+
+/** "HT 1 - 2" with a rule either side, matching the halftime break shown mid-list in a FotMob-style
+ * event timeline (on request). */
+@Composable
+private fun HalftimeSeparator(homeScore: Int, awayScore: Int) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 0.75f.gridUnitsAsDp()),
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.2f)),
+        )
+        LightText(
+            text = "HT $homeScore - $awayScore",
+            variant = LightTextVariant.Detail,
+            lighten = true,
+            align = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 0.75f.gridUnitsAsDp()),
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(LightThemeTokens.colors.contentSecondary.copy(alpha = 0.2f)),
+        )
     }
 }
 
@@ -2525,45 +2629,98 @@ private fun MatchEventIcon(event: MatchEvent, modifier: Modifier = Modifier) {
 private val CARD_YELLOW = Color(0xFFFBC02D)
 private val CARD_RED = Color(0xFFD32F2F)
 
+/** One event row: the home half (text, then icon toward center) on the left, the minute centered,
+ * the away half (icon toward center, then text) on the right — only whichever half matches
+ * [MatchEvent.isHome] actually renders content, the other stays blank space so every row's minute
+ * lines up in the same center column regardless of side. */
 @Composable
-private fun EventTimelineRow(event: MatchEvent) {
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 0.5f.gridUnitsAsDp())) {
+private fun EventTimelineRow(event: MatchEvent, homeScore: Int, awayScore: Int) {
+    val (headline, subtext) = eventDisplayText(event, homeScore, awayScore)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 0.5f.gridUnitsAsDp()),
+    ) {
+        Row(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f),
+        ) {
+            if (event.isHome) {
+                EventText(headline = headline, subtext = subtext, align = TextAlign.End, modifier = Modifier.weight(1f))
+                MatchEventIcon(event = event, modifier = Modifier.padding(start = 0.5f.gridUnitsAsDp()))
+            }
+        }
         // Minute column bumped one size in an earlier round, Superfine (16) -> Detail (20); bumped
         // one more on request, Detail -> Fine (25), same "increase all text" pass that hit the Stats
-        // tab — the secondary team/subtext line below the headline goes from Superfine to Detail,
-        // one step behind, same relationship as before.
+        // tab. Now centered between the two halves above/below rather than leading the row, on
+        // request ("minutes should be aligned down the middle").
         LightText(
             text = event.minuteLabel,
             variant = LightTextVariant.Fine,
             lighten = true,
-            modifier = Modifier.width(2.4f.gridUnitsAsDp()),
+            align = TextAlign.Center,
+            modifier = Modifier.width(2.6f.gridUnitsAsDp()).padding(horizontal = 0.4f.gridUnitsAsDp()),
         )
-        MatchEventIcon(
-            event = event,
-            modifier = Modifier.align(Alignment.CenterVertically).padding(end = 0.5f.gridUnitsAsDp()),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            // Was Copy, shrunk to Detail (matching the minute label and the secondary team/subtext
-            // line below it, so the whole Events row read at one smaller, consistent size instead
-            // of the headline standing out as the biggest text in the tab), then Superfine after a
-            // later global one-step-down pass, then back to Detail. Bumped one more size on request,
-            // Detail -> Fine — this is the event's own description text ("Goal — Haaland", "Yellow
-            // Card — Smith", etc.), see MatchEvent.headline's doc comment in SoccerModels.kt.
-            LightText(text = event.headline, variant = LightTextVariant.Fine, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            val secondary = listOfNotNull(event.teamName.takeIf { it.isNotBlank() }, event.subtext).joinToString(" · ")
-            if (secondary.isNotBlank()) {
-                LightText(
-                    text = secondary,
-                    variant = LightTextVariant.Detail,
-                    lighten = true,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 0.1f.gridUnitsAsDp()),
-                )
+        Row(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f),
+        ) {
+            if (!event.isHome) {
+                MatchEventIcon(event = event, modifier = Modifier.padding(end = 0.5f.gridUnitsAsDp()))
+                EventText(headline = headline, subtext = subtext, align = TextAlign.Start, modifier = Modifier.weight(1f))
             }
         }
     }
 }
+
+/** The headline/subtext text block for one side of [EventTimelineRow], aligned toward whichever
+ * outer edge [align] names. */
+@Composable
+private fun EventText(headline: String, subtext: String?, align: TextAlign, modifier: Modifier = Modifier) {
+    Column(horizontalAlignment = if (align == TextAlign.End) Alignment.End else Alignment.Start, modifier = modifier) {
+        // Was Copy, shrunk to Detail, then Superfine, then back to Detail across earlier rounds;
+        // bumped one more size on request, Detail -> Fine — this is the event's own description
+        // text. No longer the fuller "Goal — Haaland"/"Yellow Card — Smith" MatchEvent.headline
+        // text verbatim (see eventDisplayText) — simplified to just the ball/card icon (rendered
+        // separately, see MatchEventIcon) plus the player's name, on request.
+        LightText(text = headline, variant = LightTextVariant.Fine, align = align, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (subtext != null) {
+            LightText(
+                text = subtext,
+                variant = LightTextVariant.Detail,
+                lighten = true,
+                align = align,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 0.1f.gridUnitsAsDp()),
+            )
+        }
+    }
+}
+
+/** [EventTimelineRow]'s simplified display text, built from [event]'s already-structured fields
+ * rather than its fuller [MatchEvent.headline]/[subtext] (which stay in their original format for
+ * the other two things that still read them — see [EventTimelineSection]'s doc comment):
+ * - Goal: scorer name plus the running score right after this goal (on request: "just show the
+ *   ball icon and the name of the scorer, new score, and who assisted"), subtext is the qualifier
+ *   ("Penalty"/"Own Goal") when there is one, else the existing "Assist: Name" text when there's
+ *   an assist, else nothing — real data essentially never has both at once.
+ * - Card: just the player's name (on request: "keep the icon and name of player impacted") — cut
+ *   from [MatchEvent.headline]'s existing "<Yellow Card/Red Card/etc> — <player>" shape rather
+ *   than adding a new structured field, since that shape is already a reliable source for it (and
+ *   falls back to the whole headline unchanged if, rarely, there's no " — " to split on).
+ * - Substitution/VAR/Other: unchanged — [MatchEvent.headline]/[subtext] as-is, not part of what
+ *   was asked to simplify. */
+private fun eventDisplayText(event: MatchEvent, homeScore: Int, awayScore: Int): Pair<String, String?> =
+    when (event.type) {
+        MatchEventType.GOAL -> {
+            val name = event.scorer ?: "Goal"
+            (name + " (" + homeScore + " - " + awayScore + ")") to (event.scorerQualifier ?: event.subtext)
+        }
+        MatchEventType.CARD -> event.headline.substringAfter(" — ") to null
+        MatchEventType.SUBSTITUTION, MatchEventType.VAR, MatchEventType.OTHER -> event.headline to event.subtext
+    }
 
 /** The row of equal-width tab buttons under a detail screen's header — Match Detail's
  * Stats/Events/Home/Away, and the player screen's Summary/Stats/Matches/Career. */

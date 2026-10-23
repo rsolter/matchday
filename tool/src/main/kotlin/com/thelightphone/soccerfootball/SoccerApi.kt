@@ -196,7 +196,7 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
         awayTeamId: Int,
         onLineups: (MatchLineups) -> Unit = {},
     ): Result<MatchDetail> = coroutineScope {
-        val eventsDeferred = async { runCatching { fetchEventsInternal(fixtureId) } }
+        val eventsDeferred = async { runCatching { fetchEventsInternal(fixtureId, homeTeamId) } }
         val statsDeferred = async { runCatching { fetchStatisticsInternal(fixtureId, homeTeamId, awayTeamId) } }
         val lineupsDeferred = async {
             runCatching { fetchLineupsInternal(fixtureId, homeTeamId, awayTeamId) }.onSuccess(onLineups)
@@ -209,11 +209,11 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
         Result.success(MatchDetail(stats = stats, events = events, lineups = lineups))
     }
 
-    private suspend fun fetchEventsInternal(fixtureId: Int): List<MatchEvent> {
+    private suspend fun fetchEventsInternal(fixtureId: Int, homeTeamId: Int): List<MatchEvent> {
         val body: ApiFootballEventsResponse = getChecked("$API_BASE/fixtures/events") {
             parameter("fixture", fixtureId)
         }
-        return body.response.map { it.toMatchEvent() }
+        return body.response.map { it.toMatchEvent(homeTeamId) }
     }
 
     private suspend fun fetchStatisticsInternal(
@@ -359,6 +359,25 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
         }
         val featuredOpponentLogoBytes = featuredOpponentLogoUrl?.let { fetchImageBytes(it).getOrNull() }
 
+        // Coach name/photo (on request) — pulled from the most recently *played* fixture's own
+        // lineup response, not [featuredFixture] (which may be a not-yet-kicked-off upcoming
+        // match with no lineup posted yet). recent.firstOrNull() is already the latest played
+        // fixture (recent is sorted ascending by date then reversed above). No extra whitelist/
+        // proxy work needed: TeamLineup.coachName/coachPhotoUrl already ride along on the same
+        // /fixtures/lineups call Match Detail uses, just never read for this screen before.
+        var coachName: String? = null
+        var coachPhotoBytes: ByteArray? = null
+        val coachFixture = recent.firstOrNull()
+        if (coachFixture != null) {
+            runCatching { fetchLineupsInternal(coachFixture.id, coachFixture.homeTeamId, coachFixture.awayTeamId) }
+                .getOrNull()
+                ?.let { lineups -> if (teamId == coachFixture.homeTeamId) lineups.home else lineups.away }
+                ?.let { lineup ->
+                    coachName = lineup.coachName
+                    coachPhotoBytes = lineup.coachPhotoUrl?.let { fetchImageBytes(it).getOrNull() }
+                }
+        }
+
         MyTeamSummary(
             teamId = teamId,
             teamName = teamName,
@@ -371,6 +390,8 @@ internal class ApiFootballApi(private val imageCache: ImageDiskCache? = null) {
             unavailable = unavailable,
             teamLogoBytes = teamLogoBytes,
             featuredOpponentLogoBytes = featuredOpponentLogoBytes,
+            coachName = coachName,
+            coachPhotoBytes = coachPhotoBytes,
         )
     }
 

@@ -162,6 +162,17 @@ fun competitionIsDomestic(id: Int): Boolean = TRACKED_COMPETITIONS.firstOrNull {
 fun competitionUsesCalendarYearSeason(id: Int): Boolean =
     TRACKED_COMPETITIONS.firstOrNull { it.id == id }?.calendarYearSeason ?: false
 
+/** [name] with its confederation prefix dropped — "UEFA Champions League" -> "Champions League",
+ * "CONCACAF Champions Cup" -> "Champions Cup" — for Settings' "Competitions followed" summary and
+ * the Competitions toggle list, to save horizontal space (on request). Deliberately scoped to just
+ * those two call sites via a free function rather than changing [Competition.name] itself: every
+ * other screen (Scores' per-match league label, Standings' top bar, My Team's rank block) still
+ * wants the full/short names as-is, and [Competition.shortName] ("UCL"/"CCC") is a different,
+ * already-used abbreviation this isn't meant to replace. Only strips a prefix that's actually
+ * there — a name with neither prefix (every domestic league/cup) passes through unchanged. */
+fun settingsCompetitionName(name: String): String =
+    name.removePrefix("UEFA ").removePrefix("CONCACAF ")
+
 /** [TRACKED_COMPETITIONS]' own declared order for league id — the same fixed preference order this
  * app has used since before the Scores/Fixtures merge (see [COMPETITION_DISPLAY_ORDER]'s doc
  * comment), exposed here for `ScheduleDayCard`'s per-day league-group ordering (SoccerHomeScreen.kt).
@@ -476,8 +487,9 @@ internal data class ApiFootballEventTeamDto(val id: Int, val name: String = "")
 @Serializable
 internal data class ApiFootballEventPersonDto(val id: Int? = null, val name: String? = null)
 
-internal fun ApiFootballEventDto.toMatchEvent(): MatchEvent {
+internal fun ApiFootballEventDto.toMatchEvent(homeTeamId: Int): MatchEvent {
     val minuteLabel = buildMinuteLabel(time.elapsed, time.extra)
+    val isHome = team.id == homeTeamId
     val playerName = player?.name?.takeIf { it.isNotBlank() }
     val assistName = assist?.name?.takeIf { it.isNotBlank() }
     return when (type) {
@@ -485,6 +497,12 @@ internal fun ApiFootballEventDto.toMatchEvent(): MatchEvent {
         // prefixed with "Goal" — it just showed the bare scorer name, which reads fine in
         // isolation but doesn't scan as a distinct event type next to "Yellow Card — X" rows in
         // the Timeline. Fixed to match the Card row's "<label> — <player>" shape.
+        //
+        // headline/subtext below are no longer actually read by EventTimelineRow (reworked to a
+        // FotMob-style "ball icon, scorer name, running score, assist" row on request — see that
+        // fun's own doc comment) — kept populated anyway so MatchEvent's values stay meaningful on
+        // their own rather than going stale/unused fields, and because MatchDetailHeader's
+        // goalscorer strip still reads [scorer]/[scorerQualifier] independently of these two.
         "Goal" -> {
             val scorer = playerName ?: detail?.takeIf { it.isNotBlank() } ?: "Goal"
             // API-Football's documented `detail` values for Goal events include "Penalty" and
@@ -495,8 +513,10 @@ internal fun ApiFootballEventDto.toMatchEvent(): MatchEvent {
             val qualifier = detail?.takeIf { it.isNotBlank() && !it.equals("Normal Goal", ignoreCase = true) }
             MatchEvent(
                 minuteLabel = minuteLabel,
+                elapsedMinutes = time.elapsed,
                 type = MatchEventType.GOAL,
                 teamName = team.name,
+                isHome = isHome,
                 headline = if (qualifier != null) "Goal ($qualifier) — $scorer" else "Goal — $scorer",
                 subtext = assistName?.let { "Assist: $it" },
                 scorer = scorer,
@@ -510,8 +530,10 @@ internal fun ApiFootballEventDto.toMatchEvent(): MatchEvent {
         // assistPlayerId below follow the same inversion — see MatchEvent's own doc comment.
         "subst" -> MatchEvent(
             minuteLabel = minuteLabel,
+            elapsedMinutes = time.elapsed,
             type = MatchEventType.SUBSTITUTION,
             teamName = team.name,
+            isHome = isHome,
             headline = assistName?.let { "$it on" } ?: "Substitution",
             subtext = playerName?.let { "$it off" },
             playerId = player?.id,
@@ -519,22 +541,28 @@ internal fun ApiFootballEventDto.toMatchEvent(): MatchEvent {
         )
         "Card" -> MatchEvent(
             minuteLabel = minuteLabel,
+            elapsedMinutes = time.elapsed,
             type = MatchEventType.CARD,
             teamName = team.name,
+            isHome = isHome,
             headline = listOfNotNull(detail, playerName).joinToString(" — ").ifBlank { "Card" },
             subtext = comments,
         )
         "Var" -> MatchEvent(
             minuteLabel = minuteLabel,
+            elapsedMinutes = time.elapsed,
             type = MatchEventType.VAR,
             teamName = team.name,
+            isHome = isHome,
             headline = detail ?: "VAR Review",
             subtext = comments,
         )
         else -> MatchEvent(
             minuteLabel = minuteLabel,
+            elapsedMinutes = time.elapsed,
             type = MatchEventType.OTHER,
             teamName = team.name,
+            isHome = isHome,
             headline = detail ?: type.ifBlank { "Event" },
             subtext = comments,
         )
@@ -1059,11 +1087,21 @@ enum class MatchEventType { GOAL, SUBSTITUTION, CARD, VAR, OTHER }
  * [MatchEventType.SUBSTITUTION]: [playerId] is the player going off, [assistPlayerId] the player
  * coming on — the same off/on inversion [ApiFootballEventDto.toMatchEvent]'s "subst" branch
  * already documents for [headline]/[subtext]. Null for every other event type, and null here too
- * on the real but rare row where API-Football omits a person's id altogether. */
+ * on the real but rare row where API-Football omits a person's id altogether.
+ *
+ * [isHome]/[elapsedMinutes] back the Event Timeline tab's FotMob-style two-column layout
+ * ([EventTimelineSection] in SoccerHomeScreen.kt, on request): [isHome] decides which side of the
+ * centered minute column a row renders on, and [elapsedMinutes] (the raw, non-extra-time minute —
+ * same source [minuteLabel] is formatted from) is what that section partitions the list on to
+ * place the halftime separator, since [minuteLabel] is already-formatted display text ("45+2'")
+ * rather than something safe to re-parse for that. Neither field changes what [headline]/[subtext]
+ * say — those are unchanged from before this screen's rework. */
 data class MatchEvent(
     val minuteLabel: String,
+    val elapsedMinutes: Int,
     val type: MatchEventType,
     val teamName: String,
+    val isHome: Boolean,
     val headline: String,
     val subtext: String?,
     val scorer: String? = null,
@@ -1211,6 +1249,17 @@ data class MyTeamSummary(
      * domestic rank in the team header. Null when it's in none of them. */
     val continentalLeagueId: Int? = null,
     val continentalStandingsRow: StandingsRow? = null,
+    /** The team's current coach, for the header row's coach photo/name block (on request). Sourced
+     * from [recentFixtures]' most recently played match's own lineup response — this screen has no
+     * fixture-independent "coach" call of its own (API-Football's `/coachs` endpoint isn't proxied
+     * for anything else in this app, and a lineup fetch gets the same [TeamLineup.coachName]/
+     * [TeamLineup.coachPhotoUrl] for free off a call this app already knows how to make — see
+     * [ApiFootballApi.fetchMyTeamSummary]). Both null if the team has no played fixture in
+     * [recentFixtures] to pull a lineup from (e.g. the season hasn't started yet for this team), or
+     * if that fixture's lineup hasn't been posted/fetch failed — the header simply omits the block
+     * rather than showing a name with no photo or vice versa. */
+    val coachName: String? = null,
+    val coachPhotoBytes: ByteArray? = null,
 )
 
 // --- Player (this app's own proxy: GET /players/{id}) -------------------------------------------

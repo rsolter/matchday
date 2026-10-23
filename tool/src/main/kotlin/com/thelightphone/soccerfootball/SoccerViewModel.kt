@@ -64,14 +64,13 @@ sealed class ScoreScreenMode {
     ) : ScoreScreenMode()
     data object Attribution : ScoreScreenMode()
 
-    /** [leagueLogos] is keyed by [Competition.id] rather than a URL, unlike every other logo map on
-     * this class — see [ApiFootballApi.fetchLeagueLogosByCompetitionId]'s doc comment for why this
-     * screen needs its own fetch shape. Starts empty and fills in once that follow-up fetch resolves
-     * (see [SoccerViewModel.openLeagueSelection]); a still-missing id after that just renders that
-     * row without an icon, same as every other logo in this app. */
+    // Used to carry leagueLogos (keyed by Competition.id, fetched as a follow-up via
+    // ApiFootballApi.fetchLeagueLogosByCompetitionId) for this screen's row crests — dropped on
+    // request ("drop the logos on the left, just keep text" for the Competitions toggle list), so
+    // this mode no longer fetches or threads them through. fetchLeagueLogosByCompetitionId itself
+    // is left in SoccerApi.kt, just unused for now, rather than removed along with its call site.
     data class LeagueSelection(
         val rows: List<LeagueSelectionRow>,
-        val leagueLogos: Map<Int, ByteArray> = emptyMap(),
     ) : ScoreScreenMode()
 
     data class Standings(
@@ -598,24 +597,22 @@ class SoccerViewModel(
      * "not available" screen. They still show up normally in Scores/Fixtures. */
     private fun followedTableCompetitions(): List<Competition> = followedLeagues().filter { it.hasStandings }
 
+    /** [followedTableCompetitions] narrowed further to domestic leagues only, for the My Team
+     * league picker specifically (on request: "do not allow any of these international club
+     * competitions as one to choose from" when picking a team to follow). The regular Standings
+     * picker ([openCompetitions]) still shows UCL/UEL/etc. via the unfiltered list above — browsing
+     * a continental table is still wanted there, only picking *My Team* from one isn't, since a
+     * club followed that way has no single "home" league the rest of My Team's UI
+     * ([MyTeamHeaderRow]'s domestic rank block, [SoccerViewModel.resolveDomesticStanding]) expects. */
+    private fun followedDomesticTableCompetitions(): List<Competition> =
+        followedTableCompetitions().filter { competitionIsDomestic(it.id) }
+
     // --- League selection --------------------------------------------------------
 
     fun openLeagueSelection() {
         updateState { it.copy(mode = ScoreScreenMode.LeagueSelection(buildLeagueRows()), errorModal = null) }
-        // Fetched as a follow-up, same pattern as leagueLogos/teamLogos elsewhere on this class:
-        // never blocks the row list itself from rendering, and a failed or still-in-flight fetch
-        // just means those rows render without an icon a moment longer (or permanently, on failure)
-        // rather than showing an error. Every TRACKED_COMPETITIONS id at once, not just followed
-        // ones — the whole point of this screen is picking leagues you *aren't* already following.
-        viewModelScope.launch(Dispatchers.IO + exceptionHandler) {
-            val logos = api.fetchLeagueLogosByCompetitionId(TRACKED_COMPETITIONS.map { it.id })
-            if (logos.isNotEmpty()) {
-                updateState { state ->
-                    val mode = state.mode as? ScoreScreenMode.LeagueSelection ?: return@updateState state
-                    state.copy(mode = mode.copy(leagueLogos = logos))
-                }
-            }
-        }
+        // No follow-up logo fetch here any more — see ScoreScreenMode.LeagueSelection's doc
+        // comment; this screen is text-only now, on request.
     }
 
     /** Refreshes once here, on the way out, if the selection changed — not once per tap in
@@ -916,7 +913,7 @@ class SoccerViewModel(
 
     fun openMyTeamSetup() {
         modeBeforeMyTeamSetup = _uiState.value.mode
-        updateState { it.copy(mode = ScoreScreenMode.MyTeamLeaguePicker(followedTableCompetitions()), errorModal = null) }
+        updateState { it.copy(mode = ScoreScreenMode.MyTeamLeaguePicker(followedDomesticTableCompetitions()), errorModal = null) }
     }
 
     fun backFromMyTeamLeaguePicker() {
@@ -972,7 +969,7 @@ class SoccerViewModel(
     }
 
     fun backFromMyTeamTeamPicker() {
-        updateState { it.copy(mode = ScoreScreenMode.MyTeamLeaguePicker(followedTableCompetitions()), errorModal = null) }
+        updateState { it.copy(mode = ScoreScreenMode.MyTeamLeaguePicker(followedDomesticTableCompetitions()), errorModal = null) }
     }
 
     fun selectMyTeamTeam(teamId: Int, teamName: String, leagueId: Int) {
