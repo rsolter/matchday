@@ -1364,7 +1364,11 @@ private fun CompetitionPickerContent(
             }
             leagues.forEach { league ->
                 LightText(
-                    text = league.name,
+                    // settingsCompetitionName strips the "UEFA "/"CONCACAF " prefix to save
+                    // space, matching Settings' own Competitions rows (see that fun's doc comment) —
+                    // this bottom-bar Competitions picker was the one place still showing the full,
+                    // unstripped name, on request to bring it in line with Settings.
+                    text = settingsCompetitionName(league.name),
                     // Same size as Settings' own rows (SettingRow), on request.
                     variant = LightTextVariant.Fine,
                     modifier = Modifier
